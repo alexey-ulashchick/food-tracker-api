@@ -9,9 +9,9 @@ primary_region = 'iad'
 [build]
 
 [env]
-  LOG_LEVEL = 'info'
+  PORT = '8080'
   NODE_ENV = 'production'
-  PORT = '3000'
+  LOG_LEVEL = 'info'
 
 [http_service]
   internal_port = 8080

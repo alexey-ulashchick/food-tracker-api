@@ -22,5 +22,5 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
 COPY src ./src
 
-EXPOSE 3000
+EXPOSE 8080
 CMD ["bun", "src/index.ts"]
