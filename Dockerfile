@@ -5,13 +5,17 @@
 #     package.json + bun.lock are unchanged.
 #   * Runtime image inherits node_modules and copies only what's needed to
 #     `bun src/index.ts` — no build step (Bun reads TS natively).
+#
+# Using `oven/bun:1.3-slim` (debian) rather than `-alpine`. Alpine + musl
+# occasionally hits ConnectionRefused on Bun's parallel tarball downloader
+# inside builders like Depot; the slim variant has been more reliable.
 
-FROM oven/bun:1.3-alpine AS deps
+FROM oven/bun:1.3-slim AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
 
-FROM oven/bun:1.3-alpine
+FROM oven/bun:1.3-slim
 WORKDIR /app
 ENV NODE_ENV=production
 
