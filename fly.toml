@@ -4,7 +4,7 @@
 # Region: `iad` (us-east-1) — matches the Neon project's region for the
 # lowest DB latency. Change if you move Neon elsewhere.
 
-app = "food-tracker-api"
+app = "food-tracker-api-oc5olq"
 primary_region = "iad"
 
 [build]

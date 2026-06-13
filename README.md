@@ -167,7 +167,7 @@ Triggers:
 ```bash
 fly deploy                               # builds locally, pushes image
 fly logs                                 # tail the running machine
-curl https://food-tracker-api.fly.dev/health
+curl https://food-tracker-api-oc5olq.fly.dev/health
 # {"status":"ok"}
 ```
 
@@ -177,7 +177,7 @@ First request after idle wakes the machine (~1-2s) and Neon's branch (~300-500ms
 
 After the URL is live, point the app at it and drop the localhost ATS exception:
 
-1. `CalTracker/APIClient.swift` — change `baseURL` to `https://food-tracker-api.fly.dev`.
+1. `CalTracker/APIClient.swift` — change `baseURL` to `https://food-tracker-api-oc5olq.fly.dev`.
 2. `CalTracker/Info.plist` — remove the entire `NSAppTransportSecurity` block (HTTPS is enough; no exception domain needed).
 
 ### Cost reality check
