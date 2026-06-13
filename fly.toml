@@ -1,38 +1,33 @@
-# Fly.io config. App name is global across Fly — change `app = ...` if
-# `food-tracker-api` is already taken when you run `fly apps create`.
+# fly.toml app configuration file generated for food-tracker-api-oc5olq on 2026-06-13T03:07:07Z
 #
-# Region: `iad` (us-east-1) — matches the Neon project's region for the
-# lowest DB latency. Change if you move Neon elsewhere.
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "food-tracker-api-oc5olq"
-primary_region = "iad"
+app = 'food-tracker-api-oc5olq'
+primary_region = 'iad'
 
 [build]
-  # Dockerfile auto-detected from repo root.
 
 [env]
-  PORT = "3000"
-  NODE_ENV = "production"
-  LOG_LEVEL = "info"
+  LOG_LEVEL = 'info'
+  NODE_ENV = 'production'
+  PORT = '3000'
 
 [http_service]
-  internal_port = 3000
+  internal_port = 8080
   force_https = true
-  # Scale-to-zero: machine sleeps after a few minutes of no traffic and wakes
-  # on first request (~1-2s cold start). Combined with Neon's scale-to-zero
-  # this keeps the bill near $0 for personal scale.
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
-  processes = ["app"]
+  processes = ['app']
 
   [[http_service.checks]]
-    method = "get"
-    path = "/health"
-    interval = "30s"
-    timeout = "5s"
-    grace_period = "5s"
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '5s'
+    method = 'get'
+    path = '/health'
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "256mb"
+  size = 'shared-cpu-1x'
+  memory = '256mb'
