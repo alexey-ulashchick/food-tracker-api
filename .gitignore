@@ -1,0 +1,21 @@
+# Bun / Node
+node_modules/
+bun.lockb
+dist/
+*.log
+.DS_Store
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Drizzle generated
+drizzle/
+
+# IDE
+.idea/
+.vscode/
+
+# Misc
+*.tsbuildinfo

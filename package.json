@@ -1,0 +1,35 @@
+{
+  "name": "food-traker-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "dev:neon": "env -u DATABASE_URL bun --env-file=.env.neon run dev",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src",
+    "format": "biome format --write src",
+    "db:push": "drizzle-kit push",
+    "db:push:neon": "env -u DATABASE_URL bun --env-file=.env.neon run db:push",
+    "db:studio": "drizzle-kit studio",
+    "db:studio:neon": "env -u DATABASE_URL bun --env-file=.env.neon run db:studio",
+    "import:md": "bun scripts/import-md.ts",
+    "import:md:neon": "env -u DATABASE_URL bun --env-file=.env.neon run import:md",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0",
+    "@hono/zod-validator": "^0.4.0",
+    "drizzle-orm": "^0.36.0",
+    "hono": "^4.6.0",
+    "postgres": "^3.4.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "@types/bun": "^1.1.0",
+    "drizzle-kit": "^0.28.0",
+    "typescript": "^5.6.0"
+  }
+}

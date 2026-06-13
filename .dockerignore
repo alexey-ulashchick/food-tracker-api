@@ -1,0 +1,18 @@
+# Don't ship local-only or sensitive stuff to the build context.
+
+node_modules
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.git
+.gitignore
+.gitattributes
+README.md
+docker-compose.yml
+drizzle/
+tests/
+scripts/
+biome.json
+bunfig.toml

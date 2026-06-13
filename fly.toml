@@ -1,0 +1,38 @@
+# Fly.io config. App name is global across Fly — change `app = ...` if
+# `food-tracker-api` is already taken when you run `fly apps create`.
+#
+# Region: `iad` (us-east-1) — matches the Neon project's region for the
+# lowest DB latency. Change if you move Neon elsewhere.
+
+app = "food-tracker-api"
+primary_region = "iad"
+
+[build]
+  # Dockerfile auto-detected from repo root.
+
+[env]
+  PORT = "3000"
+  NODE_ENV = "production"
+  LOG_LEVEL = "info"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  # Scale-to-zero: machine sleeps after a few minutes of no traffic and wakes
+  # on first request (~1-2s cold start). Combined with Neon's scale-to-zero
+  # this keeps the bill near $0 for personal scale.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    method = "get"
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
