@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { logger } from 'hono/logger'
 import { env } from './env.ts'
+import { mcpRoute } from './mcp/route.ts'
 import { errorHandler } from './middleware/errors.ts'
 import { chatRoute } from './routes/chat.ts'
 import { goalsRoute } from './routes/goals.ts'
@@ -19,6 +20,7 @@ app.route('/health', healthRoute)
 app.route('/meals', mealsRoute)
 app.route('/goals', goalsRoute)
 app.route('/chat', chatRoute)
+app.route('/mcp', mcpRoute)
 
 console.log(`Listening on http://localhost:${env.PORT}`)
 

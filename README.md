@@ -88,6 +88,45 @@ curl http://localhost:3000/meals \
   -H 'X-User-Id: 11111111-1111-1111-1111-111111111111'
 ```
 
+## MCP server (for Claude Desktop / Claude.ai)
+
+The same backend exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `POST /mcp` (Streamable HTTP, stateless, JSON responses). Tools wrap the existing routes so Claude can read and write meals + goals directly:
+
+- `list_meals`, `get_meals_for_day`, `create_meal`, `delete_meal`
+- `list_goals`, `get_goal_for_day`, `upsert_goal`
+
+Auth is the same `X-User-Id` header — set it once on the connector. Anyone with the header acts as that user, so for now treat the UUID like a credential.
+
+### Connect Claude Desktop
+
+`~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
+
+```json
+{
+  "mcpServers": {
+    "food-tracker": {
+      "type": "http",
+      "url": "https://food-tracker-api-oc5olq.fly.dev/mcp",
+      "headers": {
+        "X-User-Id": "11111111-1111-1111-1111-111111111111"
+      }
+    }
+  }
+}
+```
+
+For local development point `url` at `http://localhost:3000/mcp`. Restart Claude Desktop and the seven tools show up in the connector list.
+
+### Smoke test from the terminal
+
+```bash
+curl -s -X POST http://localhost:3000/mcp \
+  -H 'X-User-Id: 11111111-1111-1111-1111-111111111111' \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
 ## Layout
 
 ```
@@ -99,6 +138,7 @@ src/
 │   └── schema.ts         # tables (Drizzle DSL)
 ├── routes/               # health, meals, goals, chat
 ├── middleware/           # auth, errors
+├── mcp/                  # MCP server (tools + Streamable HTTP route)
 └── llm/
     └── anthropic.ts      # Anthropic client
 
