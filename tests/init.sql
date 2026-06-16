@@ -54,3 +54,13 @@ CREATE TABLE chat_messages (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX chat_user_timestamp_idx ON chat_messages (user_id, timestamp);
+
+CREATE TABLE api_tokens (
+  token text PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  revoked_at timestamptz,
+  last_used_at timestamptz
+);
+CREATE INDEX api_tokens_user_idx ON api_tokens (user_id);

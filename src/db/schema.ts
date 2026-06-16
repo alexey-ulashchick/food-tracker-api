@@ -98,3 +98,24 @@ export const chatMessages = pgTable(
     userTimestampIdx: index('chat_user_timestamp_idx').on(t.userId, t.timestamp),
   }),
 )
+
+// Long-lived bearer credentials for the MCP endpoint, used by clients that
+// can't inject a custom X-User-Id header (mobile Claude). Token is the PK and
+// is shipped in the URL path (POST /mcp/:token) — treat the row like a
+// password. `revokedAt` lets us kill a token without deleting it (audit).
+export const apiTokens = pgTable(
+  'api_tokens',
+  {
+    token: text('token').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    label: text('label'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  },
+  (t) => ({
+    userIdx: index('api_tokens_user_idx').on(t.userId),
+  }),
+)

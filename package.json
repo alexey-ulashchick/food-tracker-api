@@ -16,6 +16,8 @@
     "db:studio:neon": "env -u DATABASE_URL bun --env-file=.env.neon run db:studio",
     "import:md": "bun scripts/import-md.ts",
     "import:md:neon": "env -u DATABASE_URL bun --env-file=.env.neon run import:md",
+    "issue-token": "bun scripts/issue-token.ts",
+    "issue-token:neon": "env -u DATABASE_URL bun --env-file=.env.neon run issue-token",
     "test": "bun test"
   },
   "dependencies": {

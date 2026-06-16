@@ -58,6 +58,7 @@ Plain commands target the local DB (`.env`); the `*:neon` variants override `DAT
 | `bun run db:push` / `bun run db:push:neon` | Push Drizzle schema directly to DB |
 | `bun run db:studio` / `bun run db:studio:neon` | Open Drizzle Studio (DB browser at localhost:4983) |
 | `bun run import:md [dir]` / `bun run import:md:neon [dir]` | Import food-diary markdown files for the test user (default `~/Downloads`) |
+| `bun run issue-token -- --user <uuid> [--label <name>]` / `:neon` | Issue an MCP bearer token for `/mcp/:token` (mobile Claude) |
 | `bun test` | Run tests (uses local docker by default) |
 
 ## Importing food-diary markdown
@@ -88,14 +89,21 @@ curl http://localhost:3000/meals \
   -H 'X-User-Id: 11111111-1111-1111-1111-111111111111'
 ```
 
-## MCP server (for Claude Desktop / Claude.ai)
+## MCP server (for Claude Desktop / Claude.ai / mobile)
 
-The same backend exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `POST /mcp` (Streamable HTTP, stateless, JSON responses). Tools wrap the existing routes so Claude can read and write meals + goals directly:
+The same backend exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint as a Streamable HTTP server. Tools wrap the existing routes so Claude can read and write meals + goals directly:
 
 - `list_meals`, `get_meals_for_day`, `create_meal`, `delete_meal`
 - `list_goals`, `get_goal_for_day`, `upsert_goal`
 
-Auth is the same `X-User-Id` header — set it once on the connector. Anyone with the header acts as that user, so for now treat the UUID like a credential.
+Two equivalent front-doors with different auth:
+
+| URL | Auth | Use from |
+|---|---|---|
+| `POST /mcp` | `X-User-Id: <uuid>` header | Claude Desktop, curl |
+| `POST /mcp/:token` | URL-embedded bearer token | Claude mobile (iOS/Android), Claude.ai web — anything that can't inject headers |
+
+Both routes go through the same handler — the token-variant exists because the mobile Claude UI only takes a URL. Anyone with the header (or the URL) acts as that user; treat both like passwords.
 
 ### Connect Claude Desktop
 
@@ -117,11 +125,44 @@ Auth is the same `X-User-Id` header — set it once on the connector. Anyone wit
 
 For local development point `url` at `http://localhost:3000/mcp`. Restart Claude Desktop and the seven tools show up in the connector list.
 
+### Connect Claude mobile / Claude.ai web
+
+The mobile UI doesn't let you set request headers, so we need a token in the URL.
+
+**1. Issue a token** (one-time, against whichever DB the connector will hit):
+
+```bash
+bun run issue-token -- --user 11111111-1111-1111-1111-111111111111 --label 'iPhone Claude'
+bun run issue-token:neon -- --user 11111111-1111-1111-1111-111111111111 --label 'iPhone Claude'
+```
+
+The script prints the token once — copy it now, there is no recovery.
+
+**2. Add a custom connector in Claude:**
+
+- iOS/Android: Settings → Connectors → Add custom connector
+- claude.ai web: Settings → Connectors → Add custom connector
+
+URL: `https://food-tracker-api-oc5olq.fly.dev/mcp/<the-token>`
+
+**Revoke** a token by setting `revoked_at` in the DB:
+
+```sql
+UPDATE api_tokens SET revoked_at = now() WHERE label = 'iPhone Claude';
+```
+
 ### Smoke test from the terminal
 
 ```bash
+# Header auth
 curl -s -X POST http://localhost:3000/mcp \
   -H 'X-User-Id: 11111111-1111-1111-1111-111111111111' \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# Token auth (no header needed)
+curl -s -X POST http://localhost:3000/mcp/ft_<...> \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
