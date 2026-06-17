@@ -17,6 +17,36 @@ process.env.TEST_SCHEMA = TEST_SCHEMA
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgres://food:food@localhost:5432/food'
 
+// ─── Safety guard ──────────────────────────────────────────────────────────
+// Tests provision a random schema and TRUNCATE freely inside it. If the
+// DATABASE_URL ever points at a real (remote) database — production, Neon,
+// staging — those operations will run there. This guard refuses to start
+// against anything that isn't localhost. Override only if you have a
+// disposable test database and you really mean it: ALLOW_REMOTE_TESTS=1.
+//
+// Why so loud: a previous run wiped real api_tokens via TRUNCATE … CASCADE
+// when the URL accidentally pointed at the remote DB. Hard-fail is cheap;
+// recovering data from a backup is not.
+{
+  const host = (() => {
+    try {
+      return new URL(DATABASE_URL).hostname
+    } catch {
+      return ''
+    }
+  })()
+  const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1'
+  if (!isLocal && process.env.ALLOW_REMOTE_TESTS !== '1') {
+    throw new Error(
+      `Refusing to run tests against non-local DATABASE_URL (host=${host || '?'}). ` +
+        'Tests provision a fresh schema and TRUNCATE inside it — running this against ' +
+        'a real database can wipe data via FK CASCADE. ' +
+        'Point DATABASE_URL at a local Postgres, or set ALLOW_REMOTE_TESTS=1 if you ' +
+        'truly want to run against a disposable remote.',
+    )
+  }
+}
+
 // ─── Anthropic SDK mock ────────────────────────────────────────────────────
 // Tests configure responses via messagesCreate.mockResolvedValueOnce(...).
 // The default (unconfigured) call throws so missing setup fails loudly instead
