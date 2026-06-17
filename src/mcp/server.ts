@@ -190,16 +190,11 @@ export function buildMcpServer(userId: string): McpServer {
     {
       title: 'List daily goals',
       description:
-        'Every daily-goal row for the user (one per date with a configured goal). Pass `date` to filter to a single day.',
-      inputSchema: { date: isoDate.optional() },
+        'Every daily-goal row for the user (one per date with a configured goal). Use get_goal_for_day to read a single date.',
+      inputSchema: {},
     },
-    async ({ date }) => {
-      const conditions = [eq(dailyGoals.userId, userId)]
-      if (date) conditions.push(eq(dailyGoals.date, date))
-      const rows = await db
-        .select()
-        .from(dailyGoals)
-        .where(and(...conditions))
+    async () => {
+      const rows = await db.select().from(dailyGoals).where(eq(dailyGoals.userId, userId))
       return ok(rows)
     },
   )
