@@ -1,22 +1,28 @@
 import { createMiddleware } from 'hono/factory'
-import { db } from '../db/client.ts'
-import { users } from '../db/schema.ts'
+import { lookupToken } from './tokens.ts'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const BEARER_RE = /^Bearer\s+(\S+)$/i
 
 export type AuthEnv = { Variables: { userId: string } }
 
-// Dev-grade auth: trust the X-User-Id header. Server upserts a user row keyed
-// on the supplied UUID. Real auth (Sign in with Apple / magic-link) replaces
-// this whole middleware once the iOS client gains a login flow.
+// Bearer-token auth. The token is minted via scripts/issue-token.ts and
+// resolved against api_tokens — same lookup the /mcp/:token route uses, so
+// REST and MCP share a single credential surface.
 export const auth = createMiddleware<AuthEnv>(async (c, next) => {
-  const userId = c.req.header('X-User-Id')
-
-  if (!userId || !UUID_RE.test(userId)) {
-    return c.json({ error: 'Missing or malformed X-User-Id header (must be a UUID)' }, 401)
+  const header = c.req.header('Authorization')
+  if (!header) {
+    return c.json({ error: 'Missing Authorization header' }, 401)
   }
 
-  await db.insert(users).values({ id: userId }).onConflictDoNothing({ target: users.id })
+  const m = BEARER_RE.exec(header)
+  if (!m) {
+    return c.json({ error: 'Authorization header must be "Bearer <token>"' }, 401)
+  }
+
+  const userId = await lookupToken(m[1]!)
+  if (!userId) {
+    return c.json({ error: 'Invalid or revoked token' }, 401)
+  }
 
   c.set('userId', userId)
   await next()

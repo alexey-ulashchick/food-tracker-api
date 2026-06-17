@@ -80,14 +80,37 @@ Behaviour:
 - **Meal slots**: positional thirds — first third → Breakfast, middle → Lunch, last → Dinner. Timestamps anchored at 8:00 / 13:00 / 18:00 in the test user's local TZ (Pacific Time, configurable via `USER_TZ_OFFSET_HOURS` constant in the script).
 - **Idempotent re-runs**: before inserting a day's meals, the script wipes every existing meal whose timestamp falls inside the user's local day for that date — including late-evening items that bleed into the next UTC day, and anything previously inserted manually via curl. Goals are upserted, not deleted, so dates not covered by any markdown stay intact.
 
-## Auth (currently stub)
+## Auth (bearer token)
 
-Every authenticated request must include an `X-User-Id` header (a UUID). The server upserts a user row keyed on this UUID. This is "dev grade" auth — it'll be replaced with Sign in with Apple or magic-link when the iOS client gets a login screen.
+Every authenticated request — REST and MCP alike — must carry `Authorization: Bearer ft_<token>`. Tokens are stored in `api_tokens` (one user can hold many; revoke by setting `revoked_at`) and minted via:
 
 ```bash
-curl http://localhost:3000/meals \
-  -H 'X-User-Id: 11111111-1111-1111-1111-111111111111'
+bun run issue-token -- --user 11111111-1111-1111-1111-111111111111 --label 'iPhone'
+bun run issue-token:neon -- --user 11111111-1111-1111-1111-111111111111 --label 'iPhone'
 ```
+
+The script prints the plaintext token once — copy it immediately, there is no recovery.
+
+```bash
+# REST
+curl http://localhost:3000/meals \
+  -H 'Authorization: Bearer ft_...'
+
+# MCP — same token, header form
+curl -X POST http://localhost:3000/mcp \
+  -H 'Authorization: Bearer ft_...' \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# MCP — same token, URL-path form (for clients that can't set headers — e.g. mobile Claude)
+curl -X POST http://localhost:3000/mcp/ft_... \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+This is "dev grade" auth — anyone holding the token can act as the user. Real per-device identity (Sign in with Apple / magic-link) replaces this whole layer when the iOS client gains a login flow.
 
 ## MCP server (for Claude Desktop / Claude.ai / mobile)
 
@@ -96,14 +119,16 @@ The same backend exposes a [Model Context Protocol](https://modelcontextprotocol
 - `list_meals`, `get_meals_for_day`, `create_meal`, `delete_meal`
 - `list_goals`, `get_goal_for_day`, `upsert_goal`
 
-Two equivalent front-doors with different auth:
+Two equivalent front-doors, same bearer token in both:
 
 | URL | Auth | Use from |
 |---|---|---|
-| `POST /mcp` | `X-User-Id: <uuid>` header | Claude Desktop, curl |
-| `POST /mcp/:token` | URL-embedded bearer token | Claude mobile (iOS/Android), Claude.ai web — anything that can't inject headers |
+| `POST /mcp` | `Authorization: Bearer ft_<token>` header | Claude Desktop, curl |
+| `POST /mcp/:token` | Token in URL path | Claude mobile (iOS/Android), Claude.ai web — anything that can't inject headers |
 
-Both routes go through the same handler — the token-variant exists because the mobile Claude UI only takes a URL. Anyone with the header (or the URL) acts as that user; treat both like passwords.
+Both routes go through the same handler. The token-in-URL variant exists because the mobile Claude UI only takes a URL — there's no place to set headers. Anyone with the header (or the URL) acts as the user; treat both like passwords.
+
+Mint a token with `bun run issue-token` (see [Auth](#auth-bearer-token)).
 
 ### Connect Claude Desktop
 
@@ -116,7 +141,7 @@ Both routes go through the same handler — the token-variant exists because the
       "type": "http",
       "url": "https://food-tracker-api-oc5olq.fly.dev/mcp",
       "headers": {
-        "X-User-Id": "11111111-1111-1111-1111-111111111111"
+        "Authorization": "Bearer ft_..."
       }
     }
   }
@@ -127,23 +152,12 @@ For local development point `url` at `http://localhost:3000/mcp`. Restart Claude
 
 ### Connect Claude mobile / Claude.ai web
 
-The mobile UI doesn't let you set request headers, so we need a token in the URL.
+The mobile UI doesn't let you set request headers, so use the URL-path variant.
 
-**1. Issue a token** (one-time, against whichever DB the connector will hit):
-
-```bash
-bun run issue-token -- --user 11111111-1111-1111-1111-111111111111 --label 'iPhone Claude'
-bun run issue-token:neon -- --user 11111111-1111-1111-1111-111111111111 --label 'iPhone Claude'
+Settings → Connectors → Add custom connector → URL:
 ```
-
-The script prints the token once — copy it now, there is no recovery.
-
-**2. Add a custom connector in Claude:**
-
-- iOS/Android: Settings → Connectors → Add custom connector
-- claude.ai web: Settings → Connectors → Add custom connector
-
-URL: `https://food-tracker-api-oc5olq.fly.dev/mcp/<the-token>`
+https://food-tracker-api-oc5olq.fly.dev/mcp/ft_<token>
+```
 
 **Revoke** a token by setting `revoked_at` in the DB:
 
@@ -156,13 +170,13 @@ UPDATE api_tokens SET revoked_at = now() WHERE label = 'iPhone Claude';
 ```bash
 # Header auth
 curl -s -X POST http://localhost:3000/mcp \
-  -H 'X-User-Id: 11111111-1111-1111-1111-111111111111' \
+  -H 'Authorization: Bearer ft_<token>' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 
-# Token auth (no header needed)
-curl -s -X POST http://localhost:3000/mcp/ft_<...> \
+# URL-path auth (no header needed)
+curl -s -X POST http://localhost:3000/mcp/ft_<token> \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'

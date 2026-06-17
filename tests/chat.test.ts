@@ -20,7 +20,7 @@ beforeEach(async () => {
 
 describe('POST /chat', () => {
   test('text-only: 1 LLM call, 1 ai text row', async () => {
-    const userId = crypto.randomUUID()
+    const { userId, token } = await seedUser()
 
     messagesCreate.mockResolvedValueOnce(
       llmResponse({
@@ -32,7 +32,7 @@ describe('POST /chat', () => {
     const res = await makeApp().fetch(
       new Request('http://x/chat', {
         method: 'POST',
-        headers: { ...authHeaders(userId), 'Content-Type': 'application/json' },
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: 'привет' }),
       }),
     )
@@ -53,7 +53,7 @@ describe('POST /chat', () => {
   })
 
   test('add_meal: writes meal row, persists action card + recap text', async () => {
-    const userId = await seedUser()
+    const { userId, token } = await seedUser()
 
     const addInput = {
       meal: 'Lunch',
@@ -84,7 +84,7 @@ describe('POST /chat', () => {
     const res = await makeApp().fetch(
       new Request('http://x/chat', {
         method: 'POST',
-        headers: { ...authHeaders(userId), 'Content-Type': 'application/json' },
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: 'это курица и макароны' }),
       }),
     )
@@ -113,7 +113,7 @@ describe('POST /chat', () => {
   })
 
   test('update_meal: edits row in place and logs meal_updated card', async () => {
-    const userId = await seedUser()
+    const { userId, token } = await seedUser()
     const seeded = await seedMeal(userId, {
       foodName: 'Овсяное печенье',
       calories: 200,
@@ -146,7 +146,7 @@ describe('POST /chat', () => {
     const res = await makeApp().fetch(
       new Request('http://x/chat', {
         method: 'POST',
-        headers: { ...authHeaders(userId), 'Content-Type': 'application/json' },
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: 'оно было больше, ккал на 300' }),
       }),
     )
@@ -171,7 +171,7 @@ describe('POST /chat', () => {
   })
 
   test('delete_meal: removes row and logs meal_removed card', async () => {
-    const userId = await seedUser()
+    const { userId, token } = await seedUser()
     const seeded = await seedMeal(userId, { foodName: 'Печенье', calories: 200 })
 
     messagesCreate.mockResolvedValueOnce(
@@ -197,7 +197,7 @@ describe('POST /chat', () => {
     const res = await makeApp().fetch(
       new Request('http://x/chat', {
         method: 'POST',
-        headers: { ...authHeaders(userId), 'Content-Type': 'application/json' },
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: 'не, я не ел печенье' }),
       }),
     )
@@ -219,7 +219,7 @@ describe('POST /chat', () => {
   })
 
   test('set_goal: upserts goal and logs goal_set card', async () => {
-    const userId = await seedUser()
+    const { userId, token } = await seedUser()
 
     const goalInput = {
       date: '2026-06-17',
@@ -232,9 +232,7 @@ describe('POST /chat', () => {
 
     messagesCreate.mockResolvedValueOnce(
       llmResponse({
-        content: [
-          { type: 'tool_use', id: 'toolu_g', name: 'set_goal', input: goalInput },
-        ],
+        content: [{ type: 'tool_use', id: 'toolu_g', name: 'set_goal', input: goalInput }],
         stop_reason: 'tool_use',
       }),
     )
@@ -248,7 +246,7 @@ describe('POST /chat', () => {
     const res = await makeApp().fetch(
       new Request('http://x/chat', {
         method: 'POST',
-        headers: { ...authHeaders(userId), 'Content-Type': 'application/json' },
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: 'сегодня тренировочный, поставь 2600' }),
       }),
     )
@@ -267,7 +265,7 @@ describe('POST /chat', () => {
   })
 
   test('failed write tool: error fed back, no action card persisted', async () => {
-    const userId = await seedUser()
+    const { userId, token } = await seedUser()
 
     messagesCreate.mockResolvedValueOnce(
       llmResponse({
@@ -292,7 +290,7 @@ describe('POST /chat', () => {
     const res = await makeApp().fetch(
       new Request('http://x/chat', {
         method: 'POST',
-        headers: { ...authHeaders(userId), 'Content-Type': 'application/json' },
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: 'удали последнюю еду' }),
       }),
     )
@@ -301,10 +299,7 @@ describe('POST /chat', () => {
     const body = (await res.json()) as { ai: Array<{ kind: string }> }
 
     expect(body.ai.some((m) => m.kind === 'meal_removed')).toBe(false)
-    const allRows = await db
-      .select()
-      .from(chatMessages)
-      .where(eq(chatMessages.userId, userId))
+    const allRows = await db.select().from(chatMessages).where(eq(chatMessages.userId, userId))
     expect(allRows.some((r) => r.kind === 'meal_removed')).toBe(false)
 
     // The second call should have received an error tool_result.
@@ -318,7 +313,7 @@ describe('POST /chat', () => {
   })
 
   test('read tool then write tool: looks up id via get_meals_for_day, then deletes', async () => {
-    const userId = await seedUser()
+    const { userId, token } = await seedUser()
     const seeded = await seedMeal(userId, { foodName: 'Vacant lookup' })
     // seedGoal not needed; just keep user clean
 
@@ -359,7 +354,7 @@ describe('POST /chat', () => {
     const res = await makeApp().fetch(
       new Request('http://x/chat', {
         method: 'POST',
-        headers: { ...authHeaders(userId), 'Content-Type': 'application/json' },
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: 'удали последнюю запись' }),
       }),
     )

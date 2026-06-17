@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '../src/db/client.ts'
-import { dailyGoals, meals, users } from '../src/db/schema.ts'
+import { apiTokens, dailyGoals, meals, users } from '../src/db/schema.ts'
 import { chatRoute } from '../src/routes/chat.ts'
 
 export type App = ReturnType<typeof makeApp>
@@ -14,21 +14,27 @@ export function makeApp() {
 // resets sequences. Faster than per-table deletes.
 export async function truncateAll(): Promise<void> {
   await db.execute(
-    sql`TRUNCATE TABLE chat_messages, meals, daily_goals, users RESTART IDENTITY CASCADE`,
+    sql`TRUNCATE TABLE chat_messages, meals, daily_goals, api_tokens, users RESTART IDENTITY CASCADE`,
   )
 }
 
-export const authHeaders = (userId: string): Record<string, string> => ({
-  'X-User-Id': userId,
+export const authHeaders = (token: string): Record<string, string> => ({
+  Authorization: `Bearer ${token}`,
 })
 
-// Seed a user row directly. The auth middleware would also do this on first
-// request, but tests that pre-seed meals (FK requires the user) need it
-// up-front.
-export async function seedUser(): Promise<string> {
+// Seeds a user row + freshly-minted API token. Returns both because some tests
+// assert against the userId in response payloads while still needing the
+// token for the Authorization header.
+export async function seedUser(): Promise<{ userId: string; token: string }> {
   const userId = crypto.randomUUID()
   await db.insert(users).values({ id: userId }).onConflictDoNothing()
-  return userId
+
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  const token = `ft_${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`
+  await db.insert(apiTokens).values({ token, userId })
+
+  return { userId, token }
 }
 
 export async function seedMeal(
