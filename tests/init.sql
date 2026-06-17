@@ -6,7 +6,7 @@
 CREATE TYPE day_type AS ENUM ('training', 'rest');
 CREATE TYPE meal_type AS ENUM ('Breakfast', 'Lunch', 'Dinner', 'Snack');
 CREATE TYPE chat_role AS ENUM ('user', 'ai');
-CREATE TYPE chat_kind AS ENUM ('text', 'food_card', 'goal_card', 'confirm', 'typing');
+CREATE TYPE chat_kind AS ENUM ('text', 'meal_added', 'meal_removed', 'meal_updated', 'goal_set');
 
 CREATE TABLE users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/client.ts'
-import { chatMessages, meals } from '../src/db/schema.ts'
+import { chatMessages, dailyGoals, meals } from '../src/db/schema.ts'
 import {
   authHeaders,
   llmResponse,
   makeApp,
-  seedFoodCard,
+  seedGoal,
+  seedMeal,
   seedUser,
   truncateAll,
 } from './helpers.ts'
@@ -51,10 +52,10 @@ describe('POST /chat', () => {
     expect(messagesCreate).toHaveBeenCalledTimes(1)
   })
 
-  test('propose_meal: persists text + food_card, ONE LLM call (no follow-up)', async () => {
-    const userId = crypto.randomUUID()
+  test('add_meal: writes meal row, persists action card + recap text', async () => {
+    const userId = await seedUser()
 
-    const proposalInput = {
+    const addInput = {
       meal: 'Lunch',
       foodName: 'Куриная грудка с макаронами',
       emoji: '🍝',
@@ -68,14 +69,15 @@ describe('POST /chat', () => {
       llmResponse({
         content: [
           { type: 'text', text: 'Прикинул порции на ~620 ккал.' },
-          {
-            type: 'tool_use',
-            id: 'toolu_1',
-            name: 'propose_meal',
-            input: proposalInput,
-          },
+          { type: 'tool_use', id: 'toolu_1', name: 'add_meal', input: addInput },
         ],
         stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Записал. Осталось ~600 ккал на день.' }],
+        stop_reason: 'end_turn',
       }),
     )
 
@@ -89,146 +91,281 @@ describe('POST /chat', () => {
 
     expect(res.status).toBe(201)
     const body = (await res.json()) as {
-      ai: Array<{ kind: string; content: string; meta: unknown }>
+      ai: Array<{ kind: string; content: string; meta: Record<string, unknown> | null }>
     }
-    expect(body.ai).toHaveLength(2)
+
+    expect(body.ai).toHaveLength(3)
     expect(body.ai[0]).toMatchObject({ kind: 'text' })
-    expect(body.ai[1]).toMatchObject({ kind: 'food_card' })
-    expect(body.ai[1].meta).toMatchObject(proposalInput)
+    expect(body.ai[1]).toMatchObject({ kind: 'meal_added' })
+    expect(body.ai[1].meta).toMatchObject({
+      meal: { foodName: addInput.foodName, calories: addInput.calories },
+    })
+    expect(body.ai[2]).toMatchObject({ kind: 'text' })
+    expect(body.ai[2].content).toContain('Осталось')
 
-    // The whole point of breaking after a proposal: NO second round-trip.
-    expect(messagesCreate).toHaveBeenCalledTimes(1)
+    // Two LLM calls: initial tool_use, then recap after we fed the result back.
+    expect(messagesCreate).toHaveBeenCalledTimes(2)
 
-    // No meal row should exist yet — propose_meal only writes a card.
+    // The meal row landed in the DB.
     const mealRows = await db.select().from(meals).where(eq(meals.userId, userId))
-    expect(mealRows).toHaveLength(0)
+    expect(mealRows).toHaveLength(1)
+    expect(mealRows[0]).toMatchObject({ foodName: addInput.foodName })
   })
-})
 
-describe('POST /chat/confirm', () => {
-  const FOOD_META = {
-    meal: 'Lunch',
-    foodName: 'Куриная грудка с макаронами',
-    emoji: '🍝',
-    calories: 620,
-    protein: 50,
-    carbs: 65,
-    fats: 12,
-  }
-
-  test('food_card accept: writes meal, inserts confirm, runs analysis with READ_ONLY_TOOLS', async () => {
+  test('update_meal: edits row in place and logs meal_updated card', async () => {
     const userId = await seedUser()
-    const cardId = await seedFoodCard(userId, FOOD_META)
+    const seeded = await seedMeal(userId, {
+      foodName: 'Овсяное печенье',
+      calories: 200,
+      protein: 3,
+      carbs: 30,
+      fats: 7,
+      meal: 'Snack',
+    })
 
     messagesCreate.mockResolvedValueOnce(
       llmResponse({
         content: [
           {
-            type: 'text',
-            text: 'Отлично, осталось ~800 ккал. На ужин — творог с зеленью.',
+            type: 'tool_use',
+            id: 'toolu_u',
+            name: 'update_meal',
+            input: { id: seeded.id, calories: 300, fats: 12 },
           },
         ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Поправил, теперь 300 ккал.' }],
         stop_reason: 'end_turn',
       }),
     )
 
     const res = await makeApp().fetch(
-      new Request('http://x/chat/confirm', {
+      new Request('http://x/chat', {
         method: 'POST',
         headers: { ...authHeaders(userId), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatMessageId: cardId, accepted: true }),
+        body: JSON.stringify({ content: 'оно было больше, ккал на 300' }),
       }),
     )
 
     expect(res.status).toBe(201)
     const body = (await res.json()) as {
-      confirm: { kind: string; meta: { accepted: boolean; ref: string } }
-      ai: Array<{ kind: string; content: string }>
-      meal: { foodName: string; calories: number }
+      ai: Array<{ kind: string; meta: Record<string, unknown> | null }>
     }
 
-    expect(body.meal).toMatchObject({
-      foodName: FOOD_META.foodName,
-      calories: FOOD_META.calories,
+    const updateCard = body.ai.find((m) => m.kind === 'meal_updated')
+    expect(updateCard).toBeDefined()
+    expect(updateCard?.meta).toMatchObject({
+      mealId: seeded.id,
+      before: { calories: 200 },
+      after: { calories: 300 },
     })
-    expect(body.confirm.kind).toBe('confirm')
-    expect(body.confirm.meta).toMatchObject({ accepted: true, ref: cardId })
-    expect(body.ai).toHaveLength(1)
-    expect(body.ai[0].content).toContain('осталось')
 
-    expect(messagesCreate).toHaveBeenCalledTimes(1)
-
-    // The follow-up turn must NOT be allowed to spawn another card.
-    const callArg = messagesCreate.mock.calls[0]?.[0] as { tools: Array<{ name: string }> }
-    const toolNames = callArg.tools.map((t) => t.name).sort()
-    expect(toolNames).toEqual(['get_goal_for_day', 'get_meals_for_day'])
-
-    // Real meal row landed in DB.
+    // Only one row in meals — it was updated, not duplicated.
     const mealRows = await db.select().from(meals).where(eq(meals.userId, userId))
     expect(mealRows).toHaveLength(1)
-    expect(mealRows[0]).toMatchObject({ foodName: FOOD_META.foodName })
+    expect(mealRows[0]).toMatchObject({ calories: 300, fats: 12, protein: 3 })
   })
 
-  test('food_card reject: confirm only, NO LLM call, no meal row', async () => {
+  test('delete_meal: removes row and logs meal_removed card', async () => {
     const userId = await seedUser()
-    const cardId = await seedFoodCard(userId, FOOD_META)
+    const seeded = await seedMeal(userId, { foodName: 'Печенье', calories: 200 })
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_d',
+            name: 'delete_meal',
+            input: { id: seeded.id },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Удалил.' }],
+        stop_reason: 'end_turn',
+      }),
+    )
 
     const res = await makeApp().fetch(
-      new Request('http://x/chat/confirm', {
+      new Request('http://x/chat', {
         method: 'POST',
         headers: { ...authHeaders(userId), 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chatMessageId: cardId,
-          accepted: false,
-          note: 'там было меньше',
-        }),
+        body: JSON.stringify({ content: 'не, я не ел печенье' }),
       }),
     )
 
     expect(res.status).toBe(201)
     const body = (await res.json()) as {
-      confirm: { kind: string; meta: { accepted: boolean; note: string } }
-      ai: unknown[]
-      meal?: unknown
+      ai: Array<{ kind: string; meta: Record<string, unknown> | null }>
     }
 
-    expect(body.confirm.kind).toBe('confirm')
-    expect(body.confirm.meta).toMatchObject({
-      accepted: false,
-      note: 'там было меньше',
+    const removeCard = body.ai.find((m) => m.kind === 'meal_removed')
+    expect(removeCard).toBeDefined()
+    expect(removeCard?.meta).toMatchObject({
+      mealId: seeded.id,
+      meal: { foodName: 'Печенье' },
     })
-    expect(body.ai).toHaveLength(0)
-    expect(body.meal).toBeUndefined()
-
-    expect(messagesCreate).not.toHaveBeenCalled()
 
     const mealRows = await db.select().from(meals).where(eq(meals.userId, userId))
     expect(mealRows).toHaveLength(0)
-
-    // The confirm row IS in chat history.
-    const confirmRows = await db
-      .select()
-      .from(chatMessages)
-      .where(eq(chatMessages.userId, userId))
-    expect(confirmRows.some((r) => r.kind === 'confirm')).toBe(true)
   })
 
-  test('food_card with bad meta returns 422 and does not write meal', async () => {
+  test('set_goal: upserts goal and logs goal_set card', async () => {
     const userId = await seedUser()
-    // Missing required fields (calories etc.)
-    const cardId = await seedFoodCard(userId, { foodName: 'Just a name' })
 
-    const res = await makeApp().fetch(
-      new Request('http://x/chat/confirm', {
-        method: 'POST',
-        headers: { ...authHeaders(userId), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatMessageId: cardId, accepted: true }),
+    const goalInput = {
+      date: '2026-06-17',
+      dayType: 'training',
+      calorieGoal: 2600,
+      proteinGGoal: 180,
+      carbsGGoal: 280,
+      fatGGoal: 80,
+    }
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          { type: 'tool_use', id: 'toolu_g', name: 'set_goal', input: goalInput },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Поставил 2600 ккал на сегодня.' }],
+        stop_reason: 'end_turn',
       }),
     )
 
-    expect(res.status).toBe(422)
-    expect(messagesCreate).not.toHaveBeenCalled()
+    const res = await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(userId), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'сегодня тренировочный, поставь 2600' }),
+      }),
+    )
 
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as {
+      ai: Array<{ kind: string; meta: Record<string, unknown> | null }>
+    }
+    const goalCard = body.ai.find((m) => m.kind === 'goal_set')
+    expect(goalCard).toBeDefined()
+    expect(goalCard?.meta).toMatchObject({ goal: { calorieGoal: 2600, dayType: 'training' } })
+
+    const goalRows = await db.select().from(dailyGoals).where(eq(dailyGoals.userId, userId))
+    expect(goalRows).toHaveLength(1)
+    expect(goalRows[0]).toMatchObject({ calorieGoal: 2600, dayType: 'training' })
+  })
+
+  test('failed write tool: error fed back, no action card persisted', async () => {
+    const userId = await seedUser()
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_bad',
+            name: 'delete_meal',
+            input: { id: '00000000-0000-0000-0000-000000000000' },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Не нашёл такой записи.' }],
+        stop_reason: 'end_turn',
+      }),
+    )
+
+    const res = await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(userId), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'удали последнюю еду' }),
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { ai: Array<{ kind: string }> }
+
+    expect(body.ai.some((m) => m.kind === 'meal_removed')).toBe(false)
+    const allRows = await db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.userId, userId))
+    expect(allRows.some((r) => r.kind === 'meal_removed')).toBe(false)
+
+    // The second call should have received an error tool_result.
+    const secondCall = messagesCreate.mock.calls[1]?.[0] as {
+      messages: Array<{ role: string; content: unknown }>
+    }
+    const lastMsg = secondCall.messages[secondCall.messages.length - 1]!
+    expect(lastMsg.role).toBe('user')
+    const toolResult = (lastMsg.content as Array<{ is_error?: boolean }>)[0]!
+    expect(toolResult.is_error).toBe(true)
+  })
+
+  test('read tool then write tool: looks up id via get_meals_for_day, then deletes', async () => {
+    const userId = await seedUser()
+    const seeded = await seedMeal(userId, { foodName: 'Vacant lookup' })
+    // seedGoal not needed; just keep user clean
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_r',
+            name: 'get_meals_for_day',
+            input: { date: new Date().toISOString().slice(0, 10) },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_d2',
+            name: 'delete_meal',
+            input: { id: seeded.id },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Удалил.' }],
+        stop_reason: 'end_turn',
+      }),
+    )
+
+    await seedGoal(userId)
+    const res = await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(userId), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'удали последнюю запись' }),
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(messagesCreate).toHaveBeenCalledTimes(3)
     const mealRows = await db.select().from(meals).where(eq(meals.userId, userId))
     expect(mealRows).toHaveLength(0)
   })

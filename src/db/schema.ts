@@ -16,10 +16,11 @@ export const mealTypeEnum = pgEnum('meal_type', ['Breakfast', 'Lunch', 'Dinner',
 export const chatRoleEnum = pgEnum('chat_role', ['user', 'ai'])
 export const chatKindEnum = pgEnum('chat_kind', [
   'text',
-  'food_card',
-  'goal_card',
-  'confirm',
-  'typing',
+  // Action cards: the LLM executed a write tool and we logged what happened.
+  'meal_added',
+  'meal_removed',
+  'meal_updated',
+  'goal_set',
 ])
 
 export const users = pgTable('users', {

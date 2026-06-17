@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '../src/db/client.ts'
-import { chatMessages, users } from '../src/db/schema.ts'
+import { dailyGoals, meals, users } from '../src/db/schema.ts'
 import { chatRoute } from '../src/routes/chat.ts'
 
 export type App = ReturnType<typeof makeApp>
@@ -22,47 +22,53 @@ export const authHeaders = (userId: string): Record<string, string> => ({
   'X-User-Id': userId,
 })
 
-// Seed a user row directly (the auth middleware would also do this on first
-// request, but for /chat/confirm tests we need a card row to exist before any
-// HTTP call, and the FK requires the user first).
+// Seed a user row directly. The auth middleware would also do this on first
+// request, but tests that pre-seed meals (FK requires the user) need it
+// up-front.
 export async function seedUser(): Promise<string> {
   const userId = crypto.randomUUID()
   await db.insert(users).values({ id: userId }).onConflictDoNothing()
   return userId
 }
 
-export async function seedFoodCard(
+export async function seedMeal(
   userId: string,
-  meta: Record<string, unknown>,
-): Promise<string> {
+  overrides: Partial<typeof meals.$inferInsert> = {},
+): Promise<typeof meals.$inferSelect> {
   const [row] = await db
-    .insert(chatMessages)
+    .insert(meals)
     .values({
       userId,
-      role: 'ai',
-      kind: 'food_card',
-      content: typeof meta.foodName === 'string' ? meta.foodName : 'card',
-      meta,
+      meal: 'Lunch',
+      foodName: 'Test meal',
+      calories: 500,
+      protein: 30,
+      carbs: 50,
+      fats: 10,
+      ...overrides,
     })
-    .returning({ id: chatMessages.id })
-  return row!.id
+    .returning()
+  return row!
 }
 
-export async function seedGoalCard(
+export async function seedGoal(
   userId: string,
-  meta: Record<string, unknown>,
-): Promise<string> {
+  overrides: Partial<typeof dailyGoals.$inferInsert> = {},
+): Promise<typeof dailyGoals.$inferSelect> {
   const [row] = await db
-    .insert(chatMessages)
+    .insert(dailyGoals)
     .values({
       userId,
-      role: 'ai',
-      kind: 'goal_card',
-      content: 'goal card',
-      meta,
+      date: '2026-06-17',
+      dayType: 'rest',
+      calorieGoal: 2200,
+      proteinGGoal: 160,
+      carbsGGoal: 230,
+      fatGGoal: 70,
+      ...overrides,
     })
-    .returning({ id: chatMessages.id })
-  return row!.id
+    .returning()
+  return row!
 }
 
 // Builds a canned Anthropic Messages API response. Only the fields runToolLoop

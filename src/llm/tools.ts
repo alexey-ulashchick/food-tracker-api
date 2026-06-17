@@ -4,12 +4,18 @@ import { db } from '../db/client.ts'
 import { dailyGoals, meals } from '../db/schema.ts'
 
 // Tool surface exposed to Claude. Two flavors:
-//   * read tools  — execute server-side, return data, conversation continues
-//   * propose_*   — Claude emits a structured payload; the server saves it as
-//                   a card chat message (food_card / goal_card) and feeds back
-//                   a confirmation. The client decides whether to commit.
+//   * read tools  — fetch data and return it; conversation continues so the
+//                   model can react.
+//   * write tools — execute a database mutation server-side and return the
+//                   resulting row. The chat route additionally logs an action
+//                   card (meal_added / meal_removed / meal_updated / goal_set)
+//                   describing what changed, so the iOS chat shows a card.
 
 const isoDateRe = /^\d{4}-\d{2}-\d{2}$/
+const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+const mealEnumValues = ['Breakfast', 'Lunch', 'Dinner', 'Snack'] as const
+const dayTypeValues = ['training', 'rest'] as const
 
 export const tools: Anthropic.Tool[] = [
   {
@@ -32,7 +38,8 @@ export const tools: Anthropic.Tool[] = [
     name: 'get_meals_for_day',
     description:
       'Read every meal the user logged on a specific calendar date, ordered by time. ' +
-      'Use this when the user asks what they ate, how many calories they had, or to compare against the goal.',
+      'Each row includes its id — use that id when calling update_meal or delete_meal. ' +
+      'Use this when the user asks what they ate, or when you need a meal id to edit/remove an entry.',
     input_schema: {
       type: 'object',
       properties: {
@@ -45,23 +52,19 @@ export const tools: Anthropic.Tool[] = [
     },
   },
   {
-    name: 'propose_meal',
+    name: 'add_meal',
     description:
-      'Propose a new meal entry to the user (from text, photo, or both). DOES NOT write to the database — ' +
-      'the user reviews the card in the app and decides whether to commit. ' +
-      'Use this whenever the user expresses intent to log food. Estimate macros conservatively.',
+      'Log a new meal for the user. Writes immediately — the iOS app shows an "added" card describing what was logged. ' +
+      'Estimate macros conservatively from the description, photo, or both.',
     input_schema: {
       type: 'object',
       properties: {
         timestamp: {
           type: 'string',
           description:
-            'ISO 8601 timestamp for when the food was eaten. Omit to default to "now" on the client.',
+            'ISO 8601 timestamp for when the food was eaten. Omit to default to "now" on the server.',
         },
-        meal: {
-          type: 'string',
-          enum: ['Breakfast', 'Lunch', 'Dinner', 'Snack'],
-        },
+        meal: { type: 'string', enum: [...mealEnumValues] },
         emoji: {
           type: 'string',
           description: 'A single food emoji that represents the dish.',
@@ -76,11 +79,45 @@ export const tools: Anthropic.Tool[] = [
     },
   },
   {
-    name: 'propose_goal',
+    name: 'update_meal',
     description:
-      'Propose a daily nutrition goal for a specific calendar date. DOES NOT write to the database — ' +
-      'the user reviews the card and decides whether to commit. ' +
-      'Use when the user asks to change targets for today or another day.',
+      'Edit a previously-logged meal in place. Use when the user corrects macros, name, portion, or meal slot. ' +
+      'Pass only the fields that change; omitted fields are left untouched. ' +
+      'Look up the id with get_meals_for_day if you do not already have it.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'UUID of the meal row to update.' },
+        timestamp: { type: 'string', description: 'ISO 8601 timestamp.' },
+        meal: { type: 'string', enum: [...mealEnumValues] },
+        emoji: { type: 'string' },
+        foodName: { type: 'string' },
+        calories: { type: 'number' },
+        protein: { type: 'number' },
+        carbs: { type: 'number' },
+        fats: { type: 'number' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'delete_meal',
+    description:
+      'Remove a previously-logged meal entirely. Use when the user says they did not eat it, ' +
+      'or when replacing a wrong entry with a fresh add_meal call. ' +
+      'Look up the id with get_meals_for_day if you do not already have it.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'UUID of the meal row to delete.' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'set_goal',
+    description:
+      'Create or replace the daily nutrition goal for a specific calendar date. Writes immediately; the iOS app shows a "goal set" card.',
     input_schema: {
       type: 'object',
       properties: {
@@ -88,7 +125,7 @@ export const tools: Anthropic.Tool[] = [
           type: 'string',
           description: 'Calendar date in YYYY-MM-DD format.',
         },
-        dayType: { type: 'string', enum: ['training', 'rest'] },
+        dayType: { type: 'string', enum: [...dayTypeValues] },
         calorieGoal: { type: 'number' },
         proteinGGoal: { type: 'number' },
         carbsGGoal: { type: 'number' },
@@ -101,7 +138,27 @@ export const tools: Anthropic.Tool[] = [
 
 export type ToolName = (typeof tools)[number]['name']
 
-export const PROPOSAL_TOOLS = new Set<ToolName>(['propose_meal', 'propose_goal'])
+const READ_TOOL_NAMES = new Set<ToolName>(['get_goal_for_day', 'get_meals_for_day'])
+const WRITE_TOOL_NAMES = new Set<ToolName>(['add_meal', 'update_meal', 'delete_meal', 'set_goal'])
+
+export const READ_ONLY_TOOLS: Anthropic.Tool[] = tools.filter((t) =>
+  READ_TOOL_NAMES.has(t.name as ToolName),
+)
+
+export function isWriteTool(name: string): name is ToolName {
+  return WRITE_TOOL_NAMES.has(name as ToolName)
+}
+
+export type Meal = typeof meals.$inferSelect
+export type Goal = typeof dailyGoals.$inferSelect
+
+export type ToolExecResult =
+  | { ok: true; kind: 'read'; data: unknown }
+  | { ok: true; kind: 'meal_added'; meal: Meal }
+  | { ok: true; kind: 'meal_updated'; meal: Meal; before: Meal }
+  | { ok: true; kind: 'meal_removed'; meal: Meal }
+  | { ok: true; kind: 'goal_set'; goal: Goal }
+  | { ok: false; error: string }
 
 // One-day [start, end) window from a YYYY-MM-DD string, in the server's TZ.
 // Meals are stored as timestamptz, so we compare against full timestamps.
@@ -111,46 +168,187 @@ function dayBounds(date: string): { start: Date; end: Date } {
   return { start, end }
 }
 
-function badInput(message: string) {
-  return { ok: false as const, error: message }
+function badInput(message: string): ToolExecResult {
+  return { ok: false, error: message }
 }
 
-export type ToolExecResult = { ok: true; data: unknown } | { ok: false; error: string }
+function asString(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : undefined
+}
 
-// Read tools execute against the DB; proposal tools are purely structured and
-// do NOT run here — chat.ts handles them by saving a card message.
-export async function executeReadTool(
+function asNumber(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined
+}
+
+function asMealType(v: unknown): (typeof mealEnumValues)[number] | undefined {
+  return typeof v === 'string' && (mealEnumValues as readonly string[]).includes(v)
+    ? (v as (typeof mealEnumValues)[number])
+    : undefined
+}
+
+function asDayType(v: unknown): (typeof dayTypeValues)[number] | undefined {
+  return typeof v === 'string' && (dayTypeValues as readonly string[]).includes(v)
+    ? (v as (typeof dayTypeValues)[number])
+    : undefined
+}
+
+// Single dispatch for both flavors. Read tools return data; write tools mutate
+// the DB and return the affected row(s) so chat.ts can persist a matching
+// action card.
+export async function executeTool(
   name: ToolName,
   input: Record<string, unknown>,
   userId: string,
 ): Promise<ToolExecResult> {
   switch (name) {
     case 'get_goal_for_day': {
-      const date = input.date
-      if (typeof date !== 'string' || !isoDateRe.test(date)) {
-        return badInput('date must be YYYY-MM-DD')
-      }
+      const date = asString(input.date)
+      if (!date || !isoDateRe.test(date)) return badInput('date must be YYYY-MM-DD')
       const [row] = await db
         .select()
         .from(dailyGoals)
         .where(and(eq(dailyGoals.userId, userId), eq(dailyGoals.date, date)))
         .limit(1)
-      return { ok: true, data: row ?? null }
+      return { ok: true, kind: 'read', data: row ?? null }
     }
     case 'get_meals_for_day': {
-      const date = input.date
-      if (typeof date !== 'string' || !isoDateRe.test(date)) {
-        return badInput('date must be YYYY-MM-DD')
-      }
+      const date = asString(input.date)
+      if (!date || !isoDateRe.test(date)) return badInput('date must be YYYY-MM-DD')
       const { start, end } = dayBounds(date)
       const rows = await db
         .select()
         .from(meals)
         .where(and(eq(meals.userId, userId), gte(meals.timestamp, start), lt(meals.timestamp, end)))
         .orderBy(asc(meals.timestamp))
-      return { ok: true, data: rows }
+      return { ok: true, kind: 'read', data: rows }
+    }
+    case 'add_meal': {
+      const meal = asMealType(input.meal)
+      const foodName = asString(input.foodName)
+      const calories = asNumber(input.calories)
+      const protein = asNumber(input.protein)
+      const carbs = asNumber(input.carbs)
+      const fats = asNumber(input.fats)
+      if (
+        !meal ||
+        !foodName ||
+        calories === undefined ||
+        protein === undefined ||
+        carbs === undefined ||
+        fats === undefined
+      ) {
+        return badInput('add_meal requires meal, foodName, calories, protein, carbs, fats')
+      }
+      const tsRaw = asString(input.timestamp)
+      const ts = tsRaw ? new Date(tsRaw) : undefined
+      if (ts && Number.isNaN(ts.getTime())) {
+        return badInput('timestamp must be ISO 8601 if provided')
+      }
+      const [row] = await db
+        .insert(meals)
+        .values({
+          userId,
+          timestamp: ts,
+          meal,
+          emoji: asString(input.emoji) ?? null,
+          foodName,
+          calories,
+          protein,
+          carbs,
+          fats,
+        })
+        .returning()
+      return { ok: true, kind: 'meal_added', meal: row! }
+    }
+    case 'update_meal': {
+      const id = asString(input.id)
+      if (!id || !uuidRe.test(id)) return badInput('id must be a UUID')
+
+      const [before] = await db
+        .select()
+        .from(meals)
+        .where(and(eq(meals.id, id), eq(meals.userId, userId)))
+        .limit(1)
+      if (!before) return badInput(`meal ${id} not found`)
+
+      const patch: Partial<typeof meals.$inferInsert> = {}
+      const meal = asMealType(input.meal)
+      if (meal !== undefined) patch.meal = meal
+      const foodName = asString(input.foodName)
+      if (foodName !== undefined) patch.foodName = foodName
+      if ('emoji' in input) patch.emoji = asString(input.emoji) ?? null
+      const calories = asNumber(input.calories)
+      if (calories !== undefined) patch.calories = calories
+      const protein = asNumber(input.protein)
+      if (protein !== undefined) patch.protein = protein
+      const carbs = asNumber(input.carbs)
+      if (carbs !== undefined) patch.carbs = carbs
+      const fats = asNumber(input.fats)
+      if (fats !== undefined) patch.fats = fats
+      const tsRaw = asString(input.timestamp)
+      if (tsRaw !== undefined) {
+        const ts = new Date(tsRaw)
+        if (Number.isNaN(ts.getTime())) return badInput('timestamp must be ISO 8601 if provided')
+        patch.timestamp = ts
+      }
+      if (Object.keys(patch).length === 0) {
+        return badInput('update_meal requires at least one field besides id')
+      }
+
+      const [row] = await db
+        .update(meals)
+        .set(patch)
+        .where(and(eq(meals.id, id), eq(meals.userId, userId)))
+        .returning()
+      return { ok: true, kind: 'meal_updated', meal: row!, before }
+    }
+    case 'delete_meal': {
+      const id = asString(input.id)
+      if (!id || !uuidRe.test(id)) return badInput('id must be a UUID')
+      const [row] = await db
+        .delete(meals)
+        .where(and(eq(meals.id, id), eq(meals.userId, userId)))
+        .returning()
+      if (!row) return badInput(`meal ${id} not found`)
+      return { ok: true, kind: 'meal_removed', meal: row }
+    }
+    case 'set_goal': {
+      const date = asString(input.date)
+      if (!date || !isoDateRe.test(date)) return badInput('date must be YYYY-MM-DD')
+      const dayType = asDayType(input.dayType)
+      const calorieGoal = asNumber(input.calorieGoal)
+      const proteinGGoal = asNumber(input.proteinGGoal)
+      const carbsGGoal = asNumber(input.carbsGGoal)
+      const fatGGoal = asNumber(input.fatGGoal)
+      if (
+        !dayType ||
+        calorieGoal === undefined ||
+        proteinGGoal === undefined ||
+        carbsGGoal === undefined ||
+        fatGGoal === undefined
+      ) {
+        return badInput(
+          'set_goal requires dayType, calorieGoal, proteinGGoal, carbsGGoal, fatGGoal',
+        )
+      }
+      const [row] = await db
+        .insert(dailyGoals)
+        .values({ userId, date, dayType, calorieGoal, proteinGGoal, carbsGGoal, fatGGoal })
+        .onConflictDoUpdate({
+          target: [dailyGoals.userId, dailyGoals.date],
+          set: {
+            dayType,
+            calorieGoal,
+            proteinGGoal,
+            carbsGGoal,
+            fatGGoal,
+            updatedAt: new Date(),
+          },
+        })
+        .returning()
+      return { ok: true, kind: 'goal_set', goal: row! }
     }
     default:
-      return badInput(`tool ${name} is not a read tool`)
+      return badInput(`unknown tool: ${name}`)
   }
 }

@@ -13,10 +13,7 @@ export const auth = createMiddleware<AuthEnv>(async (c, next) => {
   const userId = c.req.header('X-User-Id')
 
   if (!userId || !UUID_RE.test(userId)) {
-    return c.json(
-      { error: 'Missing or malformed X-User-Id header (must be a UUID)' },
-      401,
-    )
+    return c.json({ error: 'Missing or malformed X-User-Id header (must be a UUID)' }, 401)
   }
 
   await db.insert(users).values({ id: userId }).onConflictDoNothing({ target: users.id })

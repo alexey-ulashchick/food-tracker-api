@@ -6,8 +6,5 @@ export const errorHandler: ErrorHandler = (err, c) => {
     return err.getResponse()
   }
   console.error('[error]', err)
-  return c.json(
-    { error: err instanceof Error ? err.message : 'Internal server error' },
-    500,
-  )
+  return c.json({ error: err instanceof Error ? err.message : 'Internal server error' }, 500)
 }
