@@ -9,6 +9,9 @@ const isoDate = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
   .describe('Calendar date in YYYY-MM-DD format')
 
+const mealEnum = z.enum(['Breakfast', 'Lunch', 'Dinner', 'Snack'])
+const dayTypeEnum = z.enum(['training', 'rest'])
+
 // One-day [start, end) window from a YYYY-MM-DD string in the server's TZ.
 function dayBounds(date: string): { start: Date; end: Date } {
   const start = new Date(`${date}T00:00:00`)
@@ -20,9 +23,18 @@ function ok(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] }
 }
 
+function notFound(message: string) {
+  return { content: [{ type: 'text' as const, text: message }], isError: true }
+}
+
 // Builds a fresh McpServer scoped to a single authenticated user. We re-build
 // per request so userId is captured by closure and tool handlers don't have to
 // thread auth context through.
+//
+// Tool naming mirrors src/llm/tools.ts so external clients and the in-app LLM
+// share the same vocabulary (add_meal / update_meal / delete_meal / set_goal).
+// list_meals / list_goals are MCP-only conveniences for clients that need to
+// browse without a fixed date.
 export function buildMcpServer(userId: string): McpServer {
   const server = new McpServer({
     name: 'food-tracker',
@@ -59,7 +71,8 @@ export function buildMcpServer(userId: string): McpServer {
     'get_meals_for_day',
     {
       title: 'Get meals for a calendar day',
-      description: 'Every meal logged on a specific calendar date, in chronological order.',
+      description:
+        'Every meal logged on a specific calendar date, ordered by time. Each row includes its id — use that id with update_meal or delete_meal.',
       inputSchema: { date: isoDate },
     },
     async ({ date }) => {
@@ -74,7 +87,7 @@ export function buildMcpServer(userId: string): McpServer {
   )
 
   server.registerTool(
-    'create_meal',
+    'add_meal',
     {
       title: 'Log a meal',
       description: 'Insert a new meal entry. `timestamp` defaults to now if omitted.',
@@ -84,7 +97,7 @@ export function buildMcpServer(userId: string): McpServer {
           .datetime()
           .optional()
           .describe('ISO 8601 when the food was eaten. Server fills "now" if omitted.'),
-        meal: z.enum(['Breakfast', 'Lunch', 'Dinner', 'Snack']),
+        meal: mealEnum,
         emoji: z.string().nullish().describe('Single food emoji.'),
         foodName: z.string().min(1).max(200),
         calories: z.number().nonnegative(),
@@ -113,6 +126,49 @@ export function buildMcpServer(userId: string): McpServer {
   )
 
   server.registerTool(
+    'update_meal',
+    {
+      title: 'Edit a meal',
+      description:
+        'Update an existing meal in place. Pass only the fields that change; omitted fields stay as they are. Use get_meals_for_day to look up the id when needed.',
+      inputSchema: {
+        id: z.string().uuid(),
+        timestamp: z.string().datetime().optional(),
+        meal: mealEnum.optional(),
+        emoji: z.string().nullish(),
+        foodName: z.string().min(1).max(200).optional(),
+        calories: z.number().nonnegative().optional(),
+        protein: z.number().nonnegative().optional(),
+        carbs: z.number().nonnegative().optional(),
+        fats: z.number().nonnegative().optional(),
+      },
+    },
+    async (input) => {
+      const patch: Partial<typeof meals.$inferInsert> = {}
+      if (input.timestamp !== undefined) patch.timestamp = new Date(input.timestamp)
+      if (input.meal !== undefined) patch.meal = input.meal
+      if ('emoji' in input) patch.emoji = input.emoji ?? null
+      if (input.foodName !== undefined) patch.foodName = input.foodName
+      if (input.calories !== undefined) patch.calories = input.calories
+      if (input.protein !== undefined) patch.protein = input.protein
+      if (input.carbs !== undefined) patch.carbs = input.carbs
+      if (input.fats !== undefined) patch.fats = input.fats
+
+      if (Object.keys(patch).length === 0) {
+        return notFound('update_meal requires at least one field besides id')
+      }
+
+      const [row] = await db
+        .update(meals)
+        .set(patch)
+        .where(and(eq(meals.id, input.id), eq(meals.userId, userId)))
+        .returning()
+      if (!row) return notFound(`No meal found with id=${input.id}`)
+      return ok(row)
+    },
+  )
+
+  server.registerTool(
     'delete_meal',
     {
       title: 'Delete a meal',
@@ -124,12 +180,7 @@ export function buildMcpServer(userId: string): McpServer {
         .delete(meals)
         .where(and(eq(meals.id, id), eq(meals.userId, userId)))
         .returning({ id: meals.id })
-      if (!deleted) {
-        return {
-          content: [{ type: 'text' as const, text: `No meal found with id=${id}` }],
-          isError: true,
-        }
-      }
+      if (!deleted) return notFound(`No meal found with id=${id}`)
       return ok({ ok: true, id: deleted.id })
     },
   )
@@ -172,14 +223,14 @@ export function buildMcpServer(userId: string): McpServer {
   )
 
   server.registerTool(
-    'upsert_goal',
+    'set_goal',
     {
       title: 'Set or update daily goal',
       description:
-        'Insert or update the nutrition goal for `date`. Keyed on (userId, date) — one goal per calendar day.',
+        'Insert or replace the nutrition goal for `date`. Keyed on (userId, date) — one goal per calendar day.',
       inputSchema: {
         date: isoDate,
-        dayType: z.enum(['training', 'rest']),
+        dayType: dayTypeEnum,
         calorieGoal: z.number().positive(),
         proteinGGoal: z.number().nonnegative(),
         carbsGGoal: z.number().nonnegative(),
