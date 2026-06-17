@@ -23,6 +23,7 @@ type Goal = typeof dailyGoals.$inferSelect
 
 type ChatContext = {
   today: string
+  tzOffsetMin: number
   history: ChatMessage[]
   recentMeals: Meal[]
   todaysGoal: Goal | undefined
@@ -125,7 +126,8 @@ async function readBody(req: Request): Promise<{ content: string; image: File | 
 }
 
 async function fetchChatContext(c: Context<AuthEnv>, userId: string): Promise<ChatContext> {
-  const today = clientToday(c)
+  const tzOffsetMin = clientTzOffsetMin(c)
+  const today = todayInOffset(tzOffsetMin)
   const lookback = new Date(Date.now() - MEAL_LOOKBACK_DAYS * 86_400_000)
   const [history, recentMeals, todaysGoalRows] = await Promise.all([
     db
@@ -145,7 +147,7 @@ async function fetchChatContext(c: Context<AuthEnv>, userId: string): Promise<Ch
       .where(and(eq(dailyGoals.userId, userId), eq(dailyGoals.date, today)))
       .limit(1),
   ])
-  return { today, history, recentMeals, todaysGoal: todaysGoalRows[0] }
+  return { today, tzOffsetMin, history, recentMeals, todaysGoal: todaysGoalRows[0] }
 }
 
 // Maps DB rows → MessageParam, in chronological order. Crucially merges
@@ -387,20 +389,71 @@ function serializeGoal(g: Goal): Record<string, unknown> {
 // X-Client-TZ-Offset header (minutes east of UTC, matching iOS's
 // TimeZone.current.secondsFromGMT() / 60). Falls back to UTC when the header
 // is absent — direct curl calls keep working.
-function clientToday(c: Context<AuthEnv>): string {
+function clientTzOffsetMin(c: Context<AuthEnv>): number {
   const raw = c.req.header('X-Client-TZ-Offset')
-  const offsetMin = raw !== undefined ? Number.parseInt(raw, 10) : 0
-  const offset = Number.isFinite(offsetMin) ? offsetMin : 0
-  const local = new Date(Date.now() + offset * 60_000)
-  return local.toISOString().slice(0, 10)
+  const parsed = raw !== undefined ? Number.parseInt(raw, 10) : 0
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function todayInOffset(offsetMin: number): string {
+  return new Date(Date.now() + offsetMin * 60_000).toISOString().slice(0, 10)
+}
+
+// What calendar date a meal falls on in the user's local TZ. Used to bucket
+// "today vs earlier" without re-querying the DB by date — recentMeals already
+// holds the last 30 days.
+function mealLocalDate(m: Meal, offsetMin: number): string {
+  return new Date(m.timestamp.getTime() + offsetMin * 60_000).toISOString().slice(0, 10)
+}
+
+type Totals = { calories: number; protein: number; carbs: number; fats: number }
+
+function sumMacros(rows: Meal[]): Totals {
+  return rows.reduce<Totals>(
+    (acc, m) => ({
+      calories: acc.calories + m.calories,
+      protein: acc.protein + m.protein,
+      carbs: acc.carbs + m.carbs,
+      fats: acc.fats + m.fats,
+    }),
+    { calories: 0, protein: 0, carbs: 0, fats: 0 },
+  )
+}
+
+function fmt(n: number): string {
+  return Math.round(n).toString()
 }
 
 function buildSystemPrompt(ctx: ChatContext): string {
-  const { today, todaysGoal, recentMeals } = ctx
+  const { today, tzOffsetMin, todaysGoal, recentMeals } = ctx
 
-  const goalsLine = todaysGoal
-    ? `Today (${today}) is a ${todaysGoal.dayType} day. Targets: ${todaysGoal.calorieGoal} kcal, ${todaysGoal.proteinGGoal}g protein, ${todaysGoal.carbsGGoal}g carbs, ${todaysGoal.fatGGoal}g fat.`
-    : `Today is ${today}. No goal configured yet — call set_goal if the user asks for one.`
+  const todayMeals = recentMeals.filter((m) => mealLocalDate(m, tzOffsetMin) === today)
+  const eaten = sumMacros(todayMeals)
+
+  // Goal + eaten + remaining table. Keeps the model from having to call
+  // get_meals_for_day(today) just to recap the budget — and gives it the
+  // numbers it needs to make a recommendation in one turn.
+  const todayBlock: string[] = []
+  if (todaysGoal) {
+    const remain = {
+      calories: todaysGoal.calorieGoal - eaten.calories,
+      protein: todaysGoal.proteinGGoal - eaten.protein,
+      carbs: todaysGoal.carbsGGoal - eaten.carbs,
+      fats: todaysGoal.fatGGoal - eaten.fats,
+    }
+    const overNote = remain.calories < 0 ? '  (over on calories)' : ''
+    todayBlock.push(
+      `Today is ${today} (${todaysGoal.dayType} day).`,
+      `  Targets:   ${fmt(todaysGoal.calorieGoal)} kcal · ${fmt(todaysGoal.proteinGGoal)} P · ${fmt(todaysGoal.carbsGGoal)} C · ${fmt(todaysGoal.fatGGoal)} F`,
+      `  Eaten:     ${fmt(eaten.calories)} kcal · ${fmt(eaten.protein)} P · ${fmt(eaten.carbs)} C · ${fmt(eaten.fats)} F  (${todayMeals.length} meal${todayMeals.length === 1 ? '' : 's'})`,
+      `  Remaining: ${fmt(remain.calories)} kcal · ${fmt(remain.protein)} P · ${fmt(remain.carbs)} C · ${fmt(remain.fats)} F${overNote}`,
+    )
+  } else {
+    todayBlock.push(
+      `Today is ${today}. No goal configured yet — call set_goal if the user asks for one.`,
+      `  Eaten today: ${fmt(eaten.calories)} kcal · ${fmt(eaten.protein)} P · ${fmt(eaten.carbs)} C · ${fmt(eaten.fats)} F  (${todayMeals.length} meal${todayMeals.length === 1 ? '' : 's'})`,
+    )
+  }
 
   const mealsBlock =
     recentMeals.length === 0
@@ -429,11 +482,12 @@ function buildSystemPrompt(ctx: ChatContext): string {
     '',
     'Guidance:',
     '  - Writes happen the moment you call the tool — there is no separate confirm step. The iOS app shows a card describing what changed.',
-    '  - After a write, briefly acknowledge what you did and (when relevant) recap remaining macro budget. Reference SPECIFIC dishes from "Recent meals" when suggesting what to eat next ("твой творог", "та куриная грудка с гречкой") rather than generic advice.',
+    '  - Today\'s budget (Eaten / Remaining below) already reflects every meal logged today — DO NOT call get_meals_for_day(today) just to recap. After you write a meal in this turn, subtract its macros from "Remaining" yourself when phrasing the response.',
+    '  - When suggesting what to eat next, name SPECIFIC dishes from "Recent meals" ("твой творог", "та куриная грудка с гречкой") rather than generic advice.',
     '  - To correct a logged meal, prefer update_meal over delete + add_meal. If the user wants to swap one dish for a different one, use delete_meal then add_meal.',
-    '  - When you need a meal id you do not have in context, call get_meals_for_day first.',
+    "  - Only call get_meals_for_day for a date OTHER than today, or when you need a meal id you don't already have in context.",
     '',
-    goalsLine,
+    ...todayBlock,
     '',
     mealsBlock,
   ].join('\n')
