@@ -101,6 +101,7 @@ export const chatRoute = new Hono<AuthEnv>()
       userId,
       systemPrompt: buildSystemPrompt(ctx),
       messages,
+      tzOffsetMin: ctx.tzOffsetMin,
     })
 
     return c.json({ user: userMsg!, ai: aiMessages }, 201)
@@ -203,8 +204,9 @@ async function runToolLoop(args: {
   userId: string
   systemPrompt: string
   messages: Anthropic.MessageParam[]
+  tzOffsetMin: number
 }): Promise<ChatMessage[]> {
-  const { userId, systemPrompt } = args
+  const { userId, systemPrompt, tzOffsetMin } = args
   const messages = [...args.messages]
   const persisted: ChatMessage[] = []
 
@@ -234,6 +236,7 @@ async function runToolLoop(args: {
           block.name as ToolName,
           (block.input ?? {}) as Record<string, unknown>,
           userId,
+          { defaultTzOffsetMin: tzOffsetMin },
         )
 
         if (result.ok && isWriteTool(block.name)) {
@@ -363,6 +366,7 @@ function serializeMeal(m: Meal): Record<string, unknown> {
   return {
     id: m.id,
     timestamp: m.timestamp.toISOString(),
+    tzOffsetMin: m.tzOffsetMin,
     meal: m.meal,
     emoji: m.emoji,
     foodName: m.foodName,
@@ -399,11 +403,12 @@ function todayInOffset(offsetMin: number): string {
   return new Date(Date.now() + offsetMin * 60_000).toISOString().slice(0, 10)
 }
 
-// What calendar date a meal falls on in the user's local TZ. Used to bucket
-// "today vs earlier" without re-querying the DB by date — recentMeals already
-// holds the last 30 days.
-function mealLocalDate(m: Meal, offsetMin: number): string {
-  return new Date(m.timestamp.getTime() + offsetMin * 60_000).toISOString().slice(0, 10)
+// What calendar date a meal falls on in the TZ where it was eaten. If the
+// meal predates the tz_offset_min column (NULL), we fall back to the request's
+// current offset — same behaviour as before TZ tracking shipped.
+function mealLocalDate(m: Meal, fallbackOffsetMin: number): string {
+  const offset = m.tzOffsetMin ?? fallbackOffsetMin
+  return new Date(m.timestamp.getTime() + offset * 60_000).toISOString().slice(0, 10)
 }
 
 type Totals = { calories: number; protein: number; carbs: number; fats: number }

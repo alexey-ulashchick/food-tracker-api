@@ -12,9 +12,11 @@ const isoDate = z
 const mealEnum = z.enum(['Breakfast', 'Lunch', 'Dinner', 'Snack'])
 const dayTypeEnum = z.enum(['training', 'rest'])
 
-// One-day [start, end) window from a YYYY-MM-DD string in the server's TZ.
-function dayBounds(date: string): { start: Date; end: Date } {
-  const start = new Date(`${date}T00:00:00`)
+// One-day [start, end) UTC window for a YYYY-MM-DD literal interpreted in
+// the caller's TZ offset (minutes east of UTC).
+function dayBounds(date: string, offsetMin: number): { start: Date; end: Date } {
+  const utcMidnight = new Date(`${date}T00:00:00Z`).getTime()
+  const start = new Date(utcMidnight - offsetMin * 60_000)
   const end = new Date(start.getTime() + 86_400_000)
   return { start, end }
 }
@@ -72,11 +74,21 @@ export function buildMcpServer(userId: string): McpServer {
     {
       title: 'Get meals for a calendar day',
       description:
-        'Every meal logged on a specific calendar date, ordered by time. Each row includes its id — use that id with update_meal or delete_meal.',
-      inputSchema: { date: isoDate },
+        "Every meal logged on a specific calendar date (interpreted in the caller's TZ), ordered by time. Each row includes its id — use that id with update_meal or delete_meal.",
+      inputSchema: {
+        date: isoDate,
+        tzOffsetMin: z
+          .number()
+          .int()
+          .min(-720)
+          .max(840)
+          .describe(
+            'TZ offset in minutes east of UTC defining the calendar day boundaries (matches iOS TimeZone.current.secondsFromGMT()/60).',
+          ),
+      },
     },
-    async ({ date }) => {
-      const { start, end } = dayBounds(date)
+    async ({ date, tzOffsetMin }) => {
+      const { start, end } = dayBounds(date, tzOffsetMin)
       const rows = await db
         .select()
         .from(meals)
@@ -90,13 +102,22 @@ export function buildMcpServer(userId: string): McpServer {
     'add_meal',
     {
       title: 'Log a meal',
-      description: 'Insert a new meal entry. `timestamp` defaults to now if omitted.',
+      description:
+        "Insert a new meal entry. `timestamp` defaults to now if omitted. `tzOffsetMin` is the user's local TZ offset (minutes east of UTC) at the place the meal was eaten — needed so dashboards can bucket the meal by its own local date even after the user travels.",
       inputSchema: {
         timestamp: z
           .string()
           .datetime()
           .optional()
           .describe('ISO 8601 when the food was eaten. Server fills "now" if omitted.'),
+        tzOffsetMin: z
+          .number()
+          .int()
+          .min(-720)
+          .max(840)
+          .describe(
+            'Local TZ offset in minutes east of UTC where the meal was eaten. Matches iOS TimeZone.current.secondsFromGMT()/60 and JS -getTimezoneOffset().',
+          ),
         meal: mealEnum,
         emoji: z.string().nullish().describe('Single food emoji.'),
         foodName: z.string().min(1).max(200),
@@ -112,6 +133,7 @@ export function buildMcpServer(userId: string): McpServer {
         .values({
           userId,
           timestamp: input.timestamp ? new Date(input.timestamp) : undefined,
+          tzOffsetMin: input.tzOffsetMin,
           meal: input.meal,
           emoji: input.emoji ?? null,
           foodName: input.foodName,
@@ -134,6 +156,14 @@ export function buildMcpServer(userId: string): McpServer {
       inputSchema: {
         id: z.string().uuid(),
         timestamp: z.string().datetime().optional(),
+        tzOffsetMin: z
+          .number()
+          .int()
+          .min(-720)
+          .max(840)
+          .nullable()
+          .optional()
+          .describe('Local TZ offset (minutes east of UTC). Pass null to clear the stored offset.'),
         meal: mealEnum.optional(),
         emoji: z.string().nullish(),
         foodName: z.string().min(1).max(200).optional(),
@@ -153,6 +183,9 @@ export function buildMcpServer(userId: string): McpServer {
       if (input.protein !== undefined) patch.protein = input.protein
       if (input.carbs !== undefined) patch.carbs = input.carbs
       if (input.fats !== undefined) patch.fats = input.fats
+      if ('tzOffsetMin' in input && input.tzOffsetMin !== undefined) {
+        patch.tzOffsetMin = input.tzOffsetMin
+      }
 
       if (Object.keys(patch).length === 0) {
         return notFound('update_meal requires at least one field besides id')

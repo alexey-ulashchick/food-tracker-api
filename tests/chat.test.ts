@@ -364,4 +364,137 @@ describe('POST /chat', () => {
     const mealRows = await db.select().from(meals).where(eq(meals.userId, userId))
     expect(mealRows).toHaveLength(0)
   })
+
+  test('add_meal stamps the request TZ when input omits tzOffsetMin', async () => {
+    const { userId, token } = await seedUser()
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_a',
+            name: 'add_meal',
+            input: {
+              meal: 'Breakfast',
+              foodName: 'Овсянка',
+              calories: 300,
+              protein: 12,
+              carbs: 50,
+              fats: 6,
+            },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Готово.' }],
+        stop_reason: 'end_turn',
+      }),
+    )
+
+    const res = await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: {
+          ...authHeaders(token),
+          'Content-Type': 'application/json',
+          'X-Client-TZ-Offset': '180', // Moscow
+        },
+        body: JSON.stringify({ content: 'овсянка' }),
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    const mealRows = await db.select().from(meals).where(eq(meals.userId, userId))
+    expect(mealRows).toHaveLength(1)
+    expect(mealRows[0]?.tzOffsetMin).toBe(180)
+  })
+
+  test('add_meal honours an explicit tzOffsetMin in tool input', async () => {
+    const { userId, token } = await seedUser()
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_a2',
+            name: 'add_meal',
+            input: {
+              meal: 'Dinner',
+              foodName: 'Стейк',
+              calories: 700,
+              protein: 60,
+              carbs: 0,
+              fats: 50,
+              tzOffsetMin: -300, // NY — overrides the request's Moscow header
+            },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Записал.' }],
+        stop_reason: 'end_turn',
+      }),
+    )
+
+    const res = await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: {
+          ...authHeaders(token),
+          'Content-Type': 'application/json',
+          'X-Client-TZ-Offset': '180',
+        },
+        body: JSON.stringify({ content: 'ел стейк в нью-йорке' }),
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    const mealRows = await db.select().from(meals).where(eq(meals.userId, userId))
+    expect(mealRows[0]?.tzOffsetMin).toBe(-300)
+  })
+
+  test('update_meal can change tz_offset_min', async () => {
+    const { userId, token } = await seedUser()
+    const seeded = await seedMeal(userId, { tzOffsetMin: 180 })
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_uz',
+            name: 'update_meal',
+            input: { id: seeded.id, tzOffsetMin: -300 },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Поправил TZ.' }],
+        stop_reason: 'end_turn',
+      }),
+    )
+
+    const res = await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'это было в нью-йорке' }),
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    const mealRows = await db.select().from(meals).where(eq(meals.userId, userId))
+    expect(mealRows[0]?.tzOffsetMin).toBe(-300)
+  })
 })

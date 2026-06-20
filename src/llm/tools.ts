@@ -37,15 +37,21 @@ export const tools: Anthropic.Tool[] = [
   {
     name: 'get_meals_for_day',
     description:
-      'Read every meal the user logged on a specific calendar date, ordered by time. ' +
+      'Read every meal the user logged on a specific calendar date (in their local TZ), ordered by time. ' +
       'Each row includes its id — use that id when calling update_meal or delete_meal. ' +
-      'Use this when the user asks what they ate, or when you need a meal id to edit/remove an entry.',
+      'Use this when the user asks what they ate, or when you need a meal id to edit/remove an entry. ' +
+      'tzOffsetMin defaults to the user\'s current TZ; only set it to look up "what I ate that day in TZ X" while travelling.',
     input_schema: {
       type: 'object',
       properties: {
         date: {
           type: 'string',
           description: 'Calendar date in YYYY-MM-DD format.',
+        },
+        tzOffsetMin: {
+          type: 'integer',
+          description:
+            "TZ offset (minutes east of UTC) defining the calendar day. Omit to use the user's current TZ.",
         },
       },
       required: ['date'],
@@ -55,7 +61,8 @@ export const tools: Anthropic.Tool[] = [
     name: 'add_meal',
     description:
       'Log a new meal for the user. Writes immediately — the iOS app shows an "added" card describing what was logged. ' +
-      'Estimate macros conservatively from the description, photo, or both.',
+      'Estimate macros conservatively from the description, photo, or both. ' +
+      "tzOffsetMin defaults to the user's current TZ; only set it when logging a meal eaten in a different timezone (e.g. while travelling).",
     input_schema: {
       type: 'object',
       properties: {
@@ -63,6 +70,11 @@ export const tools: Anthropic.Tool[] = [
           type: 'string',
           description:
             'ISO 8601 timestamp for when the food was eaten. Omit to default to "now" on the server.',
+        },
+        tzOffsetMin: {
+          type: 'integer',
+          description:
+            "Local timezone offset in minutes east of UTC at the place the meal was eaten (matches iOS's TimeZone.current.secondsFromGMT() / 60). Omit to use the user's current TZ.",
         },
         meal: { type: 'string', enum: [...mealEnumValues] },
         emoji: {
@@ -81,7 +93,7 @@ export const tools: Anthropic.Tool[] = [
   {
     name: 'update_meal',
     description:
-      'Edit a previously-logged meal in place. Use when the user corrects macros, name, portion, or meal slot. ' +
+      'Edit a previously-logged meal in place. Use when the user corrects macros, name, portion, meal slot, or the timezone the meal was eaten in. ' +
       'Pass only the fields that change; omitted fields are left untouched. ' +
       'Look up the id with get_meals_for_day if you do not already have it.',
     input_schema: {
@@ -89,6 +101,10 @@ export const tools: Anthropic.Tool[] = [
       properties: {
         id: { type: 'string', description: 'UUID of the meal row to update.' },
         timestamp: { type: 'string', description: 'ISO 8601 timestamp.' },
+        tzOffsetMin: {
+          type: 'integer',
+          description: 'Local TZ offset in minutes east of UTC at the place the meal was eaten.',
+        },
         meal: { type: 'string', enum: [...mealEnumValues] },
         emoji: { type: 'string' },
         foodName: { type: 'string' },
@@ -160,10 +176,17 @@ export type ToolExecResult =
   | { ok: true; kind: 'goal_set'; goal: Goal }
   | { ok: false; error: string }
 
-// One-day [start, end) window from a YYYY-MM-DD string, in the server's TZ.
-// Meals are stored as timestamptz, so we compare against full timestamps.
-function dayBounds(date: string): { start: Date; end: Date } {
-  const start = new Date(`${date}T00:00:00`)
+// One-day [start, end) window from a YYYY-MM-DD literal interpreted in a
+// caller-supplied TZ offset (minutes east of UTC). Both bounds are real UTC
+// instants. We compute the offset for the requested wall-clock midnight by
+// taking `00:00 UTC + offset minutes` first, which gives "midnight at the
+// requested local TZ, expressed in UTC".
+function dayBounds(date: string, offsetMin: number): { start: Date; end: Date } {
+  const utcMidnight = new Date(`${date}T00:00:00Z`).getTime()
+  // If the caller's local midnight is at, say, +03:00, then in UTC it's
+  // 21:00 of the previous day. Subtract the offset to get the UTC instant
+  // when the requested local day begins.
+  const start = new Date(utcMidnight - offsetMin * 60_000)
   const end = new Date(start.getTime() + 86_400_000)
   return { start, end }
 }
@@ -180,6 +203,10 @@ function asNumber(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined
 }
 
+function asInteger(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && Number.isInteger(v) ? v : undefined
+}
+
 function asMealType(v: unknown): (typeof mealEnumValues)[number] | undefined {
   return typeof v === 'string' && (mealEnumValues as readonly string[]).includes(v)
     ? (v as (typeof mealEnumValues)[number])
@@ -192,6 +219,13 @@ function asDayType(v: unknown): (typeof dayTypeValues)[number] | undefined {
     : undefined
 }
 
+export type ExecuteToolOpts = {
+  // The current request's TZ offset (minutes east of UTC). Used as a fallback
+  // when add_meal does not specify tzOffsetMin in its input — i.e. the chat
+  // route auto-stamps the user's current TZ on freshly-logged meals.
+  defaultTzOffsetMin?: number
+}
+
 // Single dispatch for both flavors. Read tools return data; write tools mutate
 // the DB and return the affected row(s) so chat.ts can persist a matching
 // action card.
@@ -199,6 +233,7 @@ export async function executeTool(
   name: ToolName,
   input: Record<string, unknown>,
   userId: string,
+  opts: ExecuteToolOpts = {},
 ): Promise<ToolExecResult> {
   switch (name) {
     case 'get_goal_for_day': {
@@ -214,7 +249,8 @@ export async function executeTool(
     case 'get_meals_for_day': {
       const date = asString(input.date)
       if (!date || !isoDateRe.test(date)) return badInput('date must be YYYY-MM-DD')
-      const { start, end } = dayBounds(date)
+      const offsetMin = asInteger(input.tzOffsetMin) ?? opts.defaultTzOffsetMin ?? 0
+      const { start, end } = dayBounds(date, offsetMin)
       const rows = await db
         .select()
         .from(meals)
@@ -244,11 +280,13 @@ export async function executeTool(
       if (ts && Number.isNaN(ts.getTime())) {
         return badInput('timestamp must be ISO 8601 if provided')
       }
+      const tzOffsetMin = asInteger(input.tzOffsetMin) ?? opts.defaultTzOffsetMin ?? null
       const [row] = await db
         .insert(meals)
         .values({
           userId,
           timestamp: ts,
+          tzOffsetMin,
           meal,
           emoji: asString(input.emoji) ?? null,
           foodName,
@@ -290,6 +328,18 @@ export async function executeTool(
         const ts = new Date(tsRaw)
         if (Number.isNaN(ts.getTime())) return badInput('timestamp must be ISO 8601 if provided')
         patch.timestamp = ts
+      }
+      // tzOffsetMin can be cleared by passing null, set to a number, or left
+      // alone by omitting the key entirely.
+      if ('tzOffsetMin' in input) {
+        const v = input.tzOffsetMin
+        if (v === null) {
+          patch.tzOffsetMin = null
+        } else {
+          const n = asInteger(v)
+          if (n === undefined) return badInput('tzOffsetMin must be an integer or null')
+          patch.tzOffsetMin = n
+        }
       }
       if (Object.keys(patch).length === 0) {
         return badInput('update_meal requires at least one field besides id')

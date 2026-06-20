@@ -1,6 +1,7 @@
 import {
   date,
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -59,6 +60,11 @@ export const meals = pgTable(
     // When the food was eaten. SQL column is "timestamp" (Postgres handles
     // it as an identifier when quoted, which Drizzle does automatically).
     timestamp: timestamp('timestamp', { withTimezone: true }).notNull().defaultNow(),
+    // The local timezone offset (minutes east of UTC) at the place where the
+    // meal was eaten. Lets us bucket history by *meal-local* date even after
+    // the user travels to a different TZ. Nullable so legacy rows survive
+    // without a backfill — readers fall back to the request's current offset.
+    tzOffsetMin: integer('tz_offset_min'),
     meal: mealTypeEnum('meal').notNull(),
     emoji: text('emoji'),
     foodName: text('food_name').notNull(),

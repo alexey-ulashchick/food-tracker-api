@@ -31,6 +31,7 @@ CREATE TABLE meals (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   timestamp timestamptz NOT NULL DEFAULT now(),
+  tz_offset_min integer,
   meal meal_type NOT NULL,
   emoji text,
   food_name text NOT NULL,
