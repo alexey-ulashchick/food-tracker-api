@@ -209,8 +209,14 @@ async function runToolLoop(args: {
   const { userId, systemPrompt, tzOffsetMin } = args
   const messages = [...args.messages]
   const persisted: ChatMessage[] = []
+  const userTag = userId.slice(0, 8)
+
+  console.log(
+    `[chat] turn-begin user=${userTag} tz=${tzOffsetMin} sys-chars=${systemPrompt.length} msgs=${messages.length}`,
+  )
 
   for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
+    const startedAt = performance.now()
     const response = await anthropic.messages.create({
       model: DEFAULT_MODEL,
       max_tokens: DEFAULT_MAX_TOKENS,
@@ -219,6 +225,11 @@ async function runToolLoop(args: {
       messages,
       metadata: { user_id: userId },
     })
+    const ms = Math.round(performance.now() - startedAt)
+    const blockSummary = summarizeBlocks(response.content)
+    console.log(
+      `[chat] llm-call user=${userTag} iter=${iter} stop=${response.stop_reason} in=${response.usage.input_tokens} out=${response.usage.output_tokens} blocks=${blockSummary} took=${ms}ms`,
+    )
 
     const toolResults: Anthropic.ToolResultBlockParam[] = []
 
@@ -232,12 +243,28 @@ async function runToolLoop(args: {
           .returning()
         if (row) persisted.push(row)
       } else if (block.type === 'tool_use') {
+        const inputPreview = previewInput(block.input)
+        console.log(
+          `[chat] tool-call user=${userTag} iter=${iter} name=${block.name} input=${inputPreview}`,
+        )
+        const toolStart = performance.now()
         const result = await executeTool(
           block.name as ToolName,
           (block.input ?? {}) as Record<string, unknown>,
           userId,
           { defaultTzOffsetMin: tzOffsetMin },
         )
+        const toolMs = Math.round(performance.now() - toolStart)
+
+        if (result.ok) {
+          console.log(
+            `[chat] tool-ok user=${userTag} name=${block.name} kind=${result.kind} took=${toolMs}ms`,
+          )
+        } else {
+          console.warn(
+            `[chat] tool-err user=${userTag} name=${block.name} took=${toolMs}ms err=${result.error}`,
+          )
+        }
 
         if (result.ok && isWriteTool(block.name)) {
           const card = await persistActionCard(userId, result, block.input)
@@ -261,7 +288,27 @@ async function runToolLoop(args: {
     if (response.stop_reason !== 'tool_use') break
   }
 
+  console.log(`[chat] turn-end user=${userTag} persisted=${persisted.length}`)
   return persisted
+}
+
+function summarizeBlocks(blocks: Anthropic.ContentBlock[]): string {
+  let text = 0
+  const tools: string[] = []
+  for (const b of blocks) {
+    if (b.type === 'text') text++
+    else if (b.type === 'tool_use') tools.push(b.name)
+  }
+  return `text:${text}${tools.length ? ` tool_use:${tools.join(',')}` : ''}`
+}
+
+// One-line preview of a tool's input — full JSON, but capped so a giant
+// payload doesn't flood the logs. Sensitive PII shouldn't live here in the
+// first place; macros/dates/uuids are fine to dump.
+function previewInput(input: unknown): string {
+  if (input === undefined || input === null) return '{}'
+  const json = JSON.stringify(input)
+  return json.length > 400 ? `${json.slice(0, 400)}…` : json
 }
 
 // What we feed back to Claude as the tool's result. For reads we pass through

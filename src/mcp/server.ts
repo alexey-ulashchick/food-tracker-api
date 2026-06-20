@@ -43,6 +43,32 @@ export function buildMcpServer(userId: string): McpServer {
     version: '0.1.0',
   })
 
+  const userTag = userId.slice(0, 8)
+
+  // Wraps a tool handler so every MCP call is one line in stdout — name +
+  // input preview going in, ok/err + ms coming out. Mirrors the [chat]
+  // logging shape so a single grep ("[mcp] tool-call") finds everything.
+  const logged =
+    <T>(name: string, fn: (input: T) => Promise<ReturnType<typeof ok>>) =>
+    async (input: T) => {
+      const json = JSON.stringify(input ?? {})
+      const preview = json.length > 400 ? `${json.slice(0, 400)}…` : json
+      console.log(`[mcp] tool-call user=${userTag} name=${name} input=${preview}`)
+      const startedAt = performance.now()
+      try {
+        const result = await fn(input)
+        const ms = Math.round(performance.now() - startedAt)
+        const status = (result as { isError?: boolean }).isError ? 'err' : 'ok'
+        console.log(`[mcp] tool-${status} user=${userTag} name=${name} took=${ms}ms`)
+        return result
+      } catch (err) {
+        const ms = Math.round(performance.now() - startedAt)
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn(`[mcp] tool-throw user=${userTag} name=${name} took=${ms}ms err=${msg}`)
+        throw err
+      }
+    }
+
   server.registerTool(
     'list_meals',
     {
@@ -55,7 +81,7 @@ export function buildMcpServer(userId: string): McpServer {
         limit: z.number().int().positive().max(500).default(100),
       },
     },
-    async ({ from, to, limit }) => {
+    logged('list_meals', async ({ from, to, limit }) => {
       const conditions = [eq(meals.userId, userId)]
       if (from) conditions.push(gte(meals.timestamp, new Date(from)))
       if (to) conditions.push(lte(meals.timestamp, new Date(to)))
@@ -66,7 +92,7 @@ export function buildMcpServer(userId: string): McpServer {
         .orderBy(desc(meals.timestamp))
         .limit(limit)
       return ok(rows)
-    },
+    }),
   )
 
   server.registerTool(
@@ -87,7 +113,7 @@ export function buildMcpServer(userId: string): McpServer {
           ),
       },
     },
-    async ({ date, tzOffsetMin }) => {
+    logged('get_meals_for_day', async ({ date, tzOffsetMin }) => {
       const { start, end } = dayBounds(date, tzOffsetMin)
       const rows = await db
         .select()
@@ -95,7 +121,7 @@ export function buildMcpServer(userId: string): McpServer {
         .where(and(eq(meals.userId, userId), gte(meals.timestamp, start), lt(meals.timestamp, end)))
         .orderBy(meals.timestamp)
       return ok(rows)
-    },
+    }),
   )
 
   server.registerTool(
@@ -127,7 +153,7 @@ export function buildMcpServer(userId: string): McpServer {
         fats: z.number().nonnegative().default(0),
       },
     },
-    async (input) => {
+    logged('add_meal', async (input) => {
       const [row] = await db
         .insert(meals)
         .values({
@@ -144,7 +170,7 @@ export function buildMcpServer(userId: string): McpServer {
         })
         .returning()
       return ok(row)
-    },
+    }),
   )
 
   server.registerTool(
@@ -173,7 +199,7 @@ export function buildMcpServer(userId: string): McpServer {
         fats: z.number().nonnegative().optional(),
       },
     },
-    async (input) => {
+    logged('update_meal', async (input) => {
       const patch: Partial<typeof meals.$inferInsert> = {}
       if (input.timestamp !== undefined) patch.timestamp = new Date(input.timestamp)
       if (input.meal !== undefined) patch.meal = input.meal
@@ -198,7 +224,7 @@ export function buildMcpServer(userId: string): McpServer {
         .returning()
       if (!row) return notFound(`No meal found with id=${input.id}`)
       return ok(row)
-    },
+    }),
   )
 
   server.registerTool(
@@ -208,14 +234,14 @@ export function buildMcpServer(userId: string): McpServer {
       description: 'Remove a meal by its UUID. Only succeeds for meals owned by the current user.',
       inputSchema: { id: z.string().uuid() },
     },
-    async ({ id }) => {
+    logged('delete_meal', async ({ id }) => {
       const [deleted] = await db
         .delete(meals)
         .where(and(eq(meals.id, id), eq(meals.userId, userId)))
         .returning({ id: meals.id })
       if (!deleted) return notFound(`No meal found with id=${id}`)
       return ok({ ok: true, id: deleted.id })
-    },
+    }),
   )
 
   server.registerTool(
@@ -226,10 +252,10 @@ export function buildMcpServer(userId: string): McpServer {
         'Every daily-goal row for the user (one per date with a configured goal). Use get_goal_for_day to read a single date.',
       inputSchema: {},
     },
-    async () => {
+    logged('list_goals', async () => {
       const rows = await db.select().from(dailyGoals).where(eq(dailyGoals.userId, userId))
       return ok(rows)
-    },
+    }),
   )
 
   server.registerTool(
@@ -240,14 +266,14 @@ export function buildMcpServer(userId: string): McpServer {
         'Read the calorie/protein/carbs/fat targets for a specific date. Returns null if no goal is set.',
       inputSchema: { date: isoDate },
     },
-    async ({ date }) => {
+    logged('get_goal_for_day', async ({ date }) => {
       const [row] = await db
         .select()
         .from(dailyGoals)
         .where(and(eq(dailyGoals.userId, userId), eq(dailyGoals.date, date)))
         .limit(1)
       return ok(row ?? null)
-    },
+    }),
   )
 
   server.registerTool(
@@ -265,7 +291,7 @@ export function buildMcpServer(userId: string): McpServer {
         fatGGoal: z.number().nonnegative(),
       },
     },
-    async (input) => {
+    logged('set_goal', async (input) => {
       const [row] = await db
         .insert(dailyGoals)
         .values({ userId, ...input })
@@ -282,7 +308,7 @@ export function buildMcpServer(userId: string): McpServer {
         })
         .returning()
       return ok(row)
-    },
+    }),
   )
 
   return server
