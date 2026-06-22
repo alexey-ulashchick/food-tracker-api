@@ -94,7 +94,11 @@ export const chatRoute = new Hono<AuthEnv>()
       })
       .returning()
 
-    const messages: Anthropic.MessageParam[] = historyToMessages(ctx.history)
+    const messages: Anthropic.MessageParam[] = historyToMessages(
+      ctx.history,
+      ctx.today,
+      ctx.tzOffsetMin,
+    )
     messages.push(buildCurrentUserMessage(content, imagePayload))
 
     const aiMessages = await runToolLoop({
@@ -102,6 +106,7 @@ export const chatRoute = new Hono<AuthEnv>()
       systemPrompt: buildSystemPrompt(ctx),
       messages,
       tzOffsetMin: ctx.tzOffsetMin,
+      today: ctx.today,
     })
 
     return c.json({ user: userMsg!, ai: aiMessages }, 201)
@@ -155,10 +160,21 @@ async function fetchChatContext(c: Context<AuthEnv>, userId: string): Promise<Ch
 // consecutive same-role rows into one message (Anthropic rejects adjacent
 // same-role messages, and a single LLM turn can leave behind multiple `ai`
 // rows: text + action card, etc.).
-function historyToMessages(history: ChatMessage[]): Anthropic.MessageParam[] {
+//
+// History is filtered to the user's CURRENT local day. Cross-day context
+// (yesterday's "осталось 0 ккал" lines, stale recaps) was tripping the model
+// up: it would carry the previous day's bankrupt budget into a fresh
+// morning. The today-block in the system prompt is authoritative; the older
+// rows live on in the DB / iOS history but are not replayed to the LLM.
+function historyToMessages(
+  history: ChatMessage[],
+  today: string,
+  tzOffsetMin: number,
+): Anthropic.MessageParam[] {
   const merged: Anthropic.MessageParam[] = []
   for (const m of [...history].reverse()) {
     if (!m.content) continue
+    if (rowLocalDate(m, tzOffsetMin) !== today) continue
     const role: 'user' | 'assistant' = m.role === 'ai' ? 'assistant' : 'user'
     const last = merged[merged.length - 1]
     if (last && last.role === role && typeof last.content === 'string') {
@@ -168,6 +184,10 @@ function historyToMessages(history: ChatMessage[]): Anthropic.MessageParam[] {
     }
   }
   return merged
+}
+
+function rowLocalDate(m: ChatMessage, offsetMin: number): string {
+  return new Date(m.createdAt.getTime() + offsetMin * 60_000).toISOString().slice(0, 10)
 }
 
 function buildCurrentUserMessage(
@@ -205,8 +225,9 @@ async function runToolLoop(args: {
   systemPrompt: string
   messages: Anthropic.MessageParam[]
   tzOffsetMin: number
+  today: string
 }): Promise<ChatMessage[]> {
-  const { userId, systemPrompt, tzOffsetMin } = args
+  const { userId, systemPrompt, tzOffsetMin, today } = args
   const messages = [...args.messages]
   const persisted: ChatMessage[] = []
   const userTag = userId.slice(0, 8)
@@ -232,6 +253,7 @@ async function runToolLoop(args: {
     )
 
     const toolResults: Anthropic.ToolResultBlockParam[] = []
+    let didWrite = false
 
     for (const block of response.content) {
       if (block.type === 'text') {
@@ -267,6 +289,7 @@ async function runToolLoop(args: {
         }
 
         if (result.ok && isWriteTool(block.name)) {
+          didWrite = true
           const card = await persistActionCard(userId, result, block.input)
           if (card) persisted.push(card)
         }
@@ -281,6 +304,20 @@ async function runToolLoop(args: {
     }
 
     if (toolResults.length === 0) break
+
+    // After any write in this iteration, refetch today's totals and tack
+    // them onto every tool_result so the model sees the post-write budget
+    // (no mental arithmetic, no stale numbers from history). Fetched once
+    // per iteration — multiple writes in the same turn share the snapshot.
+    if (didWrite) {
+      const snapshot = await computeTodaysSnapshot(userId, today, tzOffsetMin)
+      for (const tr of toolResults) {
+        if (tr.is_error) continue
+        const parsed = JSON.parse(tr.content as string) as Record<string, unknown>
+        parsed.todaysTotals = snapshot
+        tr.content = JSON.stringify(parsed)
+      }
+    }
 
     messages.push({ role: 'assistant', content: response.content })
     messages.push({ role: 'user', content: toolResults })
@@ -472,6 +509,46 @@ function sumMacros(rows: Meal[]): Totals {
   )
 }
 
+// Refetches today's meals + goal, in the user's local TZ, and returns a
+// compact { eaten, remaining } snapshot. Called after a write tool so the
+// model sees the post-write state directly in tool_result instead of having
+// to do mental arithmetic on top of stale numbers.
+async function computeTodaysSnapshot(
+  userId: string,
+  today: string,
+  tzOffsetMin: number,
+): Promise<Record<string, unknown>> {
+  const [goalRow] = await db
+    .select()
+    .from(dailyGoals)
+    .where(and(eq(dailyGoals.userId, userId), eq(dailyGoals.date, today)))
+    .limit(1)
+
+  const lookback = new Date(Date.now() - 2 * 86_400_000)
+  const recentRows = await db
+    .select()
+    .from(meals)
+    .where(and(eq(meals.userId, userId), gte(meals.timestamp, lookback)))
+  const todayRows = recentRows.filter((m) => mealLocalDate(m, tzOffsetMin) === today)
+  const eaten = sumMacros(todayRows)
+
+  if (!goalRow) {
+    return { date: today, mealsLogged: todayRows.length, eaten }
+  }
+  return {
+    date: today,
+    dayType: goalRow.dayType,
+    mealsLogged: todayRows.length,
+    eaten,
+    remaining: {
+      calories: goalRow.calorieGoal - eaten.calories,
+      protein: goalRow.proteinGGoal - eaten.protein,
+      carbs: goalRow.carbsGGoal - eaten.carbs,
+      fats: goalRow.fatGGoal - eaten.fats,
+    },
+  }
+}
+
 function fmt(n: number): string {
   return Math.round(n).toString()
 }
@@ -534,7 +611,8 @@ function buildSystemPrompt(ctx: ChatContext): string {
     '',
     'Guidance:',
     '  - Writes happen the moment you call the tool — there is no separate confirm step. The iOS app shows a card describing what changed.',
-    '  - Today\'s budget (Eaten / Remaining below) already reflects every meal logged today — DO NOT call get_meals_for_day(today) just to recap. After you write a meal in this turn, subtract its macros from "Remaining" yourself when phrasing the response.',
+    '  - The "Today" block below is the ONLY source of truth for today\'s eaten / remaining macros. Numbers that appear earlier in conversation history (yesterday\'s recaps, "осталось 0 ккал" from a previous day) are STALE — ignore them. Conversation history is filtered to today\'s rows, so anything you remember from yesterday lives only as fuzzy context, not as a budget.',
+    "  - Today's budget already reflects every meal logged today — DO NOT call get_meals_for_day(today) just to recap. After a write tool, the tool_result will include an updated `todaysTotals` snapshot; trust it over your own arithmetic.",
     '  - When suggesting what to eat next, name SPECIFIC dishes from "Recent meals" ("твой творог", "та куриная грудка с гречкой") rather than generic advice.',
     '  - To correct a logged meal, prefer update_meal over delete + add_meal. If the user wants to swap one dish for a different one, use delete_meal then add_meal.',
     "  - Only call get_meals_for_day for a date OTHER than today, or when you need a meal id you don't already have in context.",

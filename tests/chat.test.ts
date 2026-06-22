@@ -497,4 +497,94 @@ describe('POST /chat', () => {
     const mealRows = await db.select().from(meals).where(eq(meals.userId, userId))
     expect(mealRows[0]?.tzOffsetMin).toBe(-300)
   })
+
+  test('after a write, the tool_result carries a fresh todaysTotals snapshot', async () => {
+    const { token } = await seedUser()
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_t',
+            name: 'add_meal',
+            input: {
+              meal: 'Breakfast',
+              foodName: 'Овсянка',
+              calories: 300,
+              protein: 12,
+              carbs: 50,
+              fats: 6,
+            },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Записал.' }],
+        stop_reason: 'end_turn',
+      }),
+    )
+
+    const res = await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'овсянка' }),
+      }),
+    )
+    expect(res.status).toBe(201)
+
+    const secondCall = messagesCreate.mock.calls[1]?.[0] as {
+      messages: Array<{ role: string; content: unknown }>
+    }
+    const lastMsg = secondCall.messages[secondCall.messages.length - 1]!
+    expect(lastMsg.role).toBe('user')
+    const toolResult = (lastMsg.content as Array<{ content: string; is_error?: boolean }>)[0]!
+    expect(toolResult.is_error).toBeFalsy()
+    const parsed = JSON.parse(toolResult.content) as {
+      todaysTotals?: { eaten?: { calories?: number } }
+    }
+    expect(parsed.todaysTotals).toBeDefined()
+    expect(parsed.todaysTotals?.eaten?.calories).toBe(300)
+  })
+
+  test("history older than today's local date is dropped from the LLM payload", async () => {
+    const { userId, token } = await seedUser()
+
+    // Pre-seed a chat row from yesterday (in UTC; with no offset header on
+    // the request, the server treats today as UTC today).
+    const yesterday = new Date(Date.now() - 30 * 60 * 60 * 1000)
+    await db.insert(chatMessages).values({
+      userId,
+      role: 'ai',
+      kind: 'text',
+      content: 'YESTERDAY_RECAP',
+      createdAt: yesterday,
+    })
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'ok' }],
+        stop_reason: 'end_turn',
+      }),
+    )
+
+    const res = await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'привет' }),
+      }),
+    )
+    expect(res.status).toBe(201)
+
+    const firstCall = messagesCreate.mock.calls[0]?.[0] as {
+      messages: Array<{ role: string; content: unknown }>
+    }
+    const flat = JSON.stringify(firstCall.messages)
+    expect(flat).not.toContain('YESTERDAY_RECAP')
+  })
 })
