@@ -551,11 +551,9 @@ describe('POST /chat', () => {
     expect(parsed.todaysTotals?.eaten?.calories).toBe(300)
   })
 
-  test("history older than today's local date is dropped from the LLM payload", async () => {
+  test('history from a previous day is kept but tagged with a day-boundary marker', async () => {
     const { userId, token } = await seedUser()
 
-    // Pre-seed a chat row from yesterday (in UTC; with no offset header on
-    // the request, the server treats today as UTC today).
     const yesterday = new Date(Date.now() - 30 * 60 * 60 * 1000)
     await db.insert(chatMessages).values({
       userId,
@@ -585,6 +583,10 @@ describe('POST /chat', () => {
       messages: Array<{ role: string; content: unknown }>
     }
     const flat = JSON.stringify(firstCall.messages)
-    expect(flat).not.toContain('YESTERDAY_RECAP')
+    // The yesterday row survives — context like "как вчера" still works.
+    expect(flat).toContain('YESTERDAY_RECAP')
+    // Today's first message is annotated so the model knows yesterday's
+    // budget numbers don't apply to the current turn.
+    expect(flat).toContain('Day boundary')
   })
 })

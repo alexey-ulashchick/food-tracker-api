@@ -94,11 +94,7 @@ export const chatRoute = new Hono<AuthEnv>()
       })
       .returning()
 
-    const messages: Anthropic.MessageParam[] = historyToMessages(
-      ctx.history,
-      ctx.today,
-      ctx.tzOffsetMin,
-    )
+    const messages: Anthropic.MessageParam[] = historyToMessages(ctx.history, ctx.tzOffsetMin)
     messages.push(buildCurrentUserMessage(content, imagePayload))
 
     const aiMessages = await runToolLoop({
@@ -161,26 +157,30 @@ async function fetchChatContext(c: Context<AuthEnv>, userId: string): Promise<Ch
 // same-role messages, and a single LLM turn can leave behind multiple `ai`
 // rows: text + action card, etc.).
 //
-// History is filtered to the user's CURRENT local day. Cross-day context
-// (yesterday's "осталось 0 ккал" lines, stale recaps) was tripping the model
-// up: it would carry the previous day's bankrupt budget into a fresh
-// morning. The today-block in the system prompt is authoritative; the older
-// rows live on in the DB / iOS history but are not replayed to the LLM.
-function historyToMessages(
-  history: ChatMessage[],
-  today: string,
-  tzOffsetMin: number,
-): Anthropic.MessageParam[] {
+// When the local date changes between rows we prefix the first row of the
+// new day with a "[Day boundary: <prev> → <new>]" marker. The model is told
+// (in the system prompt) that numbers above a boundary describe a different
+// day's budget, not today's. We keep the full history — "как вчера" /
+// "как обычно" still works — without letting yesterday's recap masquerade
+// as today's state.
+function historyToMessages(history: ChatMessage[], tzOffsetMin: number): Anthropic.MessageParam[] {
   const merged: Anthropic.MessageParam[] = []
+  let prevDate: string | null = null
   for (const m of [...history].reverse()) {
     if (!m.content) continue
-    if (rowLocalDate(m, tzOffsetMin) !== today) continue
+    const localDate = rowLocalDate(m, tzOffsetMin)
+    let content = m.content
+    if (prevDate !== null && prevDate !== localDate) {
+      content = `[Day boundary: ${prevDate} → ${localDate}]\n\n${content}`
+    }
+    prevDate = localDate
+
     const role: 'user' | 'assistant' = m.role === 'ai' ? 'assistant' : 'user'
     const last = merged[merged.length - 1]
     if (last && last.role === role && typeof last.content === 'string') {
-      last.content = `${last.content}\n\n${m.content}`
+      last.content = `${last.content}\n\n${content}`
     } else {
-      merged.push({ role, content: m.content })
+      merged.push({ role, content })
     }
   }
   return merged
@@ -611,8 +611,9 @@ function buildSystemPrompt(ctx: ChatContext): string {
     '',
     'Guidance:',
     '  - Writes happen the moment you call the tool — there is no separate confirm step. The iOS app shows a card describing what changed.',
-    '  - The "Today" block below is the ONLY source of truth for today\'s eaten / remaining macros. Numbers that appear earlier in conversation history (yesterday\'s recaps, "осталось 0 ккал" from a previous day) are STALE — ignore them. Conversation history is filtered to today\'s rows, so anything you remember from yesterday lives only as fuzzy context, not as a budget.',
-    "  - Today's budget already reflects every meal logged today — DO NOT call get_meals_for_day(today) just to recap. After a write tool, the tool_result will include an updated `todaysTotals` snapshot; trust it over your own arithmetic.",
+    '  - The "Today" block below is the ONLY source of truth for today\'s eaten / remaining macros. Numbers in conversation history (yesterday\'s recaps, "осталось 0 ккал" from a previous day) describe THAT day\'s budget — not today\'s.',
+    '  - Watch for `[Day boundary: <prev> → <new>]` markers in the conversation: every recap, suggestion, and budget number ABOVE a boundary belongs to a different day and is stale for today\'s budget. You can still reference past meals or preferences ("как вчера", "как обычно") — just don\'t carry the budget across.',
+    '  - After a write tool, the tool_result includes a `todaysTotals` snapshot — trust it over your own arithmetic.',
     '  - When suggesting what to eat next, name SPECIFIC dishes from "Recent meals" ("твой творог", "та куриная грудка с гречкой") rather than generic advice.',
     '  - To correct a logged meal, prefer update_meal over delete + add_meal. If the user wants to swap one dish for a different one, use delete_meal then add_meal.',
     "  - Only call get_meals_for_day for a date OTHER than today, or when you need a meal id you don't already have in context.",
