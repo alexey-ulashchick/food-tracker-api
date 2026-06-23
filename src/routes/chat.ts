@@ -4,7 +4,13 @@ import { type Context, Hono } from 'hono'
 import { z } from 'zod'
 import { db } from '../db/client.ts'
 import { chatMessages, dailyGoals, meals, type memories } from '../db/schema.ts'
-import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, anthropic } from '../llm/anthropic.ts'
+import {
+  DEFAULT_MAX_TOKENS,
+  DEFAULT_MODEL,
+  type Usage,
+  anthropic,
+  priceUsage,
+} from '../llm/anthropic.ts'
 import { type ToolName, executeTool, isWriteTool, loadMemories, tools } from '../llm/tools.ts'
 import { type AuthEnv, auth } from '../middleware/auth.ts'
 
@@ -241,6 +247,17 @@ async function runToolLoop(args: {
   const messages = [...args.messages]
   const persisted: ChatMessage[] = []
   const userTag = userId.slice(0, 8)
+  // Per-turn usage accumulator. A single user turn can drive multiple
+  // anthropic.messages.create calls (initial + post-tool recap). We sum the
+  // usage and stamp the total on the last persisted ai row at the end so
+  // the iOS chat surface can render one tooltip for the turn.
+  const turnUsage: Usage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+    costUsd: 0,
+  }
 
   console.log(
     `[chat] turn-begin user=${userTag} tz=${tzOffsetMin} sys-chars=${systemPrompt.length} msgs=${messages.length}`,
@@ -258,8 +275,14 @@ async function runToolLoop(args: {
     })
     const ms = Math.round(performance.now() - startedAt)
     const blockSummary = summarizeBlocks(response.content)
+    const callUsage = priceUsage(DEFAULT_MODEL, response.usage)
+    turnUsage.inputTokens += callUsage.inputTokens
+    turnUsage.outputTokens += callUsage.outputTokens
+    turnUsage.cacheCreationTokens += callUsage.cacheCreationTokens
+    turnUsage.cacheReadTokens += callUsage.cacheReadTokens
+    turnUsage.costUsd += callUsage.costUsd
     console.log(
-      `[chat] llm-call user=${userTag} iter=${iter} stop=${response.stop_reason} in=${response.usage.input_tokens} out=${response.usage.output_tokens} blocks=${blockSummary} took=${ms}ms`,
+      `[chat] llm-call user=${userTag} iter=${iter} stop=${response.stop_reason} in=${response.usage.input_tokens} out=${response.usage.output_tokens} cost=$${callUsage.costUsd.toFixed(4)} blocks=${blockSummary} took=${ms}ms`,
     )
 
     const toolResults: Anthropic.ToolResultBlockParam[] = []
@@ -335,7 +358,29 @@ async function runToolLoop(args: {
     if (response.stop_reason !== 'tool_use') break
   }
 
-  console.log(`[chat] turn-end user=${userTag} persisted=${persisted.length}`)
+  // Stamp the per-turn usage on the LAST persisted ai row so the iOS surface
+  // can show one cost tooltip for the turn. We update the in-memory copy too
+  // so the response payload carries the same numbers iOS would otherwise see
+  // only after a refetch.
+  const last = persisted[persisted.length - 1]
+  if (last) {
+    const [updated] = await db
+      .update(chatMessages)
+      .set({
+        inputTokens: turnUsage.inputTokens,
+        outputTokens: turnUsage.outputTokens,
+        cacheCreationTokens: turnUsage.cacheCreationTokens,
+        cacheReadTokens: turnUsage.cacheReadTokens,
+        costUsd: turnUsage.costUsd,
+      })
+      .where(eq(chatMessages.id, last.id))
+      .returning()
+    if (updated) persisted[persisted.length - 1] = updated
+  }
+
+  console.log(
+    `[chat] turn-end user=${userTag} persisted=${persisted.length} cost=$${turnUsage.costUsd.toFixed(4)} in=${turnUsage.inputTokens} out=${turnUsage.outputTokens}`,
+  )
   return persisted
 }
 

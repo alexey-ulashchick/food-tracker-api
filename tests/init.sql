@@ -52,6 +52,11 @@ CREATE TABLE chat_messages (
   content text NOT NULL,
   kind chat_kind NOT NULL DEFAULT 'text',
   meta jsonb,
+  input_tokens integer,
+  output_tokens integer,
+  cache_creation_tokens integer,
+  cache_read_tokens integer,
+  cost_usd real,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX chat_user_timestamp_idx ON chat_messages (user_id, timestamp);

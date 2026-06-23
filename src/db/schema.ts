@@ -98,6 +98,16 @@ export const chatMessages = pgTable(
     content: text('content').notNull(),
     kind: chatKindEnum('kind').notNull().default('text'),
     meta: jsonb('meta'),
+    // Per-turn usage. Stamped on the LAST ai row produced by a single user
+    // turn (a turn can fire multiple LLM calls — initial + post-tool recap)
+    // so the chat surface can show one tooltip "$0.0042 · 612→184 tok"
+    // above that row. Null on every other row, including all 'user' rows.
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    cacheCreationTokens: integer('cache_creation_tokens'),
+    cacheReadTokens: integer('cache_read_tokens'),
+    // USD, stored as a float — precision is fine for these magnitudes.
+    costUsd: real('cost_usd'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
