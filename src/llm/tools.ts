@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk'
-import { and, asc, eq, gte, lt } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, lt } from 'drizzle-orm'
 import { db } from '../db/client.ts'
-import { dailyGoals, meals } from '../db/schema.ts'
+import { dailyGoals, meals, memories } from '../db/schema.ts'
 
 // Tool surface exposed to Claude. Two flavors:
 //   * read tools  — fetch data and return it; conversation continues so the
@@ -150,12 +150,60 @@ export const tools: Anthropic.Tool[] = [
       required: ['date', 'dayType', 'calorieGoal', 'proteinGGoal', 'carbsGGoal', 'fatGGoal'],
     },
   },
+  {
+    name: 'add_memory',
+    description:
+      'Save a long-lived fact, preference, dish, recipe, or behaviour the user explicitly asked you to remember. ' +
+      'Use ONLY when the user signals "remember", "обычно я", "запомни", names a recurring dish/recipe, an allergy, a goal, a routine. ' +
+      'Do NOT use for one-off events that should go into add_meal instead. ' +
+      'Keep `content` to a single short sentence; structure it like "Allergy: lactose" or "Любимый завтрак: овсянка с бананом".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: 'A single short sentence describing the memory.' },
+      },
+      required: ['content'],
+    },
+  },
+  {
+    name: 'update_memory',
+    description:
+      "Replace the content of an existing memory in place. Use when the user refines a previously-saved memory (e.g. 'не лактоза, а молочка'). The current memory list is in the system prompt — pick the id from there.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'UUID of the memory row to update.' },
+        content: { type: 'string', description: 'New content. Replaces the old content fully.' },
+      },
+      required: ['id', 'content'],
+    },
+  },
+  {
+    name: 'delete_memory',
+    description:
+      "Forget a memory the user no longer wants stored. Use when the user says 'забудь', 'это уже не так', or explicitly asks to remove a fact. Pick the id from the Memories block in the system prompt.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'UUID of the memory row to delete.' },
+      },
+      required: ['id'],
+    },
+  },
 ]
 
 export type ToolName = (typeof tools)[number]['name']
 
 const READ_TOOL_NAMES = new Set<ToolName>(['get_goal_for_day', 'get_meals_for_day'])
-const WRITE_TOOL_NAMES = new Set<ToolName>(['add_meal', 'update_meal', 'delete_meal', 'set_goal'])
+const WRITE_TOOL_NAMES = new Set<ToolName>([
+  'add_meal',
+  'update_meal',
+  'delete_meal',
+  'set_goal',
+  'add_memory',
+  'update_memory',
+  'delete_memory',
+])
 
 export const READ_ONLY_TOOLS: Anthropic.Tool[] = tools.filter((t) =>
   READ_TOOL_NAMES.has(t.name as ToolName),
@@ -167,6 +215,7 @@ export function isWriteTool(name: string): name is ToolName {
 
 export type Meal = typeof meals.$inferSelect
 export type Goal = typeof dailyGoals.$inferSelect
+export type Memory = typeof memories.$inferSelect
 
 export type ToolExecResult =
   | { ok: true; kind: 'read'; data: unknown }
@@ -174,6 +223,9 @@ export type ToolExecResult =
   | { ok: true; kind: 'meal_updated'; meal: Meal; before: Meal }
   | { ok: true; kind: 'meal_removed'; meal: Meal }
   | { ok: true; kind: 'goal_set'; goal: Goal }
+  | { ok: true; kind: 'memory_added'; memory: Memory }
+  | { ok: true; kind: 'memory_updated'; memory: Memory; before: Memory }
+  | { ok: true; kind: 'memory_removed'; memory: Memory }
   | { ok: false; error: string }
 
 // One-day [start, end) window from a YYYY-MM-DD literal interpreted in a
@@ -398,7 +450,55 @@ export async function executeTool(
         .returning()
       return { ok: true, kind: 'goal_set', goal: row! }
     }
+    case 'add_memory': {
+      const content = asString(input.content)?.trim()
+      if (!content) return badInput('add_memory requires a non-empty content string')
+      if (content.length > 500) return badInput('memory content must be ≤ 500 chars')
+      const [row] = await db.insert(memories).values({ userId, content }).returning()
+      return { ok: true, kind: 'memory_added', memory: row! }
+    }
+    case 'update_memory': {
+      const id = asString(input.id)
+      if (!id || !uuidRe.test(id)) return badInput('id must be a UUID')
+      const content = asString(input.content)?.trim()
+      if (!content) return badInput('update_memory requires a non-empty content string')
+      if (content.length > 500) return badInput('memory content must be ≤ 500 chars')
+
+      const [before] = await db
+        .select()
+        .from(memories)
+        .where(and(eq(memories.id, id), eq(memories.userId, userId)))
+        .limit(1)
+      if (!before) return badInput(`memory ${id} not found`)
+
+      const [row] = await db
+        .update(memories)
+        .set({ content, updatedAt: new Date() })
+        .where(and(eq(memories.id, id), eq(memories.userId, userId)))
+        .returning()
+      return { ok: true, kind: 'memory_updated', memory: row!, before }
+    }
+    case 'delete_memory': {
+      const id = asString(input.id)
+      if (!id || !uuidRe.test(id)) return badInput('id must be a UUID')
+      const [row] = await db
+        .delete(memories)
+        .where(and(eq(memories.id, id), eq(memories.userId, userId)))
+        .returning()
+      if (!row) return badInput(`memory ${id} not found`)
+      return { ok: true, kind: 'memory_removed', memory: row }
+    }
     default:
       return badInput(`unknown tool: ${name}`)
   }
+}
+
+// Loads all memories for a user, newest-updated first. Used by chat.ts to
+// inject the Memories block into every system prompt.
+export async function loadMemories(userId: string): Promise<Memory[]> {
+  return db
+    .select()
+    .from(memories)
+    .where(eq(memories.userId, userId))
+    .orderBy(desc(memories.updatedAt))
 }

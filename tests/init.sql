@@ -6,7 +6,7 @@
 CREATE TYPE day_type AS ENUM ('training', 'rest');
 CREATE TYPE meal_type AS ENUM ('Breakfast', 'Lunch', 'Dinner', 'Snack');
 CREATE TYPE chat_role AS ENUM ('user', 'ai');
-CREATE TYPE chat_kind AS ENUM ('text', 'meal_added', 'meal_removed', 'meal_updated', 'goal_set');
+CREATE TYPE chat_kind AS ENUM ('text', 'meal_added', 'meal_removed', 'meal_updated', 'goal_set', 'memory_added', 'memory_updated', 'memory_removed');
 
 CREATE TABLE users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -55,6 +55,15 @@ CREATE TABLE chat_messages (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX chat_user_timestamp_idx ON chat_messages (user_id, timestamp);
+
+CREATE TABLE memories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  content text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX memories_user_idx ON memories (user_id, updated_at);
 
 CREATE TABLE api_tokens (
   token text PRIMARY KEY,

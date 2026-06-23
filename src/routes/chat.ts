@@ -3,9 +3,9 @@ import { and, desc, eq, gte } from 'drizzle-orm'
 import { type Context, Hono } from 'hono'
 import { z } from 'zod'
 import { db } from '../db/client.ts'
-import { chatMessages, dailyGoals, meals } from '../db/schema.ts'
+import { chatMessages, dailyGoals, meals, type memories } from '../db/schema.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, anthropic } from '../llm/anthropic.ts'
-import { type ToolName, executeTool, isWriteTool, tools } from '../llm/tools.ts'
+import { type ToolName, executeTool, isWriteTool, loadMemories, tools } from '../llm/tools.ts'
 import { type AuthEnv, auth } from '../middleware/auth.ts'
 
 const HISTORY_DEPTH = 30
@@ -20,6 +20,7 @@ const listMessagesSchema = z.object({
 type ChatMessage = typeof chatMessages.$inferSelect
 type Meal = typeof meals.$inferSelect
 type Goal = typeof dailyGoals.$inferSelect
+type Memory = typeof memories.$inferSelect
 
 type ChatContext = {
   today: string
@@ -27,6 +28,7 @@ type ChatContext = {
   history: ChatMessage[]
   recentMeals: Meal[]
   todaysGoal: Goal | undefined
+  memories: Memory[]
 }
 
 export const chatRoute = new Hono<AuthEnv>()
@@ -131,7 +133,7 @@ async function fetchChatContext(c: Context<AuthEnv>, userId: string): Promise<Ch
   const tzOffsetMin = clientTzOffsetMin(c)
   const today = todayInOffset(tzOffsetMin)
   const lookback = new Date(Date.now() - MEAL_LOOKBACK_DAYS * 86_400_000)
-  const [history, recentMeals, todaysGoalRows] = await Promise.all([
+  const [history, recentMeals, todaysGoalRows, memoryRows] = await Promise.all([
     db
       .select()
       .from(chatMessages)
@@ -148,8 +150,16 @@ async function fetchChatContext(c: Context<AuthEnv>, userId: string): Promise<Ch
       .from(dailyGoals)
       .where(and(eq(dailyGoals.userId, userId), eq(dailyGoals.date, today)))
       .limit(1),
+    loadMemories(userId),
   ])
-  return { today, tzOffsetMin, history, recentMeals, todaysGoal: todaysGoalRows[0] }
+  return {
+    today,
+    tzOffsetMin,
+    history,
+    recentMeals,
+    todaysGoal: todaysGoalRows[0],
+    memories: memoryRows,
+  }
 }
 
 // Maps DB rows → MessageParam, in chronological order. Crucially merges
@@ -366,6 +376,17 @@ function toolResultPayload(
       return { ok: true, action: 'meal_removed', meal: result.meal }
     case 'goal_set':
       return { ok: true, action: 'goal_set', goal: result.goal }
+    case 'memory_added':
+      return { ok: true, action: 'memory_added', memory: result.memory }
+    case 'memory_updated':
+      return {
+        ok: true,
+        action: 'memory_updated',
+        memory: result.memory,
+        before: result.before,
+      }
+    case 'memory_removed':
+      return { ok: true, action: 'memory_removed', memory: result.memory }
   }
 }
 
@@ -439,6 +460,52 @@ async function persistActionCard(
         .returning()
       return row
     }
+    case 'memory_added': {
+      const mem = result.memory
+      const [row] = await db
+        .insert(chatMessages)
+        .values({
+          userId,
+          role: 'ai',
+          kind: 'memory_added',
+          content: mem.content,
+          meta: { memoryId: mem.id, memory: serializeMemory(mem) },
+        })
+        .returning()
+      return row
+    }
+    case 'memory_updated': {
+      const mem = result.memory
+      const [row] = await db
+        .insert(chatMessages)
+        .values({
+          userId,
+          role: 'ai',
+          kind: 'memory_updated',
+          content: mem.content,
+          meta: {
+            memoryId: mem.id,
+            before: serializeMemory(result.before),
+            after: serializeMemory(mem),
+          },
+        })
+        .returning()
+      return row
+    }
+    case 'memory_removed': {
+      const mem = result.memory
+      const [row] = await db
+        .insert(chatMessages)
+        .values({
+          userId,
+          role: 'ai',
+          kind: 'memory_removed',
+          content: mem.content,
+          meta: { memoryId: mem.id, memory: serializeMemory(mem) },
+        })
+        .returning()
+      return row
+    }
     case 'read':
       return undefined
   }
@@ -470,6 +537,15 @@ function serializeGoal(g: Goal): Record<string, unknown> {
     proteinGGoal: g.proteinGGoal,
     carbsGGoal: g.carbsGGoal,
     fatGGoal: g.fatGGoal,
+  }
+}
+
+function serializeMemory(m: Memory): Record<string, unknown> {
+  return {
+    id: m.id,
+    content: m.content,
+    createdAt: m.createdAt.toISOString(),
+    updatedAt: m.updatedAt.toISOString(),
   }
 }
 
@@ -554,7 +630,7 @@ function fmt(n: number): string {
 }
 
 function buildSystemPrompt(ctx: ChatContext): string {
-  const { today, tzOffsetMin, todaysGoal, recentMeals } = ctx
+  const { today, tzOffsetMin, todaysGoal, recentMeals, memories: mems } = ctx
 
   const todayMeals = recentMeals.filter((m) => mealLocalDate(m, tzOffsetMin) === today)
   const eaten = sumMacros(todayMeals)
@@ -596,6 +672,16 @@ function buildSystemPrompt(ctx: ChatContext): string {
           })
           .join('\n')}`
 
+  // Memories block — long-lived facts/preferences/recipes the user explicitly
+  // saved. Each line is `id: content` so the LLM can pass the id straight to
+  // update_memory / delete_memory.
+  const memoriesBlock =
+    mems.length === 0
+      ? 'No saved memories yet.'
+      : `Memories (long-lived facts the user asked to remember; pass the id to update_memory / delete_memory):\n${mems
+          .map((m) => `  - ${m.id}: ${m.content}`)
+          .join('\n')}`
+
   return [
     'You are a friendly nutrition assistant inside a calorie-tracking iOS app.',
     'Help the user log food, reflect on their intake, and stay on track. Be concise and practical.',
@@ -608,6 +694,7 @@ function buildSystemPrompt(ctx: ChatContext): string {
     '  * update_meal(id, ...) — edit an existing meal in place when the user corrects macros, name, or portion. Pass only fields that change.',
     '  * delete_meal(id) — remove a meal entirely (e.g. user did not eat it).',
     '  * set_goal(date, ...) — create or replace a daily nutrition goal.',
+    '  * add_memory(content) / update_memory(id, content) / delete_memory(id) — manage long-lived facts the user asks to remember (preferences, allergies, recipes, recurring dishes, routines).',
     '',
     'Guidance:',
     '  - Writes happen the moment you call the tool — there is no separate confirm step. The iOS app shows a card describing what changed.',
@@ -618,11 +705,19 @@ function buildSystemPrompt(ctx: ChatContext): string {
     '  - To correct a logged meal, prefer update_meal over delete + add_meal. If the user wants to swap one dish for a different one, use delete_meal then add_meal.',
     "  - Only call get_meals_for_day for a date OTHER than today, or when you need a meal id you don't already have in context.",
     '',
+    'Memory guidance:',
+    '  - Call add_memory ONLY when the user explicitly asks you to remember something ("запомни", "обычно я", "это важно", "у меня аллергия на …"), names a recurring dish or recipe, or shares a long-term goal/routine. Do NOT memorize today\'s meals (that\'s what add_meal is for) or arbitrary chatter.',
+    '  - Each memory is one short sentence. Structure it like "Allergy: lactose", "Любимый завтрак: овсянка с бананом", "Тренировки: пн/ср/пт утром".',
+    '  - Use update_memory when the user refines an existing memory (id is in the Memories block below). Use delete_memory when the user asks to forget something.',
+    '  - Reference saved memories naturally in your replies — e.g. respect allergies when suggesting dishes, recall a favourite breakfast when asked for ideas.',
+    '',
     'Recap text after a write tool:',
-    '  - The iOS card already shows what changed (dish name, kcal, macros). DO NOT repeat any of that in the text.',
+    '  - The iOS card already shows what changed (dish name, kcal, macros, or memory text). DO NOT repeat any of that in the text.',
     '  - Just ONE short line: a single-word acknowledgement + remaining budget or food suggestion for today',
     '',
     ...todayBlock,
+    '',
+    memoriesBlock,
     '',
     mealsBlock,
   ].join('\n')

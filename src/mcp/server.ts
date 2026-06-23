@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { and, desc, eq, gte, lt, lte } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '../db/client.ts'
-import { dailyGoals, meals } from '../db/schema.ts'
+import { dailyGoals, meals, memories } from '../db/schema.ts'
 
 const isoDate = z
   .string()
@@ -308,6 +308,79 @@ export function buildMcpServer(userId: string): McpServer {
         })
         .returning()
       return ok(row)
+    }),
+  )
+
+  server.registerTool(
+    'list_memories',
+    {
+      title: 'List memories',
+      description:
+        'Long-lived facts/preferences/recipes the user asked the assistant to remember. Newest-updated first. Each row has an id you can pass to update_memory or delete_memory.',
+      inputSchema: {},
+    },
+    logged('list_memories', async () => {
+      const rows = await db
+        .select()
+        .from(memories)
+        .where(eq(memories.userId, userId))
+        .orderBy(desc(memories.updatedAt))
+      return ok(rows)
+    }),
+  )
+
+  server.registerTool(
+    'add_memory',
+    {
+      title: 'Save a memory',
+      description:
+        'Save a single short sentence the user asked to remember (preference, allergy, recipe, recurring dish, routine).',
+      inputSchema: {
+        content: z.string().min(1).max(500),
+      },
+    },
+    logged('add_memory', async ({ content }) => {
+      const [row] = await db.insert(memories).values({ userId, content }).returning()
+      return ok(row)
+    }),
+  )
+
+  server.registerTool(
+    'update_memory',
+    {
+      title: 'Update a memory',
+      description:
+        'Replace the content of an existing memory in place. The id comes from list_memories.',
+      inputSchema: {
+        id: z.string().uuid(),
+        content: z.string().min(1).max(500),
+      },
+    },
+    logged('update_memory', async ({ id, content }) => {
+      const [row] = await db
+        .update(memories)
+        .set({ content, updatedAt: new Date() })
+        .where(and(eq(memories.id, id), eq(memories.userId, userId)))
+        .returning()
+      if (!row) return notFound(`No memory found with id=${id}`)
+      return ok(row)
+    }),
+  )
+
+  server.registerTool(
+    'delete_memory',
+    {
+      title: 'Delete a memory',
+      description: 'Remove a memory by its UUID.',
+      inputSchema: { id: z.string().uuid() },
+    },
+    logged('delete_memory', async ({ id }) => {
+      const [row] = await db
+        .delete(memories)
+        .where(and(eq(memories.id, id), eq(memories.userId, userId)))
+        .returning({ id: memories.id })
+      if (!row) return notFound(`No memory found with id=${id}`)
+      return ok({ ok: true, id: row.id })
     }),
   )
 

@@ -22,6 +22,9 @@ export const chatKindEnum = pgEnum('chat_kind', [
   'meal_removed',
   'meal_updated',
   'goal_set',
+  'memory_added',
+  'memory_updated',
+  'memory_removed',
 ])
 
 export const users = pgTable('users', {
@@ -103,6 +106,27 @@ export const chatMessages = pgTable(
     // Composite index with user_id first lets the planner seek straight to a
     // user's slice and walk timestamps in order.
     userTimestampIdx: index('chat_user_timestamp_idx').on(t.userId, t.timestamp),
+  }),
+)
+
+// Long-lived facts/preferences/recipes the user explicitly asked the LLM to
+// remember. Each row is a single short sentence in free text; the LLM
+// structures it ("Allergy: lactose", "Preferred breakfast: oatmeal with
+// banana"). Loaded into the system prompt on every chat turn — bound is
+// soft, controlled by the chat route.
+export const memories = pgTable(
+  'memories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    content: text('content').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userIdx: index('memories_user_idx').on(t.userId, t.updatedAt),
   }),
 )
 

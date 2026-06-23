@@ -7,6 +7,7 @@ import { chatRoute } from './routes/chat.ts'
 import { goalsRoute } from './routes/goals.ts'
 import { healthRoute } from './routes/health.ts'
 import { mealsRoute } from './routes/meals.ts'
+import { memoriesRoute } from './routes/memories.ts'
 
 const app = new Hono()
 
@@ -19,6 +20,7 @@ app.route('/health', healthRoute)
 // Authenticated (each route mounts its own `auth` middleware)
 app.route('/meals', mealsRoute)
 app.route('/goals', goalsRoute)
+app.route('/memories', memoriesRoute)
 app.route('/chat', chatRoute)
 app.route('/mcp', mcpRoute)
 
