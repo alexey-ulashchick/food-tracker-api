@@ -102,7 +102,7 @@ describe('generateRecommendations', () => {
     expect(result.recommendations.find((r) => r.color === 'green')).toBeUndefined()
   })
 
-  test('returns exactly one recommendation per color even when many combos qualify', () => {
+  test('caps at MAX_VARIANTS_PER_COLOR (3) when many combos qualify', () => {
     // Many candidate foods such that LOTS of combos land in green.
     const current = { calories: 1600, protein: 130, fat: 40, carbs: 180 }
     const foodHistory = [
@@ -113,12 +113,93 @@ describe('generateRecommendations', () => {
     ]
     const result = generateRecommendations({ goal, current, foodHistory })
     const greens = result.recommendations.filter((r) => r.color === 'green')
-    expect(greens.length).toBeLessThanOrEqual(1)
+    // Spec was "exactly one"; we now surface up to 3 variants per color so
+    // the user can pick a combo that matches their appetite.
+    expect(greens.length).toBeGreaterThan(0)
+    expect(greens.length).toBeLessThanOrEqual(3)
   })
 
-  test('tie-breaker prefers fewer items', () => {
+  test('green variants are ranked by closeness to target macros', () => {
+    // current is 1500/120/30/150 (1500 kcal under target by 500 etc).
+    // Target is 2000/150/60/200.
     const current = { calories: 1500, protein: 120, fat: 30, carbs: 150 }
-    // Single food on its own lands the day in green.
+    // Three foods that all individually land the day in green; only one
+    // hits target macros nearly perfectly.
+    const perfect = makeMeal({
+      foodName: 'Perfect fit',
+      calories: 500,
+      protein: 30,
+      fats: 30,
+      carbs: 50,
+    })
+    const okay = makeMeal({
+      foodName: 'Okay snack',
+      calories: 200,
+      protein: 15,
+      fats: 10,
+      carbs: 30,
+    })
+    const minimal = makeMeal({
+      foodName: 'Minimal bite',
+      calories: 150,
+      protein: 13,
+      fats: 5,
+      carbs: 20,
+    })
+    const result = generateRecommendations({
+      goal,
+      current,
+      foodHistory: [perfect, okay, minimal],
+    })
+    const greens = result.recommendations.filter((r) => r.color === 'green')
+    expect(greens.length).toBeGreaterThan(0)
+    // The closest-fit combo should be ranked first — its final macros
+    // should sit nearer the 2000/150/60/200 target than any other green.
+    const top = greens[0]!
+    expect(top.finalMacros.calories).toBeGreaterThanOrEqual(1900)
+    expect(top.finalMacros.calories).toBeLessThanOrEqual(2060)
+    expect(top.finalMacros.protein).toBeGreaterThanOrEqual(135)
+  })
+
+  test('ranks by distance to target — closest macro fit wins, not just any qualifying combo', () => {
+    // Both foods individually land the day in green (severity 0 + strict
+    // thresholds met). But the precise-fit one nails 100% of every target;
+    // the budget-fit one is green-eligible but well below several macros.
+    const current = { calories: 1500, protein: 120, fat: 30, carbs: 150 }
+    const preciseFit = makeMeal({
+      foodName: 'Precise fit',
+      calories: 500,
+      protein: 30,
+      fats: 30,
+      carbs: 50,
+    })
+    // Lands at 1700/142/40/170 — within green's lenient windows (calories
+    // ≤+3%, protein ≥90%, fat ≥50%, carbs ±30%) but ~300 kcal short of
+    // ideal. Pre-distance the spec's "fewer added calories" tie-breaker
+    // would have surfaced this combo first; the new ranker correctly
+    // demotes it because the final macros are further from target.
+    const budgetFit = makeMeal({
+      foodName: 'Budget bite',
+      calories: 200,
+      protein: 22,
+      fats: 10,
+      carbs: 20,
+    })
+    const result = generateRecommendations({
+      goal,
+      current,
+      foodHistory: [preciseFit, budgetFit],
+    })
+    const greens = result.recommendations.filter((r) => r.color === 'green')
+    expect(greens.length).toBeGreaterThan(0)
+    expect(greens[0]!.foods[0]!.displayName).toBe('Precise fit')
+  })
+
+  test('ties on distance fall back to fewer items, then fewer added calories', () => {
+    // Two foods whose macros are IDENTICAL (and so produce identical
+    // final-day totals + identical distance to target). Tie-break should
+    // favour the lighter combo: 1 food beats 2 foods of half each.
+    const current = { calories: 1500, protein: 120, fat: 30, carbs: 150 }
     const single = makeMeal({
       foodName: 'Single big',
       calories: 400,
@@ -126,15 +207,14 @@ describe('generateRecommendations', () => {
       fats: 30,
       carbs: 50,
     })
-    // Two smaller foods together ALSO land in green but cost more items.
-    const small1 = makeMeal({
+    const half1 = makeMeal({
       foodName: 'Half a',
       calories: 200,
       protein: 13,
       fats: 15,
       carbs: 25,
     })
-    const small2 = makeMeal({
+    const half2 = makeMeal({
       foodName: 'Half b',
       calories: 200,
       protein: 12,
@@ -144,40 +224,12 @@ describe('generateRecommendations', () => {
     const result = generateRecommendations({
       goal,
       current,
-      foodHistory: [single, small1, small2],
+      foodHistory: [single, half1, half2],
     })
-    const green = result.recommendations.find((r) => r.color === 'green')
-    expect(green).toBeDefined()
-    expect(green!.foods).toHaveLength(1)
-    expect(green!.foods[0]!.displayName).toBe('Single big')
-  })
-
-  test('tie-breaker prefers fewer added calories when item count is equal', () => {
-    // Both foods alone land us in green, but one is cheaper in calories.
-    const current = { calories: 1600, protein: 130, fat: 40, carbs: 180 }
-    const cheap = makeMeal({
-      foodName: 'Cheap',
-      calories: 200,
-      protein: 12,
-      fats: 6,
-      carbs: 22,
-    })
-    const expensive = makeMeal({
-      foodName: 'Pricey',
-      calories: 300,
-      protein: 14,
-      fats: 8,
-      carbs: 28,
-    })
-    const result = generateRecommendations({
-      goal,
-      current,
-      foodHistory: [cheap, expensive],
-    })
-    const green = result.recommendations.find((r) => r.color === 'green')
-    expect(green).toBeDefined()
-    expect(green!.foods).toHaveLength(1)
-    expect(green!.foods[0]!.displayName).toBe('Cheap')
+    const greens = result.recommendations.filter((r) => r.color === 'green')
+    expect(greens.length).toBeGreaterThan(0)
+    expect(greens[0]!.foods).toHaveLength(1)
+    expect(greens[0]!.foods[0]!.displayName).toBe('Single big')
   })
 
   test('returns only the empty-combo green recommendation when the day is already green', () => {
