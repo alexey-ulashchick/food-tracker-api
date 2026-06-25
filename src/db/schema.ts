@@ -25,6 +25,11 @@ export const chatKindEnum = pgEnum('chat_kind', [
   'memory_added',
   'memory_updated',
   'memory_removed',
+  // /chat/recommend output: one row per achievable diet-day color, plus the
+  // "current color" row that opens the reply. `meta` carries the structured
+  // payload (color, foods[], added_macros, final_macros) — see
+  // src/routes/chat.ts for the exact shape.
+  'recommend',
 ])
 
 export const users = pgTable('users', {

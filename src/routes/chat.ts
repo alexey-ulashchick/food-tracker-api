@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk'
 import { and, desc, eq, gte } from 'drizzle-orm'
 import { type Context, Hono } from 'hono'
+import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
 import { db } from '../db/client.ts'
 import { chatMessages, dailyGoals, meals, type memories } from '../db/schema.ts'
@@ -12,6 +13,10 @@ import {
   priceUsage,
 } from '../llm/anthropic.ts'
 import { type ToolName, executeTool, isWriteTool, loadMemories, tools } from '../llm/tools.ts'
+import {
+  type Recommendation,
+  generateRecommendations,
+} from '../lib/recommend.ts'
 import { type AuthEnv, auth } from '../middleware/auth.ts'
 
 const HISTORY_DEPTH = 30
@@ -114,6 +119,126 @@ export const chatRoute = new Hono<AuthEnv>()
     })
 
     return c.json({ user: userMsg!, ai: aiMessages }, 201)
+  })
+  // SSE stream of food-recommendation cards. The client hits this when the
+  // user types "/recommend" in chat; the server is the only place that knows
+  // the user's targets, today's intake, and the 30-day food history, so the
+  // whole recommendation engine runs here and emits one card per achievable
+  // color. No LLM involved — generation is deterministic.
+  //
+  // Event sequence:
+  //   error      — daily goal missing for today (no recs possible); ends stream
+  //   user       — the persisted "/recommend" chat row, so the client renders
+  //                the user bubble for it
+  //   recommend  — one event per achievable target color (green → light_green
+  //                → yellow → orange), each carrying a persisted chat row with
+  //                kind='recommend' and the full Recommendation payload in meta
+  //   text       — fallback "nothing useful found" ai row when zero colors
+  //                are achievable
+  //   done       — closes the stream
+  //
+  // Every event's `data` is a JSON-encoded chat_messages row, so the client
+  // can drop it straight into its message list using the same toLocal mapper
+  // that handles non-streamed rows.
+  .post('/recommend', async (c) => {
+    const userId = c.get('userId')
+    const tzOffsetMin = clientTzOffsetMin(c)
+    const today = todayInOffset(tzOffsetMin)
+
+    return streamSSE(c, async (stream) => {
+      const [goalRow] = await db
+        .select()
+        .from(dailyGoals)
+        .where(and(eq(dailyGoals.userId, userId), eq(dailyGoals.date, today)))
+        .limit(1)
+
+      if (!goalRow) {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({
+            code: 'no_goal',
+            message:
+              'Сначала выстави цель на день: без цели рекомендация невозможна.',
+            date: today,
+          }),
+        })
+        return
+      }
+
+      // Persist the user's "/recommend" command so the chat history records
+      // what triggered the cards that follow. Same shape as a normal user
+      // text message — the client renders it as a regular bubble.
+      const [userMsg] = await db
+        .insert(chatMessages)
+        .values({
+          userId,
+          role: 'user',
+          content: '/recommend',
+          kind: 'text',
+        })
+        .returning()
+      if (userMsg) {
+        await stream.writeSSE({ event: 'user', data: JSON.stringify(userMsg) })
+      }
+
+      // Today's intake (sum of meals whose local date is `today`). Same
+      // boundaries the chat system prompt uses, so the recommendation and the
+      // chat numbers stay consistent.
+      const lookback = new Date(Date.now() - MEAL_LOOKBACK_DAYS * 86_400_000)
+      const recentRows = await db
+        .select()
+        .from(meals)
+        .where(and(eq(meals.userId, userId), gte(meals.timestamp, lookback)))
+        .orderBy(desc(meals.timestamp))
+      const todayMeals = recentRows.filter(
+        (m) => mealLocalDate(m, tzOffsetMin) === today,
+      )
+      const current = sumMacros(todayMeals)
+
+      const engine = generateRecommendations({
+        goal: goalRow,
+        current: {
+          calories: current.calories,
+          protein: current.protein,
+          fat: current.fats,
+          carbs: current.carbs,
+        },
+        foodHistory: recentRows,
+      })
+
+      // Persist one chat_messages row per recommendation, then stream it. The
+      // row order in DB matches the stream order (green first, …), so a chat
+      // reload renders the cards in the same sequence the user saw live.
+      for (const rec of engine.recommendations) {
+        const row = await persistRecommendationRow(userId, rec)
+        if (row) {
+          await stream.writeSSE({ event: 'recommend', data: JSON.stringify(row) })
+        }
+      }
+
+      if (engine.recommendations.length === 0) {
+        // Spec UI copy: when no target color is reachable, surface a single
+        // friendly text line instead of leaving the chat empty.
+        const [textRow] = await db
+          .insert(chatMessages)
+          .values({
+            userId,
+            role: 'ai',
+            kind: 'text',
+            content:
+              'Сегодня нет полезной комбинации еды для попадания в green/light_green/yellow/orange.',
+          })
+          .returning()
+        if (textRow) {
+          await stream.writeSSE({ event: 'text', data: JSON.stringify(textRow) })
+        }
+      }
+
+      await stream.writeSSE({
+        event: 'done',
+        data: JSON.stringify({ count: engine.recommendations.length }),
+      })
+    })
   })
 
 async function readBody(req: Request): Promise<{ content: string; image: File | null }> {
@@ -554,6 +679,32 @@ async function persistActionCard(
     case 'read':
       return undefined
   }
+}
+
+// Persists a single Recommendation as a chat_messages row (kind='recommend')
+// so it survives reloads and decodes through the iOS client's existing
+// `meta` machinery. `content` carries a human-readable one-liner that powers
+// fallbacks (copy-to-clipboard, push notifications) when the iOS card UI
+// isn't available.
+async function persistRecommendationRow(
+  userId: string,
+  rec: Recommendation,
+): Promise<ChatMessage | undefined> {
+  const foodSummary =
+    rec.foods.length === 0
+      ? 'ничего не есть'
+      : rec.foods.map((f) => f.displayName).join(', ')
+  const [row] = await db
+    .insert(chatMessages)
+    .values({
+      userId,
+      role: 'ai',
+      kind: 'recommend',
+      content: `${rec.color}: ${foodSummary}`,
+      meta: rec as unknown as Record<string, unknown>,
+    })
+    .returning()
+  return row
 }
 
 // Date columns come back as Date objects from drizzle; serialize to ISO so the

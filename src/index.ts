@@ -4,6 +4,7 @@ import { env } from './env.ts'
 import { mcpRoute } from './mcp/route.ts'
 import { errorHandler } from './middleware/errors.ts'
 import { chatRoute } from './routes/chat.ts'
+import { daySummaryRoute } from './routes/day-summary.ts'
 import { goalsRoute } from './routes/goals.ts'
 import { healthRoute } from './routes/health.ts'
 import { mealsRoute } from './routes/meals.ts'
@@ -22,6 +23,7 @@ app.route('/meals', mealsRoute)
 app.route('/goals', goalsRoute)
 app.route('/memories', memoriesRoute)
 app.route('/chat', chatRoute)
+app.route('/day-summary', daySummaryRoute)
 app.route('/mcp', mcpRoute)
 
 console.log(`Listening on http://localhost:${env.PORT}`)
