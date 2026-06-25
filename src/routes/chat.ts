@@ -144,100 +144,137 @@ export const chatRoute = new Hono<AuthEnv>()
     const userId = c.get('userId')
     const tzOffsetMin = clientTzOffsetMin(c)
     const today = todayInOffset(tzOffsetMin)
+    const userTag = userId.slice(0, 8)
+    console.log(
+      `[recommend] start user=${userTag} tz=${tzOffsetMin} today=${today}`,
+    )
 
     return streamSSE(c, async (stream) => {
-      const [goalRow] = await db
-        .select()
-        .from(dailyGoals)
-        .where(and(eq(dailyGoals.userId, userId), eq(dailyGoals.date, today)))
-        .limit(1)
+      try {
+        const [goalRow] = await db
+          .select()
+          .from(dailyGoals)
+          .where(and(eq(dailyGoals.userId, userId), eq(dailyGoals.date, today)))
+          .limit(1)
 
-      if (!goalRow) {
-        await stream.writeSSE({
-          event: 'error',
-          data: JSON.stringify({
-            code: 'no_goal',
-            message:
-              'Сначала выстави цель на день: без цели рекомендация невозможна.',
-            date: today,
-          }),
-        })
-        return
-      }
-
-      // Persist the user's "/recommend" command so the chat history records
-      // what triggered the cards that follow. Same shape as a normal user
-      // text message — the client renders it as a regular bubble.
-      const [userMsg] = await db
-        .insert(chatMessages)
-        .values({
-          userId,
-          role: 'user',
-          content: '/recommend',
-          kind: 'text',
-        })
-        .returning()
-      if (userMsg) {
-        await stream.writeSSE({ event: 'user', data: JSON.stringify(userMsg) })
-      }
-
-      // Today's intake (sum of meals whose local date is `today`). Same
-      // boundaries the chat system prompt uses, so the recommendation and the
-      // chat numbers stay consistent.
-      const lookback = new Date(Date.now() - MEAL_LOOKBACK_DAYS * 86_400_000)
-      const recentRows = await db
-        .select()
-        .from(meals)
-        .where(and(eq(meals.userId, userId), gte(meals.timestamp, lookback)))
-        .orderBy(desc(meals.timestamp))
-      const todayMeals = recentRows.filter(
-        (m) => mealLocalDate(m, tzOffsetMin) === today,
-      )
-      const current = sumMacros(todayMeals)
-
-      const engine = generateRecommendations({
-        goal: goalRow,
-        current: {
-          calories: current.calories,
-          protein: current.protein,
-          fat: current.fats,
-          carbs: current.carbs,
-        },
-        foodHistory: recentRows,
-      })
-
-      // Persist one chat_messages row per recommendation, then stream it. The
-      // row order in DB matches the stream order (green first, …), so a chat
-      // reload renders the cards in the same sequence the user saw live.
-      for (const rec of engine.recommendations) {
-        const row = await persistRecommendationRow(userId, rec)
-        if (row) {
-          await stream.writeSSE({ event: 'recommend', data: JSON.stringify(row) })
+        if (!goalRow) {
+          console.log(`[recommend] no-goal user=${userTag} today=${today}`)
+          await stream.writeSSE({
+            event: 'error',
+            data: JSON.stringify({
+              code: 'no_goal',
+              message:
+                'Сначала выстави цель на день: без цели рекомендация невозможна.',
+              date: today,
+            }),
+          })
+          return
         }
-      }
+        console.log(
+          `[recommend] goal user=${userTag} kcal=${goalRow.calorieGoal} p=${goalRow.proteinGGoal} c=${goalRow.carbsGGoal} f=${goalRow.fatGGoal}`,
+        )
 
-      if (engine.recommendations.length === 0) {
-        // Spec UI copy: when no target color is reachable, surface a single
-        // friendly text line instead of leaving the chat empty.
-        const [textRow] = await db
+        // Persist the user's "/recommend" command so the chat history records
+        // what triggered the cards that follow. Same shape as a normal user
+        // text message — the client renders it as a regular bubble.
+        const [userMsg] = await db
           .insert(chatMessages)
           .values({
             userId,
-            role: 'ai',
+            role: 'user',
+            content: '/recommend',
             kind: 'text',
-            content:
-              'Сегодня нет полезной комбинации еды для попадания в green/light_green/yellow/orange.',
           })
           .returning()
-        if (textRow) {
-          await stream.writeSSE({ event: 'text', data: JSON.stringify(textRow) })
+        if (userMsg) {
+          await stream.writeSSE({ event: 'user', data: JSON.stringify(userMsg) })
+        }
+
+        // Today's intake (sum of meals whose local date is `today`). Same
+        // boundaries the chat system prompt uses, so the recommendation and the
+        // chat numbers stay consistent.
+        const lookback = new Date(Date.now() - MEAL_LOOKBACK_DAYS * 86_400_000)
+        const recentRows = await db
+          .select()
+          .from(meals)
+          .where(and(eq(meals.userId, userId), gte(meals.timestamp, lookback)))
+          .orderBy(desc(meals.timestamp))
+        const todayMeals = recentRows.filter(
+          (m) => mealLocalDate(m, tzOffsetMin) === today,
+        )
+        const current = sumMacros(todayMeals)
+        console.log(
+          `[recommend] inputs user=${userTag} history=${recentRows.length} today-meals=${todayMeals.length} current-kcal=${Math.round(current.calories)} current-p=${Math.round(current.protein)} current-f=${Math.round(current.fats)} current-c=${Math.round(current.carbs)}`,
+        )
+
+        const engineStart = performance.now()
+        const engine = generateRecommendations({
+          goal: goalRow,
+          current: {
+            calories: current.calories,
+            protein: current.protein,
+            fat: current.fats,
+            carbs: current.carbs,
+          },
+          foodHistory: recentRows,
+        })
+        const engineMs = Math.round(performance.now() - engineStart)
+        console.log(
+          `[recommend] engine user=${userTag} current-color=${engine.current_color} recs=${engine.recommendations.length} colors=[${engine.recommendations.map((r) => r.color).join(',')}] took=${engineMs}ms`,
+        )
+
+        // Persist one chat_messages row per recommendation, then stream it. The
+        // row order in DB matches the stream order (green first, …), so a chat
+        // reload renders the cards in the same sequence the user saw live.
+        for (const rec of engine.recommendations) {
+          const row = await persistRecommendationRow(userId, rec)
+          if (row) {
+            await stream.writeSSE({ event: 'recommend', data: JSON.stringify(row) })
+          }
+        }
+
+        if (engine.recommendations.length === 0) {
+          // Spec UI copy: when no target color is reachable, surface a single
+          // friendly text line instead of leaving the chat empty.
+          console.log(`[recommend] no-recs user=${userTag} — emitting fallback text`)
+          const [textRow] = await db
+            .insert(chatMessages)
+            .values({
+              userId,
+              role: 'ai',
+              kind: 'text',
+              content:
+                'Сегодня нет полезной комбинации еды для попадания в green/light_green/yellow/orange.',
+            })
+            .returning()
+          if (textRow) {
+            await stream.writeSSE({ event: 'text', data: JSON.stringify(textRow) })
+          }
+        }
+
+        await stream.writeSSE({
+          event: 'done',
+          data: JSON.stringify({ count: engine.recommendations.length }),
+        })
+        console.log(`[recommend] done user=${userTag} emitted=${engine.recommendations.length}`)
+      } catch (err) {
+        // Hono's streamSSE swallows callback exceptions silently — log
+        // and re-emit so the iOS client renders an error card instead of
+        // staring at a typing dot that never resolves.
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error(
+          `[recommend] error user=${userTag}`,
+          err instanceof Error ? err.stack : err,
+        )
+        try {
+          await stream.writeSSE({
+            event: 'error',
+            data: JSON.stringify({ code: 'internal', message: msg }),
+          })
+        } catch {
+          // Stream already closed — nothing we can do.
         }
       }
-
-      await stream.writeSSE({
-        event: 'done',
-        data: JSON.stringify({ count: engine.recommendations.length }),
-      })
     })
   })
 
