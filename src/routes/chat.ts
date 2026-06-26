@@ -224,10 +224,15 @@ export const chatRoute = new Hono<AuthEnv>()
         )
 
         // Persist one chat_messages row per recommendation, then stream it. The
-        // row order in DB matches the stream order (green first, …), so a chat
-        // reload renders the cards in the same sequence the user saw live.
-        for (const rec of engine.recommendations) {
-          const row = await persistRecommendationRow(userId, rec)
+        // row order in DB matches the stream order (best fit first, …), so a
+        // chat reload renders the cards in the same sequence the user saw
+        // live. Stagger createdAt by the loop index so the chat-history
+        // fetch (sorted by createdAt DESC) preserves best-first order even
+        // when wall-clock resolution would otherwise collide on rapid inserts.
+        const recommendBase = new Date()
+        for (let i = 0; i < engine.recommendations.length; i++) {
+          const rec = engine.recommendations[i]!
+          const row = await persistRecommendationRow(userId, rec, recommendBase, i)
           if (row) {
             await stream.writeSSE({ event: 'recommend', data: JSON.stringify(row) })
           }
@@ -723,14 +728,26 @@ async function persistActionCard(
 // `meta` machinery. `content` carries a human-readable one-liner that powers
 // fallbacks (copy-to-clipboard, push notifications) when the iOS card UI
 // isn't available.
+//
+// `createdAtBase` and `index` together produce a deterministic, monotonic
+// createdAt across the burst of inserts a single /chat/recommend turn
+// fires. Without it, defaultNow() can stamp multiple rows with identical
+// timestamps (each insert is its own transaction but the wall clock is
+// coarse enough to collide on serverless Postgres), and the chat history
+// fetch — which sorts by createdAt DESC — returns the deck in an
+// unstable order. Staggering by 1ms per index keeps best-first order
+// after a loadHistory reconcile.
 async function persistRecommendationRow(
   userId: string,
   rec: Recommendation,
+  createdAtBase: Date,
+  index: number,
 ): Promise<ChatMessage | undefined> {
   const foodSummary =
     rec.foods.length === 0
       ? 'ничего не есть'
       : rec.foods.map((f) => f.displayName).join(', ')
+  const stampedAt = new Date(createdAtBase.getTime() + index)
   const [row] = await db
     .insert(chatMessages)
     .values({
@@ -739,6 +756,8 @@ async function persistRecommendationRow(
       kind: 'recommend',
       content: `${rec.color}: ${foodSummary}`,
       meta: rec as unknown as Record<string, unknown>,
+      timestamp: stampedAt,
+      createdAt: stampedAt,
     })
     .returning()
   return row
