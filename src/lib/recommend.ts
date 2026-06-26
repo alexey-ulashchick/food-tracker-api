@@ -1,12 +1,22 @@
 // /chat/recommend engine. Given today's logged intake + the user's recent
-// food history, produce ONE food-combination recommendation per achievable
-// target color (green / light_green / yellow / orange). Deterministic — no
-// LLM, no scoring beyond the spec's tie-breaker.
+// food history, propose food combinations that move the day closer to the
+// user's macro targets. Deterministic — no LLM, ranked purely by how close
+// each combo lands to the target K/P/C/F.
 //
-// The algorithm and every threshold come from the implementation spec
-// (recommend_food_color_implementation_spec.md). The single source of truth
-// for color decisions is classifyDietDay — this file generates candidate
-// final-day macros and asks the classifier to label them.
+// Departures from the original v1 spec (recommend_food_color_implementation_spec.md):
+//   - The spec was "one combo per achievable colour, four colours max".
+//     We now surface up to MAX_VARIANTS combos ranked by macro fit so the
+//     user can pick whichever appeals. Colour is preserved on each
+//     recommendation as metadata for the UI badge but is no longer the
+//     selection axis.
+//   - To keep the deck diverse, any single food may appear in at most
+//     MAX_USES_PER_FOOD of the surfaced recommendations. If "Греческий
+//     йогурт" is the top pick three times running, the fourth combo that
+//     would have used it is skipped in favour of something else.
+//
+// The single source of truth for colour decisions remains classifyDietDay
+// — this file generates candidate final-day macros and asks the classifier
+// to label them.
 
 import type { dailyGoals, meals } from '../db/schema.ts'
 import { type DietDayColor, classifyDietDay } from './dietDayClassifier.ts'
@@ -59,22 +69,17 @@ export type Recommendation = {
   finalMacros: Macros
 }
 
-// Target colors are surfaced in this order per spec. red/blue/gray are never
-// recommended — they describe failure modes, not aspirations.
-const TARGET_COLORS: DietDayColor[] = ['green', 'light_green', 'yellow', 'orange']
-
 const MAX_CANDIDATES = 100
 const MAX_COMBO_SIZE = 3
-// Departure from the v1 spec ("not rank multiple options inside the same
-// color"): the chat surface now wants several variants per color so the user
-// can pick a combo that fits their appetite/preferences. 3 is a sweet spot
-// between choice and chat clutter (4 colors × 3 = up to 12 cards).
-const MAX_VARIANTS_PER_COLOR = 3
-// Two combos overlapping by more than this fraction of foods are considered
-// near-duplicates and won't both be picked. Diversity is applied greedily on
-// top of the distance-sorted list — best variant always lands first, then
-// each subsequent slot requires a meaningfully different food set.
-const MAX_OVERLAP_FRACTION = 0.5
+// Number of recommendations to surface in chat. With 4 macros to fit and
+// up to 100 candidate foods, 10 gives the user real choice without
+// flooding the chat.
+const MAX_VARIANTS = 10
+// Across the MAX_VARIANTS surfaced combos, any single food appears in at
+// most this many of them. Keeps the deck from collapsing into "everything
+// is yogurt-based" when one food happens to fit the user's deficit
+// perfectly.
+const MAX_USES_PER_FOOD = 3
 
 export type RecommendationContext = {
   goal: Goal
@@ -108,12 +113,12 @@ export function generateRecommendations(ctx: RecommendationContext): EngineResul
   const candidates = buildCandidateFoods(ctx.foodHistory, target.calories)
   const combos = generateCombos(candidates)
 
-  // Evaluate every combo once and bucket by color so we can pick the best
-  // per target without re-scanning everything for each color. Each entry
-  // carries its distance to target — lower = closer to ideal macros, which
-  // is what drives the per-color ranking below.
-  const buckets = new Map<DietDayColor, EvaluatedCombo[]>()
+  // Evaluate every combo once. Colour is just metadata for the UI now —
+  // ranking is purely by how close the resulting day macros land to the
+  // user's K/P/C/F targets.
+  const evaluated: EvaluatedCombo[] = []
   for (const combo of combos) {
+    if (combo.length === 0) continue
     const added = sumMacros(combo)
     const final: Macros = {
       calories: ctx.current.calories + added.calories,
@@ -121,41 +126,34 @@ export function generateRecommendations(ctx: RecommendationContext): EngineResul
       fat: ctx.current.fat + added.fat,
       carbs: ctx.current.carbs + added.carbs,
     }
-    const color = classify(final, target)
-    const entry: EvaluatedCombo = {
+    evaluated.push({
       combo,
       added,
       final,
+      color: classify(final, target),
       distance: distanceToTarget(final, target),
-    }
-    const bucket = buckets.get(color)
-    if (bucket) bucket.push(entry)
-    else buckets.set(color, [entry])
+    })
   }
 
-  const recommendations: Recommendation[] = []
-  for (const color of TARGET_COLORS) {
-    const bucket = buckets.get(color)
-    if (!bucket || bucket.length === 0) continue
-    const winners = pickTopVariants(bucket, MAX_VARIANTS_PER_COLOR)
-    for (const winner of winners) {
-      recommendations.push({
-        currentColor: current_color,
-        color,
-        foods: winner.combo.map((f) => ({
-          id: f.id,
-          displayName: f.displayName,
-          emoji: f.emoji,
-          calories: f.calories,
-          protein: f.protein,
-          fat: f.fat,
-          carbs: f.carbs,
-        })),
-        addedMacros: winner.added,
-        finalMacros: winner.final,
-      })
-    }
-  }
+  evaluated.sort(compareCombos)
+
+  const winners = pickTopVariantsWithFoodCap(evaluated, MAX_VARIANTS, MAX_USES_PER_FOOD)
+
+  const recommendations: Recommendation[] = winners.map((w) => ({
+    currentColor: current_color,
+    color: w.color,
+    foods: w.combo.map((f) => ({
+      id: f.id,
+      displayName: f.displayName,
+      emoji: f.emoji,
+      calories: f.calories,
+      protein: f.protein,
+      fat: f.fat,
+      carbs: f.carbs,
+    })),
+    addedMacros: w.added,
+    finalMacros: w.final,
+  }))
 
   return { current_color, recommendations }
 }
@@ -164,6 +162,7 @@ type EvaluatedCombo = {
   combo: CandidateFood[]
   added: Macros
   final: Macros
+  color: DietDayColor
   // Normalized L1 distance of `final` from `target` macros. The selection
   // step sorts by this — a green combo that lands 5 kcal over target beats
   // a green combo that lands 350 kcal under, even though both are "green".
@@ -245,8 +244,12 @@ function normalizeName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
+// All combos of size 1..MAX_COMBO_SIZE with unique foods. No repetition
+// inside a combo — "3 servings of yogurt" is not modelled because the
+// spec treats a meal log entry as a complete dish, and across-deck
+// diversity is enforced separately (see pickTopVariantsWithFoodCap).
 function generateCombos(foods: CandidateFood[]): CandidateFood[][] {
-  const combos: CandidateFood[][] = [[]]
+  const combos: CandidateFood[][] = []
   for (let i = 0; i < foods.length; i++) {
     combos.push([foods[i]!])
   }
@@ -278,54 +281,39 @@ function sumMacros(combo: CandidateFood[]): Macros {
   return total
 }
 
-// Picks up to `limit` variants from a per-color bucket. Ranks by
-// distance-to-target (closest macro fit wins), breaks ties with the spec's
-// item_count → added_calories → lexical chain so identical inputs always
-// produce the same ranking. A greedy diversity filter prevents the top
-// picks from being near-duplicates that share most of their foods.
-function pickTopVariants(
+// Walks the distance-sorted list and grabs the best combos while making
+// sure no single food appears in more than `maxUsesPerFood` of them. As
+// each combo is picked, every food it contains gets its usage counter
+// bumped; a combo whose foods are all already at the cap is skipped and
+// the next best alternative is considered.
+function pickTopVariantsWithFoodCap(
   entries: EvaluatedCombo[],
   limit: number,
+  maxUsesPerFood: number,
 ): EvaluatedCombo[] {
-  const sorted = entries.slice().sort(compareCombos)
   const picked: EvaluatedCombo[] = []
-  for (const candidate of sorted) {
+  const usageByFood = new Map<string, number>()
+  for (const candidate of entries) {
     if (picked.length >= limit) break
-    if (picked.every((p) => isDiverseEnough(candidate, p))) {
-      picked.push(candidate)
-    }
-  }
-  // Fallback: if diversity filtering culled everything past the first pick
-  // (small candidate space, e.g. 2 foods total), fall back to plain top-N
-  // so the user still sees alternatives.
-  if (picked.length < Math.min(limit, sorted.length)) {
-    for (const candidate of sorted) {
-      if (picked.length >= limit) break
-      if (!picked.includes(candidate)) picked.push(candidate)
+    const wouldExceed = candidate.combo.some(
+      (f) => (usageByFood.get(f.id) ?? 0) >= maxUsesPerFood,
+    )
+    if (wouldExceed) continue
+    picked.push(candidate)
+    for (const f of candidate.combo) {
+      usageByFood.set(f.id, (usageByFood.get(f.id) ?? 0) + 1)
     }
   }
   return picked
 }
 
+// Distance is primary; the spec's chain (item_count → added_calories →
+// lex) breaks ties so identical inputs always produce the same ranking.
 function compareCombos(a: EvaluatedCombo, b: EvaluatedCombo): number {
   if (a.distance !== b.distance) return a.distance - b.distance
   if (a.combo.length !== b.combo.length) return a.combo.length - b.combo.length
   if (a.added.calories !== b.added.calories) return a.added.calories - b.added.calories
   return lexKey(a.combo).localeCompare(lexKey(b.combo))
-}
-
-// Two combos are "diverse enough" when they share at most
-// MAX_OVERLAP_FRACTION of the foods in the smaller combo. The empty combo
-// is trivially diverse from every non-empty combo (no overlap).
-function isDiverseEnough(a: EvaluatedCombo, b: EvaluatedCombo): boolean {
-  const minLen = Math.min(a.combo.length, b.combo.length)
-  if (minLen === 0) return true
-  const aIds = new Set(a.combo.map((f) => f.id))
-  let overlap = 0
-  for (const f of b.combo) {
-    if (aIds.has(f.id)) overlap += 1
-  }
-  return overlap / minLen <= MAX_OVERLAP_FRACTION
 }
 
 function lexKey(combo: CandidateFood[]): string {
