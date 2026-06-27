@@ -119,7 +119,15 @@ export function generateRecommendations(ctx: RecommendationContext): EngineResul
   const evaluated: EvaluatedCombo[] = []
   for (const combo of combos) {
     if (combo.length === 0) continue
-    const added = sumMacros(combo)
+    // Canonical food order inside the combo: alphabetical by display name.
+    // The combo generator already enumerates unordered sets, but two combos
+    // with the same foods (one from an older invocation, one fresh) would
+    // otherwise render with different sequences on iOS. Sorting here lets
+    // the dedup step below catch any structural duplicate by a stable key.
+    const ordered = [...combo].sort((a, b) =>
+      a.displayName.localeCompare(b.displayName),
+    )
+    const added = sumMacros(ordered)
     const final: Macros = {
       calories: ctx.current.calories + added.calories,
       protein: ctx.current.protein + added.protein,
@@ -127,7 +135,7 @@ export function generateRecommendations(ctx: RecommendationContext): EngineResul
       carbs: ctx.current.carbs + added.carbs,
     }
     evaluated.push({
-      combo,
+      combo: ordered,
       added,
       final,
       color: classify(final, target),
@@ -137,7 +145,14 @@ export function generateRecommendations(ctx: RecommendationContext): EngineResul
 
   evaluated.sort(compareCombos)
 
-  const winners = pickTopVariantsWithFoodCap(evaluated, MAX_VARIANTS, MAX_USES_PER_FOOD)
+  // Drop combos whose food set we've already seen at a better rank. The
+  // generator should never produce two combos with the same food set, but
+  // a defensive pass costs nothing and prevents user-visible duplicates if
+  // anything upstream ever changes (e.g. allowing repetition within a
+  // combo would let "1x A + 2x B" and "2x A + 1x B" both surface).
+  const deduped = dedupByFoodSet(evaluated)
+
+  const winners = pickTopVariantsWithFoodCap(deduped, MAX_VARIANTS, MAX_USES_PER_FOOD)
 
   const recommendations: Recommendation[] = winners.map((w) => ({
     currentColor: current_color,
@@ -305,6 +320,24 @@ function pickTopVariantsWithFoodCap(
     }
   }
   return picked
+}
+
+// Drops combos whose canonical food-set key matches one already kept.
+// Input is expected to be pre-sorted (best first), so the first occurrence
+// wins and everything else with the same key is discarded.
+function dedupByFoodSet(entries: EvaluatedCombo[]): EvaluatedCombo[] {
+  const seen = new Set<string>()
+  const out: EvaluatedCombo[] = []
+  for (const e of entries) {
+    const key = e.combo
+      .map((f) => f.id)
+      .sort()
+      .join('|')
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(e)
+  }
+  return out
 }
 
 // Lower rank = better outcome. The target colours sort ahead of the
