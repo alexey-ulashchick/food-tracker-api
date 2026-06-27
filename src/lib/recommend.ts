@@ -69,7 +69,14 @@ export type Recommendation = {
   finalMacros: Macros
 }
 
-const MAX_CANDIDATES = 100
+// Cap on unique candidate foods carried into combo generation. Was 100 in
+// the original spec; on a 256MB fly.io VM with 100 candidates the
+// resulting ~165k combos × ~250 bytes per EvaluatedCombo (plus sort
+// temporaries) blew past the memory budget and the machine OOM-killed
+// itself. 50 candidates → C(50,1)+C(50,2)+C(50,3) ≈ 21k combos, ~5MB
+// for the evaluated array, room to spare. The user's most recently
+// eaten foods are kept; older entries are dropped first.
+const MAX_CANDIDATES = 50
 const MAX_COMBO_SIZE = 3
 // Number of recommendations to surface in chat. With 4 macros to fit and
 // up to 100 candidate foods, 10 gives the user real choice without
