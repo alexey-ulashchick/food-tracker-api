@@ -307,9 +307,29 @@ function pickTopVariantsWithFoodCap(
   return picked
 }
 
-// Distance is primary; the spec's chain (item_count → added_calories →
-// lex) breaks ties so identical inputs always produce the same ranking.
+// Lower rank = better outcome. The target colours sort ahead of the
+// failure colours, which would only appear in the deck if the candidate
+// pool is so weak that nothing usable can be reached — we still rank them
+// among themselves for determinism.
+const COLOR_RANK: Record<DietDayColor, number> = {
+  green: 0,
+  light_green: 1,
+  yellow: 2,
+  orange: 3,
+  blue: 4,
+  red: 5,
+  gray: 6,
+}
+
+// Sort key: colour tier first (a "Strong day" combo that's slightly off
+// target beats a "Good day" combo that's bang-on; the user's mental model
+// is "give me every green option before any light-green one"), then
+// distance-to-target inside the colour, then the spec's chain
+// (item_count → added_calories → lex) for deterministic tie-breaks.
 function compareCombos(a: EvaluatedCombo, b: EvaluatedCombo): number {
+  const ra = COLOR_RANK[a.color] ?? 99
+  const rb = COLOR_RANK[b.color] ?? 99
+  if (ra !== rb) return ra - rb
   if (a.distance !== b.distance) return a.distance - b.distance
   if (a.combo.length !== b.combo.length) return a.combo.length - b.combo.length
   if (a.added.calories !== b.added.calories) return a.added.calories - b.added.calories
