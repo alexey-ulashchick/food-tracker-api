@@ -119,15 +119,7 @@ export function generateRecommendations(ctx: RecommendationContext): EngineResul
   const evaluated: EvaluatedCombo[] = []
   for (const combo of combos) {
     if (combo.length === 0) continue
-    // Canonical food order inside the combo: alphabetical by display name.
-    // The combo generator already enumerates unordered sets, but two combos
-    // with the same foods (one from an older invocation, one fresh) would
-    // otherwise render with different sequences on iOS. Sorting here lets
-    // the dedup step below catch any structural duplicate by a stable key.
-    const ordered = [...combo].sort((a, b) =>
-      a.displayName.localeCompare(b.displayName),
-    )
-    const added = sumMacros(ordered)
+    const added = sumMacros(combo)
     const final: Macros = {
       calories: ctx.current.calories + added.calories,
       protein: ctx.current.protein + added.protein,
@@ -135,7 +127,7 @@ export function generateRecommendations(ctx: RecommendationContext): EngineResul
       carbs: ctx.current.carbs + added.carbs,
     }
     evaluated.push({
-      combo: ordered,
+      combo,
       added,
       final,
       color: classify(final, target),
@@ -370,10 +362,20 @@ function compareCombos(a: EvaluatedCombo, b: EvaluatedCombo): number {
 }
 
 function lexKey(combo: CandidateFood[]): string {
-  return combo
-    .map((f) => f.displayName.toLowerCase())
-    .sort()
-    .join('|')
+  // Plain ASCII-lowercase sort — fast `<`/`>` on strings — instead of
+  // localeCompare. compareCombos calls this on every tie-breaker step,
+  // and the surrounding evaluator runs O(n*log n) comparisons over ~165k
+  // combos. localeCompare through ICU is ~50µs per call on the fly.io
+  // runtime, which adds up to tens of seconds of event-loop blocking and
+  // misses the health check. Default Array.sort() with no comparator does
+  // a fast UTF-16 code-unit sort, which is deterministic enough for a
+  // tie-breaker key.
+  const names: string[] = new Array(combo.length)
+  for (let i = 0; i < combo.length; i++) {
+    names[i] = combo[i]!.displayName.toLowerCase()
+  }
+  names.sort()
+  return names.join('|')
 }
 
 function emptyGreenRecommendation(current: Macros): Recommendation {
