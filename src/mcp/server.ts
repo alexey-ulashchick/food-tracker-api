@@ -1,8 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { and, desc, eq, gte, lt, lte } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '../db/client.ts'
 import { dailyGoals, meals, memories } from '../db/schema.ts'
+import {
+  decorateLocalDate,
+  fetchMealsByLocalDateRange,
+} from '../lib/mealLocalDate.ts'
 
 const isoDate = z
   .string()
@@ -11,15 +15,6 @@ const isoDate = z
 
 const mealEnum = z.enum(['Breakfast', 'Lunch', 'Dinner', 'Snack'])
 const dayTypeEnum = z.enum(['training', 'rest'])
-
-// One-day [start, end) UTC window for a YYYY-MM-DD literal interpreted in
-// the caller's TZ offset (minutes east of UTC).
-function dayBounds(date: string, offsetMin: number): { start: Date; end: Date } {
-  const utcMidnight = new Date(`${date}T00:00:00Z`).getTime()
-  const start = new Date(utcMidnight - offsetMin * 60_000)
-  const end = new Date(start.getTime() + 86_400_000)
-  return { start, end }
-}
 
 function ok(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] }
@@ -74,23 +69,31 @@ export function buildMcpServer(userId: string): McpServer {
     {
       title: 'List meals',
       description:
-        "List the user's meals, newest first. Use `from`/`to` (ISO 8601) to bound the range; both optional.",
+        "List the user's meals across a date range, newest first. Each row is bucketed by its own local date (TZ of the place the meal was eaten), so cross-TZ travel doesn't shift meals between days. Each row carries a `localDate` field.",
       inputSchema: {
-        from: z.string().datetime().optional().describe('ISO 8601 lower bound (inclusive).'),
-        to: z.string().datetime().optional().describe('ISO 8601 upper bound (inclusive).'),
-        limit: z.number().int().positive().max(500).default(100),
+        dateFrom: isoDate.describe('Calendar date YYYY-MM-DD (inclusive).'),
+        dateTo: isoDate.describe(
+          'Calendar date YYYY-MM-DD (inclusive). Must be ≥ dateFrom.',
+        ),
+        tzOffsetMin: z
+          .number()
+          .int()
+          .min(-720)
+          .max(840)
+          .optional()
+          .describe(
+            'TZ offset in minutes east of UTC. Used only as a fallback when a stored meal has a NULL tz_offset_min (legacy rows). Defaults to UTC.',
+          ),
       },
     },
-    logged('list_meals', async ({ from, to, limit }) => {
-      const conditions = [eq(meals.userId, userId)]
-      if (from) conditions.push(gte(meals.timestamp, new Date(from)))
-      if (to) conditions.push(lte(meals.timestamp, new Date(to)))
-      const rows = await db
-        .select()
-        .from(meals)
-        .where(and(...conditions))
-        .orderBy(desc(meals.timestamp))
-        .limit(limit)
+    logged('list_meals', async ({ dateFrom, dateTo, tzOffsetMin }) => {
+      if (dateFrom > dateTo) return notFound('dateFrom must be ≤ dateTo')
+      const rows = await fetchMealsByLocalDateRange(
+        userId,
+        dateFrom,
+        dateTo,
+        tzOffsetMin ?? 0,
+      )
       return ok(rows)
     }),
   )
@@ -100,7 +103,7 @@ export function buildMcpServer(userId: string): McpServer {
     {
       title: 'Get meals for a calendar day',
       description:
-        "Every meal logged on a specific calendar date (interpreted in the caller's TZ), ordered by time. Each row includes its id — use that id with update_meal or delete_meal.",
+        "Every meal whose own local-date (TZ of the place it was eaten) equals the given date, ordered by time. Each row includes its id — use that id with update_meal or delete_meal.",
       inputSchema: {
         date: isoDate,
         tzOffsetMin: z
@@ -108,18 +111,21 @@ export function buildMcpServer(userId: string): McpServer {
           .int()
           .min(-720)
           .max(840)
+          .optional()
           .describe(
-            'TZ offset in minutes east of UTC defining the calendar day boundaries (matches iOS TimeZone.current.secondsFromGMT()/60).',
+            'TZ offset (minutes east of UTC) used only as a fallback when a meal has NULL tz_offset_min. Most meals already carry their own offset; passing the caller TZ here is harmless. Defaults to UTC.',
           ),
       },
     },
     logged('get_meals_for_day', async ({ date, tzOffsetMin }) => {
-      const { start, end } = dayBounds(date, tzOffsetMin)
-      const rows = await db
-        .select()
-        .from(meals)
-        .where(and(eq(meals.userId, userId), gte(meals.timestamp, start), lt(meals.timestamp, end)))
-        .orderBy(meals.timestamp)
+      const rows = await fetchMealsByLocalDateRange(
+        userId,
+        date,
+        date,
+        tzOffsetMin ?? 0,
+      )
+      // Chronological order is friendlier for "show me my day" prompts.
+      rows.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
       return ok(rows)
     }),
   )

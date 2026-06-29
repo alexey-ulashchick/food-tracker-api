@@ -13,6 +13,7 @@ import { z } from 'zod'
 import { db } from '../db/client.ts'
 import { dailyGoals, meals } from '../db/schema.ts'
 import { type DietDayVerdict, verdictDietDay } from '../lib/dietDayClassifier.ts'
+import { mealLocalDate } from '../lib/mealLocalDate.ts'
 import { type AuthEnv, auth } from '../middleware/auth.ts'
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
@@ -138,11 +139,6 @@ function clientTzOffsetMin(c: Context<AuthEnv>): number {
   const raw = c.req.header('X-Client-TZ-Offset')
   const parsed = raw !== undefined ? Number.parseInt(raw, 10) : 0
   return Number.isFinite(parsed) ? parsed : 0
-}
-
-function mealLocalDate(m: Meal, fallbackOffsetMin: number): string {
-  const offset = m.tzOffsetMin ?? fallbackOffsetMin
-  return new Date(m.timestamp.getTime() + offset * 60_000).toISOString().slice(0, 10)
 }
 
 function sumMacros(rows: Meal[]) {

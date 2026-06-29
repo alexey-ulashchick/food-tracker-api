@@ -1,7 +1,8 @@
 import type Anthropic from '@anthropic-ai/sdk'
-import { and, asc, desc, eq, gte, lt } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { db } from '../db/client.ts'
 import { dailyGoals, meals, memories } from '../db/schema.ts'
+import { fetchMealsByLocalDateRange } from '../lib/mealLocalDate.ts'
 
 // Tool surface exposed to Claude. Two flavors:
 //   * read tools  — fetch data and return it; conversation continues so the
@@ -228,20 +229,9 @@ export type ToolExecResult =
   | { ok: true; kind: 'memory_removed'; memory: Memory }
   | { ok: false; error: string }
 
-// One-day [start, end) window from a YYYY-MM-DD literal interpreted in a
-// caller-supplied TZ offset (minutes east of UTC). Both bounds are real UTC
-// instants. We compute the offset for the requested wall-clock midnight by
-// taking `00:00 UTC + offset minutes` first, which gives "midnight at the
-// requested local TZ, expressed in UTC".
-function dayBounds(date: string, offsetMin: number): { start: Date; end: Date } {
-  const utcMidnight = new Date(`${date}T00:00:00Z`).getTime()
-  // If the caller's local midnight is at, say, +03:00, then in UTC it's
-  // 21:00 of the previous day. Subtract the offset to get the UTC instant
-  // when the requested local day begins.
-  const start = new Date(utcMidnight - offsetMin * 60_000)
-  const end = new Date(start.getTime() + 86_400_000)
-  return { start, end }
-}
+// dayBounds removed — get_meals_for_day now delegates to
+// fetchMealsByLocalDateRange in src/lib/mealLocalDate.ts so the LLM tool
+// agrees with HTTP /meals and MCP tools on per-meal local-date bucketing.
 
 function badInput(message: string): ToolExecResult {
   return { ok: false, error: message }
@@ -302,12 +292,9 @@ export async function executeTool(
       const date = asString(input.date)
       if (!date || !isoDateRe.test(date)) return badInput('date must be YYYY-MM-DD')
       const offsetMin = asInteger(input.tzOffsetMin) ?? opts.defaultTzOffsetMin ?? 0
-      const { start, end } = dayBounds(date, offsetMin)
-      const rows = await db
-        .select()
-        .from(meals)
-        .where(and(eq(meals.userId, userId), gte(meals.timestamp, start), lt(meals.timestamp, end)))
-        .orderBy(asc(meals.timestamp))
+      const rows = await fetchMealsByLocalDateRange(userId, date, date, offsetMin)
+      // Chronological for prompt rendering.
+      rows.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
       return { ok: true, kind: 'read', data: rows }
     }
     case 'add_meal': {

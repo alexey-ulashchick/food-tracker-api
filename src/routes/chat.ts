@@ -17,6 +17,7 @@ import {
   type Recommendation,
   generateRecommendations,
 } from '../lib/recommend.ts'
+import { mealLocalDate } from '../lib/mealLocalDate.ts'
 import { type AuthEnv, auth } from '../middleware/auth.ts'
 
 const HISTORY_DEPTH = 30
@@ -815,13 +816,8 @@ function todayInOffset(offsetMin: number): string {
   return new Date(Date.now() + offsetMin * 60_000).toISOString().slice(0, 10)
 }
 
-// What calendar date a meal falls on in the TZ where it was eaten. If the
-// meal predates the tz_offset_min column (NULL), we fall back to the request's
-// current offset — same behaviour as before TZ tracking shipped.
-function mealLocalDate(m: Meal, fallbackOffsetMin: number): string {
-  const offset = m.tzOffsetMin ?? fallbackOffsetMin
-  return new Date(m.timestamp.getTime() + offset * 60_000).toISOString().slice(0, 10)
-}
+// What calendar date a meal falls on uses the shared helper in
+// src/lib/mealLocalDate.ts. Imported above.
 
 type Totals = { calories: number; protein: number; carbs: number; fats: number }
 
