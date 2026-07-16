@@ -8,7 +8,11 @@ export const anthropic = new Anthropic({
 // Sensible defaults — Sonnet 4.6 hits the price/quality sweet spot for chat.
 // Override per-call when needed.
 export const DEFAULT_MODEL = 'claude-sonnet-4-6'
-export const DEFAULT_MAX_TOKENS = 1024
+// Roomy enough for the model to emit many tool_use blocks in a single turn
+// (e.g. setting goals for a whole range of days) plus a closing recap without
+// getting truncated with stop_reason='max_tokens'. Output is billed per token
+// actually generated, so short turns are unaffected by the higher ceiling.
+export const DEFAULT_MAX_TOKENS = 4096
 
 // Per-million-token prices, USD. Mirrors anthropic.com/pricing for the
 // models we actually use. Cache creation is the same as input on the new

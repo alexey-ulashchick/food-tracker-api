@@ -22,7 +22,11 @@ import { type AuthEnv, auth } from '../middleware/auth.ts'
 
 const HISTORY_DEPTH = 30
 const MEAL_LOOKBACK_DAYS = 30
-const MAX_TOOL_ITERATIONS = 5
+// Max model round-trips per user turn. Generous so bulk operations (e.g.
+// setting goals for a whole month, or fanning out reads to find an old meal)
+// can run to completion instead of dying mid-way. Each iteration can emit
+// many tool_use blocks, so this is a safety ceiling, not the expected depth.
+const MAX_TOOL_ITERATIONS = 20
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
 
 const listMessagesSchema = z.object({
@@ -431,6 +435,12 @@ async function runToolLoop(args: {
     `[chat] turn-begin user=${userTag} tz=${tzOffsetMin} sys-chars=${systemPrompt.length} msgs=${messages.length}`,
   )
 
+  // Set once the model produces a response with NO tool calls — i.e. it
+  // decided the turn is complete on its own. If we instead fall out of the
+  // loop with this still false, we hit the iteration ceiling mid-work and owe
+  // the user a closing message (see the wrap-up call below).
+  let finishedNaturally = false
+
   for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
     const startedAt = performance.now()
     const response = await anthropic.messages.create({
@@ -504,7 +514,12 @@ async function runToolLoop(args: {
       }
     }
 
-    if (toolResults.length === 0) break
+    if (toolResults.length === 0) {
+      // No tool calls this round → the model gave its final answer. Natural,
+      // complete end of the turn.
+      finishedNaturally = true
+      break
+    }
 
     // After any write in this iteration, refetch today's totals and tack
     // them onto every tool_result so the model sees the post-write budget
@@ -523,7 +538,48 @@ async function runToolLoop(args: {
     messages.push({ role: 'assistant', content: response.content })
     messages.push({ role: 'user', content: toolResults })
 
-    if (response.stop_reason !== 'tool_use') break
+    // NB: we intentionally do NOT break on stop_reason !== 'tool_use'. A bulk
+    // operation (e.g. 30 set_goal calls) can truncate at max_tokens partway
+    // through the batch; breaking here would strand the rest of the work and
+    // end the turn with no recap. The only natural terminator is "the model
+    // emitted no tool calls" (handled above); everything else keeps looping
+    // until that happens or we hit MAX_TOOL_ITERATIONS.
+  }
+
+  // If we fell out of the loop still mid-work (hit MAX_TOOL_ITERATIONS while
+  // the model wanted to keep calling tools), it never got to write a closing
+  // line — the client would see a stack of action cards and then silence. Do
+  // one final tools-off turn so the user always gets an acknowledgement, and
+  // so the model can say what's still outstanding and offer to continue.
+  if (!finishedNaturally) {
+    console.warn(
+      `[chat] iteration-cap user=${userTag} iters=${MAX_TOOL_ITERATIONS} — forcing tools-off wrap-up`,
+    )
+    const wrapSystem = `${systemPrompt}\n\nSYSTEM NOTE: You have reached the tool-call limit for this turn, so tools are now disabled. Reply with ONE short line: summarise what you just did, and if the task is not fully finished, tell the user exactly what's left and that they can ask you to continue.`
+    const wrap = await anthropic.messages.create({
+      model: DEFAULT_MODEL,
+      max_tokens: DEFAULT_MAX_TOKENS,
+      system: wrapSystem,
+      // No `tools` → the model cannot call anything and must produce text.
+      messages,
+      metadata: { user_id: userId },
+    })
+    const wrapUsage = priceUsage(DEFAULT_MODEL, wrap.usage)
+    turnUsage.inputTokens += wrapUsage.inputTokens
+    turnUsage.outputTokens += wrapUsage.outputTokens
+    turnUsage.cacheCreationTokens += wrapUsage.cacheCreationTokens
+    turnUsage.cacheReadTokens += wrapUsage.cacheReadTokens
+    turnUsage.costUsd += wrapUsage.costUsd
+    for (const block of wrap.content) {
+      if (block.type !== 'text') continue
+      const text = block.text.trim()
+      if (!text) continue
+      const [row] = await db
+        .insert(chatMessages)
+        .values({ userId, role: 'ai', content: text, kind: 'text' })
+        .returning()
+      if (row) persisted.push(row)
+    }
   }
 
   // Stamp the per-turn usage on the LAST persisted ai row so the iOS surface
@@ -938,6 +994,7 @@ function buildSystemPrompt(ctx: ChatContext): string {
     '',
     'Tools:',
     '  * get_goal_for_day(date) / get_meals_for_day(date) — read user data. Each meal row includes its `id`.',
+    '  * list_meals(endDate?, days?) — page through the meal history (default 5 days per page, newest first). Use it to browse what the user actually logged and find a past dish YOURSELF when you do not know its exact name or date; page back with the returned `olderThan` until you find a match or `hasOlder` is false.',
     '  * add_meal(...) — log a meal immediately. Use whenever the user expresses logging intent (text, photo, or both). Estimate macros conservatively.',
     '  * update_meal(id, ...) — edit an existing meal in place when the user corrects macros, name, or portion. Pass only fields that change.',
     '  * delete_meal(id) — remove a meal entirely (e.g. user did not eat it).',
@@ -946,12 +1003,16 @@ function buildSystemPrompt(ctx: ChatContext): string {
     '',
     'Guidance:',
     '  - Writes happen the moment you call the tool — there is no separate confirm step. The iOS app shows a card describing what changed.',
+    '  - NEVER reply with just a promise to act ("сейчас поищу", "начинаю устанавливать", "секунду", "let me check") and then stop. That ends your turn and the user gets no result. If the task needs tools, CALL them in THIS SAME turn; only send plain text once the work is done or when no tool is needed.',
+    '  - Bulk requests (e.g. "выставь цели на 30 дней", "залогируй весь день") — issue ALL the required tool calls, not just the first few. You may emit many tool_use blocks in one turn and keep going across turns; do not stop until every day/item is handled. When everything is done, send ONE short summary line.',
+    '  - Macro/calorie consistency (ALWAYS): any macros you propose or edit MUST reconcile with the Atwater formula — protein*4 + carbs*4 + fats*9 must equal the `calories` you pass (within ~5% for rounding). Before every add_meal / update_meal call, compute protein*4 + carbs*4 + fats*9 and adjust the numbers until they agree. Never emit macros whose implied energy contradicts `calories`. When editing macros with update_meal, pass calories AND all three macros together so the set stays balanced.',
     '  - The "Today" block below is the ONLY source of truth for today\'s eaten / remaining macros. Numbers in conversation history (yesterday\'s recaps, "осталось 0 ккал" from a previous day) describe THAT day\'s budget — not today\'s.',
     '  - Watch for `[Day boundary: <prev> → <new>]` markers in the conversation: every recap, suggestion, and budget number ABOVE a boundary belongs to a different day and is stale for today\'s budget. You can still reference past meals or preferences ("как вчера", "как обычно") — just don\'t carry the budget across.',
     '  - After a write tool, the tool_result includes a `todaysTotals` snapshot — trust it over your own arithmetic.',
     '  - When suggesting what to eat next, name SPECIFIC dishes from "Recent meals" ("твой творог", "та куриная грудка с гречкой") rather than generic advice.',
     '  - To correct a logged meal, prefer update_meal over delete + add_meal. If the user wants to swap one dish for a different one, use delete_meal then add_meal.',
     "  - Only call get_meals_for_day for a date OTHER than today, or when you need a meal id you don't already have in context.",
+    '  - The "Recent meals" block below lists only the 25 most recent meals — it is NOT the full history. When the user refers to an older dish, or to something "похожее"/"как обычно" without naming it exactly, browse the real log with list_meals (paging back page by page) and judge which entries are similar yourself — do NOT assume it isn\'t there and do NOT expect a name-search.',
     '',
     'Memory guidance:',
     '  - Call add_memory ONLY when the user explicitly asks you to remember something ("запомни", "обычно я", "это важно", "у меня аллергия на …"), names a recurring dish or recipe, or shares a long-term goal/routine. Do NOT memorize today\'s meals (that\'s what add_meal is for) or arbitrary chatter.',

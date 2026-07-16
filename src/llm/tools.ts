@@ -1,8 +1,8 @@
 import type Anthropic from '@anthropic-ai/sdk'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq } from 'drizzle-orm'
 import { db } from '../db/client.ts'
 import { dailyGoals, meals, memories } from '../db/schema.ts'
-import { fetchMealsByLocalDateRange } from '../lib/mealLocalDate.ts'
+import { fetchMealsByLocalDateRange, mealLocalDate } from '../lib/mealLocalDate.ts'
 
 // Tool surface exposed to Claude. Two flavors:
 //   * read tools  — fetch data and return it; conversation continues so the
@@ -59,10 +59,41 @@ export const tools: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'list_meals',
+    description:
+      "Page through the user's meal history, newest days first, so YOU can scan what they actually logged and spot a dish yourself. " +
+      'Use this when the user refers to something they ate but you do not know its exact name or date ("тот протеиновый батончик пару недель назад", "что я обычно ем на обед?", "когда я последний раз ел что-то похожее на плов?"). ' +
+      'There is NO name search — the user rarely remembers the exact wording, so you must read the entries and judge which one is similar/analogous. ' +
+      'Each call returns one page (default 5 days) of meals, most recent first, each with its local date and id. ' +
+      'If you have not found it and `hasOlder` is true, call again with `endDate` set to the returned `olderThan` to load the previous page — keep paging back until you find a match or `hasOlder` is false.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        endDate: {
+          type: 'string',
+          description:
+            'YYYY-MM-DD — the most recent day this page should cover. Omit for the first page (defaults to today). To page further back, pass the `olderThan` value from the previous response.',
+        },
+        days: {
+          type: 'integer',
+          description: 'Page size in days (window ending at endDate). Defaults to 5; max 14.',
+        },
+        tzOffsetMin: {
+          type: 'integer',
+          description:
+            "TZ offset (minutes east of UTC) defining the calendar days. Omit to use the user's current TZ.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'add_meal',
     description:
       'Log a new meal for the user. Writes immediately — the iOS app shows an "added" card describing what was logged. ' +
       'Estimate macros conservatively from the description, photo, or both. ' +
+      'The macros MUST reconcile with the calories via the Atwater formula: protein*4 + carbs*4 + fats*9 must equal `calories` (within ~5% for rounding). ' +
+      'Before calling, compute protein*4 + carbs*4 + fats*9 and adjust the numbers so they agree — never emit macros whose implied energy contradicts the `calories` field. ' +
       "tzOffsetMin defaults to the user's current TZ; only set it when logging a meal eaten in a different timezone (e.g. while travelling).",
     input_schema: {
       type: 'object',
@@ -96,6 +127,7 @@ export const tools: Anthropic.Tool[] = [
     description:
       'Edit a previously-logged meal in place. Use when the user corrects macros, name, portion, meal slot, or the timezone the meal was eaten in. ' +
       'Pass only the fields that change; omitted fields are left untouched. ' +
+      'When you touch any macro (protein/carbs/fats) or calories, pass all four together so they stay consistent — protein*4 + carbs*4 + fats*9 must equal `calories` (within ~5% for rounding). ' +
       'Look up the id with get_meals_for_day if you do not already have it.',
     input_schema: {
       type: 'object',
@@ -195,7 +227,7 @@ export const tools: Anthropic.Tool[] = [
 
 export type ToolName = (typeof tools)[number]['name']
 
-const READ_TOOL_NAMES = new Set<ToolName>(['get_goal_for_day', 'get_meals_for_day'])
+const READ_TOOL_NAMES = new Set<ToolName>(['get_goal_for_day', 'get_meals_for_day', 'list_meals'])
 const WRITE_TOOL_NAMES = new Set<ToolName>([
   'add_meal',
   'update_meal',
@@ -296,6 +328,44 @@ export async function executeTool(
       // Chronological for prompt rendering.
       rows.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
       return { ok: true, kind: 'read', data: rows }
+    }
+    case 'list_meals': {
+      const offsetMin = asInteger(input.tzOffsetMin) ?? opts.defaultTzOffsetMin ?? 0
+      // Page size in days. Small by default (5) so the model reads a focused
+      // window and pages back on demand rather than swallowing months at once.
+      const days = Math.min(14, Math.max(1, asInteger(input.days) ?? 5))
+
+      // `endDate` is the cursor — the most recent day of this page. Defaults to
+      // today (in the caller's TZ) for the first page.
+      const endInput = asString(input.endDate)
+      if (endInput !== undefined && !isoDateRe.test(endInput)) {
+        return badInput('endDate must be YYYY-MM-DD')
+      }
+      const todayLocal = new Date(Date.now() + offsetMin * 60_000).toISOString().slice(0, 10)
+      const endDate = endInput ?? todayLocal
+      const endMs = Date.parse(`${endDate}T00:00:00Z`)
+      const startDate = new Date(endMs - (days - 1) * 86_400_000).toISOString().slice(0, 10)
+      // The endDate to pass for the next (older) page: the day just before this
+      // window's start.
+      const olderThan = new Date(endMs - days * 86_400_000).toISOString().slice(0, 10)
+
+      const rows = await fetchMealsByLocalDateRange(userId, startDate, endDate, offsetMin)
+
+      // Is there anything older than this page? One cheap indexed lookup for
+      // the user's oldest meal tells the model whether paging back is worth it.
+      const [oldest] = await db
+        .select()
+        .from(meals)
+        .where(eq(meals.userId, userId))
+        .orderBy(asc(meals.timestamp))
+        .limit(1)
+      const hasOlder = oldest ? mealLocalDate(oldest, offsetMin) < startDate : false
+
+      return {
+        ok: true,
+        kind: 'read',
+        data: { window: { from: startDate, to: endDate }, meals: rows, hasOlder, olderThan },
+      }
     }
     case 'add_meal': {
       const meal = asMealType(input.meal)

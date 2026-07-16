@@ -589,4 +589,154 @@ describe('POST /chat', () => {
     // budget numbers don't apply to the current turn.
     expect(flat).toContain('Day boundary')
   })
+
+  test('iteration cap: bulk tool calls run to completion, then a forced wrap-up recap is persisted', async () => {
+    const { userId, token } = await seedUser()
+
+    // 20 back-to-back set_goal turns that never stop asking for tools — the
+    // "выставь цели на 30 дней" shape. The loop must run all 20 iterations
+    // (writing every goal) instead of bailing after the first few.
+    for (let i = 0; i < 20; i++) {
+      const date = `2026-07-${String(i + 1).padStart(2, '0')}`
+      messagesCreate.mockResolvedValueOnce(
+        llmResponse({
+          content: [
+            {
+              type: 'tool_use',
+              id: `toolu_g${i}`,
+              name: 'set_goal',
+              input: {
+                date,
+                dayType: 'rest',
+                calorieGoal: 2000,
+                proteinGGoal: 150,
+                carbsGGoal: 200,
+                fatGGoal: 60,
+              },
+            },
+          ],
+          stop_reason: 'tool_use',
+        }),
+      )
+    }
+    // The 21st call is the tools-off wrap-up the loop forces once it hits the
+    // iteration ceiling.
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Выставил 20 дней, по остальным скажи — продолжу.' }],
+        stop_reason: 'end_turn',
+      }),
+    )
+
+    const res = await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'выставь цели на 30 дней' }),
+      }),
+    )
+
+    expect(res.status).toBe(201)
+
+    // 20 loop iterations + 1 forced wrap-up.
+    expect(messagesCreate).toHaveBeenCalledTimes(21)
+
+    // Every goal from the batch actually landed — no silent stop mid-way.
+    const goalRows = await db.select().from(dailyGoals).where(eq(dailyGoals.userId, userId))
+    expect(goalRows).toHaveLength(20)
+
+    // The turn ends with a text recap, not silence after a stack of cards.
+    const body = (await res.json()) as { ai: Array<{ kind: string; content: string }> }
+    const lastAi = body.ai[body.ai.length - 1]!
+    expect(lastAi.kind).toBe('text')
+    expect(lastAi.content).toContain('продолж')
+
+    // The forced wrap-up call disabled tools and carried the limit note.
+    const wrapCall = messagesCreate.mock.calls[20]?.[0] as { tools?: unknown; system: string }
+    expect(wrapCall.tools).toBeUndefined()
+    expect(wrapCall.system).toContain('SYSTEM NOTE')
+  })
+
+  test('list_meals: pages back through history so the model can find an older dish itself', async () => {
+    const { userId, token } = await seedUser()
+    const day = 86_400_000
+    await seedMeal(userId, {
+      foodName: 'Овсянка с бананом',
+      timestamp: new Date(Date.now() - 1 * day),
+    })
+    const oldMeal = await seedMeal(userId, {
+      foodName: 'Плов с бараниной',
+      timestamp: new Date(Date.now() - 12 * day),
+    })
+
+    const today = new Date().toISOString().slice(0, 10)
+    const tenDaysAgo = new Date(Date.now() - 10 * day).toISOString().slice(0, 10)
+
+    // Page 1: default window (last 5 days) — recent meal only.
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'tool_use', id: 'toolu_p1', name: 'list_meals', input: {} }],
+        stop_reason: 'tool_use',
+      }),
+    )
+    // Page 2: model pages back to a window that covers the 12-day-old meal.
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_p2',
+            name: 'list_meals',
+            input: { endDate: tenDaysAgo, days: 5 },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Нашёл: плов с бараниной, ~12 дней назад.' }],
+        stop_reason: 'end_turn',
+      }),
+    )
+
+    const res = await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'что там было похожее на плов пару недель назад?' }),
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(messagesCreate).toHaveBeenCalledTimes(3)
+
+    // Page 1 result (fed into call 2): recent window, old meal NOT yet visible,
+    // but hasOlder tells the model to keep paging.
+    const call2 = messagesCreate.mock.calls[1]?.[0] as {
+      messages: Array<{ role: string; content: unknown }>
+    }
+    const page1Msg = call2.messages[call2.messages.length - 1]!
+    const page1 = JSON.parse((page1Msg.content as Array<{ content: string }>)[0]!.content) as {
+      data: {
+        window: { to: string }
+        meals: Array<{ foodName: string }>
+        hasOlder: boolean
+        olderThan: string
+      }
+    }
+    expect(page1.data.window.to).toBe(today)
+    expect(page1.data.hasOlder).toBe(true)
+    expect(page1.data.meals.some((m) => m.foodName === 'Плов с бараниной')).toBe(false)
+
+    // Page 2 result (fed into call 3): the older window surfaces the plov.
+    const call3 = messagesCreate.mock.calls[2]?.[0] as {
+      messages: Array<{ role: string; content: unknown }>
+    }
+    const page2Msg = call3.messages[call3.messages.length - 1]!
+    const page2 = JSON.parse((page2Msg.content as Array<{ content: string }>)[0]!.content) as {
+      data: { meals: Array<{ id: string; foodName: string }> }
+    }
+    expect(page2.data.meals.some((m) => m.id === oldMeal.id)).toBe(true)
+  })
 })
