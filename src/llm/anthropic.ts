@@ -5,9 +5,12 @@ export const anthropic = new Anthropic({
   apiKey: env.ANTHROPIC_API_KEY,
 })
 
-// Sensible defaults — Sonnet 4.6 hits the price/quality sweet spot for chat.
-// Override per-call when needed.
-export const DEFAULT_MODEL = 'claude-sonnet-4-6'
+// Sensible defaults — Haiku 4.5 is the cheapest current model ($1/$5 per
+// MTok), ~3x cheaper than Sonnet, and plenty for the chat assistant's
+// tool-use loop and macro estimation. Dated ID so it matches a MODEL_PRICING
+// key exactly (the bare `claude-haiku-4-5` alias would fall back to Sonnet
+// pricing in the cost logs). Override per-call when needed.
+export const DEFAULT_MODEL = 'claude-haiku-4-5-20251001'
 // Roomy enough for the model to emit many tool_use blocks in a single turn
 // (e.g. setting goals for a whole range of days) plus a closing recap without
 // getting truncated with stop_reason='max_tokens'. Output is billed per token
