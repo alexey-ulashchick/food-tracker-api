@@ -5,12 +5,12 @@ export const anthropic = new Anthropic({
   apiKey: env.ANTHROPIC_API_KEY,
 })
 
-// Sensible defaults — Haiku 4.5 is the cheapest current model ($1/$5 per
-// MTok), ~3x cheaper than Sonnet, and plenty for the chat assistant's
-// tool-use loop and macro estimation. Dated ID so it matches a MODEL_PRICING
-// key exactly (the bare `claude-haiku-4-5` alias would fall back to Sonnet
-// pricing in the cost logs). Override per-call when needed.
-export const DEFAULT_MODEL = 'claude-haiku-4-5-20251001'
+// Sensible defaults — Sonnet 5 for the chat assistant: near-Opus reliability
+// on tool-use, macro reasoning, and edits. Haiku 4.5 was too weak here (it
+// hallucinated writes, over-asked, and refused to look up ids). NOTE: on
+// Sonnet 5, omitting `thinking` runs ADAPTIVE thinking by default (unlike
+// Sonnet 4.6) — we lean on that for the reliability. Override per-call.
+export const DEFAULT_MODEL = 'claude-sonnet-5'
 // Roomy enough for the model to emit many tool_use blocks in a single turn
 // (e.g. setting goals for a whole range of days) plus a closing recap without
 // getting truncated with stop_reason='max_tokens'. Output is billed per token
@@ -26,6 +26,9 @@ export const MODEL_PRICING: Record<
   { input: number; output: number; cacheWrite: number; cacheRead: number }
 > = {
   'claude-sonnet-4-6': { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
+  // Sticker rate; intro pricing ($2/$10) runs through 2026-08-31, so this
+  // slightly over-reports cost during the intro window — safe (never under).
+  'claude-sonnet-5': { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
   'claude-opus-4-7': { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 },
   'claude-haiku-4-5-20251001': {
     input: 1,
