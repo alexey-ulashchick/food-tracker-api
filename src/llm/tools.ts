@@ -111,7 +111,12 @@ export const tools: Anthropic.Tool[] = [
         meal: { type: 'string', enum: [...mealEnumValues] },
         emoji: {
           type: 'string',
-          description: 'A single food emoji that represents the dish.',
+          description:
+            'The single food emoji that best matches THIS dish — be specific to its main ingredient or type ' +
+            '(e.g. 🍗 chicken, 🥩 beef/steak, 🐟 fish, 🍚 rice, 🍝 pasta, 🥗 salad, 🍳 eggs, 🥣 oatmeal/porridge, ' +
+            '🥤 shake/smoothie, 🥛 milk/protein drink, 🍫 protein bar, 🍞 bread, 🧀 cheese, 🍎 fruit, 🥔 potato, 🍲 soup/stew). ' +
+            'For a mixed dish, pick the emoji of its dominant component. ' +
+            'NEVER use the generic 🍽️ (plate with cutlery) or 🍴 (fork & knife) — those are placeholders, not food; always choose a real food emoji.',
         },
         foodName: { type: 'string' },
         calories: { type: 'number' },
@@ -139,7 +144,11 @@ export const tools: Anthropic.Tool[] = [
           description: 'Local TZ offset in minutes east of UTC at the place the meal was eaten.',
         },
         meal: { type: 'string', enum: [...mealEnumValues] },
-        emoji: { type: 'string' },
+        emoji: {
+          type: 'string',
+          description:
+            'A specific food emoji for the dish (main ingredient/type). Never the generic 🍽️ or 🍴.',
+        },
         foodName: { type: 'string' },
         calories: { type: 'number' },
         protein: { type: 'number' },
