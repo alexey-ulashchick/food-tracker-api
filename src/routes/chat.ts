@@ -440,6 +440,12 @@ async function runToolLoop(args: {
   // loop with this still false, we hit the iteration ceiling mid-work and owe
   // the user a closing message (see the wrap-up call below).
   let finishedNaturally = false
+  // Guards against the model claiming "записал / logged / удалил" in text
+  // without ever calling a write tool — a lie, since the app shows nothing.
+  // `didWriteThisTurn` flips once any write actually succeeds; we nudge at most
+  // once per turn to make it call the tool for real.
+  let didWriteThisTurn = false
+  let nudgedForUnbackedClaim = false
 
   for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
     const startedAt = performance.now()
@@ -465,11 +471,21 @@ async function runToolLoop(args: {
 
     const toolResults: Anthropic.ToolResultBlockParam[] = []
     let didWrite = false
+    // A text-only response (no tool_use) might be an unbacked write-claim, so
+    // defer persisting its text until we've checked — we never want to save a
+    // false "записал" the user sees. Responses that DO call a tool persist
+    // their text inline (keeps text before the action card).
+    const hasToolUse = response.content.some((b) => b.type === 'tool_use')
+    const pendingTexts: string[] = []
 
     for (const block of response.content) {
       if (block.type === 'text') {
         const text = block.text.trim()
         if (!text) continue
+        if (!hasToolUse) {
+          pendingTexts.push(text)
+          continue
+        }
         const [row] = await db
           .insert(chatMessages)
           .values({ userId, role: 'ai', content: text, kind: 'text' })
@@ -514,9 +530,33 @@ async function runToolLoop(args: {
       }
     }
 
+    if (didWrite) didWriteThisTurn = true
+
     if (toolResults.length === 0) {
-      // No tool calls this round → the model gave its final answer. Natural,
-      // complete end of the turn.
+      // Text-only response. If it claims a write ("записал", "удалил", …) but
+      // no write tool has actually run this turn, the model hallucinated the
+      // action — the app shows nothing. Don't persist that false message; nudge
+      // once and loop so it calls the tool for real.
+      const finalText = pendingTexts.join('\n\n')
+      if (!didWriteThisTurn && !nudgedForUnbackedClaim && claimsWrite(finalText)) {
+        nudgedForUnbackedClaim = true
+        console.warn(`[chat] unbacked-write-claim user=${userTag} — nudging to call the tool`)
+        messages.push({ role: 'assistant', content: response.content })
+        messages.push({
+          role: 'user',
+          content:
+            'SYSTEM: You did NOT call any tool this turn, so NOTHING was logged / updated / removed — the app shows no card and the totals are unchanged. If the user asked you to log, edit, or delete something, call add_meal / update_meal / delete_meal NOW, in this turn. Never claim success without an actual tool call.',
+        })
+        continue
+      }
+      // Genuine final answer → persist the deferred text now and finish.
+      for (const t of pendingTexts) {
+        const [row] = await db
+          .insert(chatMessages)
+          .values({ userId, role: 'ai', content: t, kind: 'text' })
+          .returning()
+        if (row) persisted.push(row)
+      }
       finishedNaturally = true
       break
     }
@@ -606,6 +646,41 @@ async function runToolLoop(args: {
     `[chat] turn-end user=${userTag} persisted=${persisted.length} cost=$${turnUsage.costUsd.toFixed(4)} in=${turnUsage.inputTokens} out=${turnUsage.outputTokens}`,
   )
   return persisted
+}
+
+// True when text asserts a meal/goal was actually written. Matched against
+// completion words (past-tense / perfective, RU + EN) — deliberately NOT
+// promises ("запишу", "сейчас добавлю") or nouns ("в истории нет записи"), so
+// it fires on a claimed-done action, not on intent or unrelated mentions.
+function claimsWrite(text: string): boolean {
+  const t = text.toLowerCase()
+  const markers = [
+    'записал',
+    'записала',
+    'записано',
+    'залогировал',
+    'залогировала',
+    'добавил',
+    'добавила',
+    'добавлено',
+    'удалил',
+    'удалила',
+    'удалено',
+    'удалён',
+    'удален',
+    'убрал',
+    'убрала',
+    'обновил',
+    'обновила',
+    'обновлено',
+    'logged',
+    'added',
+    'removed',
+    'deleted',
+    'updated',
+    'saved',
+  ]
+  return markers.some((mk) => t.includes(mk))
 }
 
 function summarizeBlocks(blocks: Anthropic.ContentBlock[]): string {
