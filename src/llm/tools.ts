@@ -124,7 +124,7 @@ export const tools: Anthropic.Tool[] = [
         carbs: { type: 'number', description: 'Grams of carbohydrates.' },
         fats: { type: 'number', description: 'Grams of fat.' },
       },
-      required: ['meal', 'foodName', 'calories', 'protein', 'carbs', 'fats'],
+      required: ['meal', 'emoji', 'foodName', 'calories', 'protein', 'carbs', 'fats'],
     },
   },
   {

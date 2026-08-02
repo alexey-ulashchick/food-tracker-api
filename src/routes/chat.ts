@@ -27,6 +27,10 @@ const MEAL_LOOKBACK_DAYS = 30
 // can run to completion instead of dying mid-way. Each iteration can emit
 // many tool_use blocks, so this is a safety ceiling, not the expected depth.
 const MAX_TOOL_ITERATIONS = 20
+// How many times, per turn, we bounce back an unbacked "записал" claim asking
+// the model to actually call the write tool before we give up and let its text
+// through. Small so a stubborn model can't spin against MAX_TOOL_ITERATIONS.
+const MAX_UNBACKED_NUDGES = 2
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
 
 const listMessagesSchema = z.object({
@@ -442,10 +446,10 @@ async function runToolLoop(args: {
   let finishedNaturally = false
   // Guards against the model claiming "записал / logged / удалил" in text
   // without ever calling a write tool — a lie, since the app shows nothing.
-  // `didWriteThisTurn` flips once any write actually succeeds; we nudge at most
-  // once per turn to make it call the tool for real.
+  // `didWriteThisTurn` flips once any write actually succeeds. We suppress the
+  // false text and nudge (up to MAX_UNBACKED_NUDGES) to make it call the tool.
   let didWriteThisTurn = false
-  let nudgedForUnbackedClaim = false
+  let unbackedNudges = 0
 
   for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
     const startedAt = performance.now()
@@ -471,26 +475,20 @@ async function runToolLoop(args: {
 
     const toolResults: Anthropic.ToolResultBlockParam[] = []
     let didWrite = false
-    // A text-only response (no tool_use) might be an unbacked write-claim, so
-    // defer persisting its text until we've checked — we never want to save a
-    // false "записал" the user sees. Responses that DO call a tool persist
-    // their text inline (keeps text before the action card).
-    const hasToolUse = response.content.some((b) => b.type === 'tool_use')
+    // Collect this iteration's text and action cards but DON'T persist yet.
+    // A response can claim "записал" while calling only READ tools (or no tool
+    // at all) — persisting that text would show the user a write that never
+    // happened. We decide once every tool has run and `didWrite` is known.
     const pendingTexts: string[] = []
+    const pendingCards: Array<{
+      result: Awaited<ReturnType<typeof executeTool>>
+      input: unknown
+    }> = []
 
     for (const block of response.content) {
       if (block.type === 'text') {
         const text = block.text.trim()
-        if (!text) continue
-        if (!hasToolUse) {
-          pendingTexts.push(text)
-          continue
-        }
-        const [row] = await db
-          .insert(chatMessages)
-          .values({ userId, role: 'ai', content: text, kind: 'text' })
-          .returning()
-        if (row) persisted.push(row)
+        if (text) pendingTexts.push(text)
       } else if (block.type === 'tool_use') {
         const inputPreview = previewInput(block.input)
         console.log(
@@ -517,8 +515,7 @@ async function runToolLoop(args: {
 
         if (result.ok && isWriteTool(block.name)) {
           didWrite = true
-          const card = await persistActionCard(userId, result, block.input)
-          if (card) persisted.push(card)
+          pendingCards.push({ result, input: block.input })
         }
 
         toolResults.push({
@@ -532,39 +529,44 @@ async function runToolLoop(args: {
 
     if (didWrite) didWriteThisTurn = true
 
-    if (toolResults.length === 0) {
-      // Text-only response. If it claims a write ("записал", "удалил", …) but
-      // no write tool has actually run this turn, the model hallucinated the
-      // action — the app shows nothing. Don't persist that false message; nudge
-      // once and loop so it calls the tool for real.
-      const finalText = pendingTexts.join('\n\n')
-      if (!didWriteThisTurn && !nudgedForUnbackedClaim && claimsWrite(finalText)) {
-        nudgedForUnbackedClaim = true
-        console.warn(`[chat] unbacked-write-claim user=${userTag} — nudging to call the tool`)
-        messages.push({ role: 'assistant', content: response.content })
-        messages.push({
-          role: 'user',
-          content:
-            'SYSTEM: You did NOT call any tool this turn, so NOTHING was logged / updated / removed — the app shows no card and the totals are unchanged. If the user asked you to log, edit, or delete something, call add_meal / update_meal / delete_meal NOW, in this turn. Never claim success without an actual tool call.',
-        })
-        continue
-      }
-      // Genuine final answer → persist the deferred text now and finish.
-      for (const t of pendingTexts) {
-        const [row] = await db
-          .insert(chatMessages)
-          .values({ userId, role: 'ai', content: t, kind: 'text' })
-          .returning()
-        if (row) persisted.push(row)
-      }
-      finishedNaturally = true
-      break
+    // Guard: the text claims a write ("записал", "удалил", …) but no write tool
+    // actually succeeded this turn — whether the model called nothing, or paired
+    // the claim with read-only tools. Either way the app shows no card and the
+    // totals are unchanged, so we must NOT persist that false line. Suppress it
+    // and nudge the model to call the tool for real. Any read tool_uses still
+    // need their results echoed back, or the next request 400s on a dangling
+    // tool_use — so we append the nudge to the tool_results user message.
+    const claimedText = pendingTexts.join('\n\n')
+    if (!didWriteThisTurn && unbackedNudges < MAX_UNBACKED_NUDGES && claimsWrite(claimedText)) {
+      unbackedNudges++
+      console.warn(
+        `[chat] unbacked-write-claim user=${userTag} nudge=${unbackedNudges} — forcing a real tool call`,
+      )
+      const nudge =
+        "SYSTEM: You did NOT successfully write anything this turn, so NOTHING was logged / updated / removed — the app shows no card and today's totals are unchanged. If the user asked you to log, edit, or delete something, call add_meal / update_meal / delete_meal NOW, in this turn. Never claim success without an actual write tool_result."
+      messages.push({ role: 'assistant', content: response.content })
+      messages.push(
+        toolResults.length > 0
+          ? { role: 'user', content: [...toolResults, { type: 'text', text: nudge }] }
+          : { role: 'user', content: nudge },
+      )
+      continue
     }
 
-    // After any write in this iteration, refetch today's totals and tack
-    // them onto every tool_result so the model sees the post-write budget
-    // (no mental arithmetic, no stale numbers from history). Fetched once
-    // per iteration — multiple writes in the same turn share the snapshot.
+    // Safe to persist. Text first, then the action cards, so the text bubble
+    // renders above the card the write produced.
+    for (const t of pendingTexts) {
+      const [row] = await db
+        .insert(chatMessages)
+        .values({ userId, role: 'ai', content: t, kind: 'text' })
+        .returning()
+      if (row) persisted.push(row)
+    }
+
+    // After any write, refetch today's totals and tack them onto every
+    // tool_result so the model sees the post-write budget (no mental
+    // arithmetic, no stale numbers). Fetched once — multiple writes in the
+    // same turn share the snapshot — then persist the cards.
     if (didWrite) {
       const snapshot = await computeTodaysSnapshot(userId, today, tzOffsetMin)
       for (const tr of toolResults) {
@@ -573,6 +575,17 @@ async function runToolLoop(args: {
         parsed.todaysTotals = snapshot
         tr.content = JSON.stringify(parsed)
       }
+      for (const c of pendingCards) {
+        const card = await persistActionCard(userId, c.result, c.input)
+        if (card) persisted.push(card)
+      }
+    }
+
+    if (toolResults.length === 0) {
+      // No tools called and no unbacked claim — this is the genuine final
+      // answer. Text is already persisted above; finish.
+      finishedNaturally = true
+      break
     }
 
     messages.push({ role: 'assistant', content: response.content })
@@ -673,12 +686,33 @@ function claimsWrite(text: string): boolean {
     'обновил',
     'обновила',
     'обновлено',
+    'сохранил',
+    'сохранила',
+    'сохранено',
+    'отметил',
+    'отметила',
+    'занёс',
+    'занес',
+    'занесла',
+    'внёс',
+    'внес',
+    'внесла',
+    'оформил',
+    'оформила',
+    'выставил',
+    'выставила',
+    'выставлено',
+    'поставил цель',
+    'готово',
     'logged',
     'added',
     'removed',
     'deleted',
     'updated',
     'saved',
+    'recorded',
+    'tracked',
+    'noted',
   ]
   return markers.some((mk) => t.includes(mk))
 }
@@ -876,9 +910,7 @@ async function persistRecommendationRow(
   index: number,
 ): Promise<ChatMessage | undefined> {
   const foodSummary =
-    rec.foods.length === 0
-      ? 'ничего не есть'
-      : rec.foods.map((f) => f.displayName).join(', ')
+    rec.foods.length === 0 ? 'ничего не есть' : rec.foods.map((f) => f.displayName).join(', ')
   const stampedAt = new Date(createdAtBase.getTime() + index)
   const [row] = await db
     .insert(chatMessages)
@@ -1061,49 +1093,33 @@ function buildSystemPrompt(ctx: ChatContext): string {
           .map((m) => `  - ${m.id}: ${m.content}`)
           .join('\n')}`
 
+  // The tool names, parameters, and per-tool rules (Atwater macro balancing,
+  // the specific-food-emoji requirement, list_meals paging) live in the tool
+  // schemas in src/llm/tools.ts — Anthropic sends those to the model on every
+  // call, so we do NOT restate them here. This prompt is orchestration only:
+  // WHEN to act and the invariants the schemas can't express.
   return [
-    'You are a friendly nutrition assistant inside a calorie-tracking iOS app.',
-    'Help the user log food, reflect on their intake, and stay on track. Be concise and practical.',
+    "You are a nutrition assistant inside a calorie-tracking iOS app. Be concise, warm, and practical, and reply in the user's language.",
     '',
-    `Today's date: ${today}`,
+    `Today is ${today}. The "Today" block below is the ONLY source of truth for today's eaten and remaining macros — never compute them yourself, and never carry a budget over from an earlier day. Watch for \`[Day boundary: … → …]\` markers: every recap and number above one is stale for today (you may still reuse past meals/preferences like "как вчера" — just not the budget).`,
     '',
-    'Tools:',
-    '  * get_goal_for_day(date) / get_meals_for_day(date) — read user data. Each meal row includes its `id`.',
-    '  * list_meals(endDate?, days?) — page through the meal history (default 5 days per page, newest first). Use it to browse what the user actually logged and find a past dish YOURSELF — to reuse its macros or when you do not know its exact name or date; page back with the returned `olderThan` until you find a match or `hasOlder` is false.',
-    '  * add_meal(...) — log a meal immediately. Use whenever the user expresses logging intent (text, photo, or both). If the user has logged this dish before, reuse those macros; otherwise estimate conservatively. Do NOT ask for macros you can look up in their history or reasonably estimate.',
-    '  * update_meal(id, ...) — edit an existing meal in place when the user corrects macros, name, or portion. Pass only fields that change.',
-    '  * delete_meal(id) — remove a meal entirely (e.g. user did not eat it).',
-    '  * set_goal(date, ...) — create or replace a daily nutrition goal.',
-    '  * add_memory(content) / update_memory(id, content) / delete_memory(id) — manage long-lived facts the user asks to remember (preferences, allergies, recipes, recurring dishes, routines).',
+    'LOGGING IS AN ACTION, NOT A QUESTION.',
+    '  - The moment the user mentions eating something — a named dish, a photo, "как вчера", "то же, что вчера", "как обычно" — call add_meal in THIS turn. These are instructions to log, not questions: don\'t ask permission ("залогировать?"), and don\'t re-ask for a portion, flavour, or quantity already given ("2 скупа" = log 2 scoops).',
+    '  - Don\'t know the macros? Find them yourself, silently: scan "Recent meals", then page back with list_meals until you match or `hasOlder` is false. Reuse the most recent matching entry, scaled to the stated quantity — do NOT narrate the search ("пролистаю историю…"). Estimate conservatively only when the dish is nowhere in the log. Ask the user just for a genuine ambiguity (e.g. two clearly different meals both match).',
+    '  - "посмотри в истории" / "поищи" / "ты же видишь" = call list_meals and page yourself. NEVER tell the user a dish "isn\'t in your history" after checking only the "Recent meals" block (it holds just the last 25).',
     '',
-    'Guidance:',
-    '  - Writes happen the moment you call the tool — there is no separate confirm step. The iOS app shows a card describing what changed.',
-    '  - NOTHING is logged until an add_meal / update_meal / delete_meal / set_goal tool_result comes back in THIS turn. Emitting the tool_use call IS the write; TEXT IS NOT. It is a serious error to write "залогировал" / "logged" / "Готово" / "добавил" / "Осталось … ккал" / any remaining-macros number, or to describe an added-meal card in prose, when you did not actually call the tool this turn — that lies to the user (the app shows nothing). Remaining/eaten numbers come ONLY from a tool_result\'s `todaysTotals`, never from your own arithmetic. If you find yourself about to describe a log you have not made via a tool call, STOP and emit the add_meal call instead — in the SAME message.',
-    '  - NEVER reply with just a promise to act ("сейчас поищу", "начинаю устанавливать", "секунду", "let me check") and then stop. That ends your turn and the user gets no result. If the task needs tools, CALL them in THIS SAME turn; only send plain text once the work is done or when no tool is needed.',
-    '  - Logging a dish the user names ("Tailwind 2 скупа", "овсянка как обычно") is a DO-IT-NOW action, not a Q&A. In the SAME turn: (1) if the macros are already in the message, the "Recent meals" block, or a memory, call add_meal right away; (2) otherwise look them up YOURSELF — scan "Recent meals", then page back with list_meals — and reuse the macros from the most recent matching entry, scaled to the quantity the user gave. Only if the dish is nowhere in their log AND you truly cannot estimate it should you ask the user — and even then, prefer a conservative estimate over blocking.',
-    '  - Use every detail the user already gave and NEVER re-ask for it. "2 скупа" means log 2 scoops — do not ask "2 or 3?". Do not ask for a flavour, portion, or macro the user already stated, or that you just found in their history.',
-    '  - "Как вчера" / "то же, что вчера" / "как обычно" / "обед как вчера" are INSTRUCTIONS to log, not questions. Find the matching meal(s) yourself (page with list_meals if they are not in "Recent meals") and log EACH one with add_meal right away — do the lookup silently, do NOT narrate it ("я не вижу…", "пролистаю историю…"). Do NOT ask "Логирую то же самое?" / "залогировать?" — writes are instant and the user already told you what to do. Ask for confirmation only when the request is genuinely ambiguous (e.g. two clearly different candidate meals) or the meal is nowhere in the log at all.',
-    '  - Do not ask the user to do YOUR job. If they say "посмотри в истории" / "поищи" / "ты же видишь", that means: call list_meals and page back yourself until you find it. Never claim a dish "isn\'t in your history" after only checking the "Recent meals" block — page with list_meals until you find a match or hasOlder is false, THEN conclude.',
-    '  - Bulk requests (e.g. "выставь цели на 30 дней", "залогируй весь день") — issue ALL the required tool calls, not just the first few. You may emit many tool_use blocks in one turn and keep going across turns; do not stop until every day/item is handled. When everything is done, send ONE short summary line.',
-    '  - Macro/calorie consistency (ALWAYS): any macros you propose or edit MUST reconcile with the Atwater formula — protein*4 + carbs*4 + fats*9 must equal the `calories` you pass (within ~5% for rounding). Before every add_meal / update_meal call, compute protein*4 + carbs*4 + fats*9 and adjust the numbers until they agree. Never emit macros whose implied energy contradicts `calories`. When editing macros with update_meal, pass calories AND all three macros together so the set stays balanced.',
-    '  - The "Today" block below is the ONLY source of truth for today\'s eaten / remaining macros. Numbers in conversation history (yesterday\'s recaps, "осталось 0 ккал" from a previous day) describe THAT day\'s budget — not today\'s.',
-    '  - Watch for `[Day boundary: <prev> → <new>]` markers in the conversation: every recap, suggestion, and budget number ABOVE a boundary belongs to a different day and is stale for today\'s budget. You can still reference past meals or preferences ("как вчера", "как обычно") — just don\'t carry the budget across.',
-    '  - After a write tool, the tool_result includes a `todaysTotals` snapshot — trust it over your own arithmetic.',
-    '  - When suggesting what to eat next, name SPECIFIC dishes from "Recent meals" ("твой творог", "та куриная грудка с гречкой") rather than generic advice.',
-    '  - To correct a logged meal, prefer update_meal over delete + add_meal. If the user wants to swap one dish for a different one, use delete_meal then add_meal.',
-    '  - To delete or edit a logged meal ("убери …", "удали …", "поправь …"), get its id YOURSELF and call delete_meal / update_meal in the SAME turn. The id is already in the "Recent meals" block below (each line starts with it); if the meal is not listed there, call get_meals_for_day(its date) — every returned row includes its id. NEVER ask the user for a UUID/id or tell them to delete it "in the app": the user has no ids and cannot supply them, and you have all the tools you need to do it yourself.',
-    "  - Only call get_meals_for_day for a date OTHER than today, or when you need a meal id you don't already have in context.",
-    '  - The "Recent meals" block below lists only the 25 most recent meals — it is NOT the full history. When the user refers to an older dish, or to something "похожее"/"как обычно" without naming it exactly, browse the real log with list_meals (paging back page by page) and judge which entries are similar yourself — do NOT assume it isn\'t there and do NOT expect a name-search.',
+    'NEVER CLAIM A WRITE YOU DID NOT MAKE.',
+    '  - Words like "записал", "залогировал", "готово", "удалил", "обновил", "выставил", or any "осталось N ккал" are allowed ONLY in a turn where the matching add_meal / update_meal / delete_meal / set_goal tool_result came back. Emitting the tool call IS the write; text is not — without the call the app shows nothing and the totals are unchanged.',
+    '  - If you are about to say you logged/changed something, emit the tool call instead — in the SAME message. Never end a turn with only a promise ("сейчас запишу", "секунду", "let me check").',
     '',
-    'Memory guidance:',
-    '  - Call add_memory ONLY when the user explicitly asks you to remember something ("запомни", "обычно я", "это важно", "у меня аллергия на …"), names a recurring dish or recipe, or shares a long-term goal/routine. Do NOT memorize today\'s meals (that\'s what add_meal is for) or arbitrary chatter.',
-    '  - Each memory is one short sentence. Structure it like "Allergy: lactose", "Любимый завтрак: овсянка с бананом", "Тренировки: пн/ср/пт утром".',
-    '  - Use update_memory when the user refines an existing memory (id is in the Memories block below). Use delete_memory when the user asks to forget something.',
-    '  - Reference saved memories naturally in your replies — e.g. respect allergies when suggesting dishes, recall a favourite breakfast when asked for ideas.',
+    'EDITING & DELETING.',
+    '  - Get the meal id YOURSELF: it starts each "Recent meals" line (or call get_meals_for_day for another date), then call update_meal / delete_meal in the same turn. NEVER ask the user for an id or tell them to do it "in the app" — they have no ids. Prefer update_meal over delete+add for a correction; use delete+add only to swap one dish for a different one.',
+    "  - Only call get_meals_for_day for a date OTHER than today, or to fetch an id you don't already have.",
     '',
-    'Recap text after a write tool:',
-    '  - The iOS card already shows what changed (dish name, kcal, macros, or memory text). DO NOT repeat any of that in the text.',
-    '  - Just ONE short line: a single-word acknowledgement + remaining budget or food suggestion for today',
+    'OTHER.',
+    '  - Bulk requests ("цели на 30 дней", "залогируй весь день"): issue ALL the tool calls, not just the first few — keep going across turns until every item is done, then send ONE short summary line.',
+    '  - After any write, the iOS card already shows the dish, macros, or memory text — do NOT repeat it. Reply with ONE short line: a brief acknowledgement plus either the remaining budget (from the tool_result\'s `todaysTotals`, never your own arithmetic) or a specific next-meal idea named from "Recent meals" ("твой творог"), not generic advice.',
+    '  - Memories: call add_memory only when the user says "запомни", states an allergy / preference / long-term routine, or names a recurring dish/recipe — NOT for today\'s meals (that\'s add_meal) or chatter. Keep each to one short sentence ("Allergy: lactose"). Use update_memory / delete_memory with the id from the Memories block. Respect saved memories in your replies (e.g. allergies when suggesting food).',
     '',
     ...todayBlock,
     '',
