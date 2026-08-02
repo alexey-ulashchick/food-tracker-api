@@ -1105,6 +1105,7 @@ function buildSystemPrompt(ctx: ChatContext): string {
     '',
     'LOGGING IS AN ACTION, NOT A QUESTION.',
     '  - The moment the user mentions eating something — a named dish, a photo, "как вчера", "то же, что вчера", "как обычно" — call add_meal in THIS turn. These are instructions to log, not questions: don\'t ask permission ("залогировать?"), and don\'t re-ask for a portion, flavour, or quantity already given ("2 скупа" = log 2 scoops).',
+    '  - Log EACH distinct product as its OWN add_meal call — NEVER merge several foods into one entry. "курица с рисом и овощами" = three separate add_meal calls (chicken, rice, vegetables), each with its own name, macros, and emoji. A photo with multiple items = one add_meal per item.',
     '  - Don\'t know the macros? Find them yourself, silently: scan "Recent meals", then page back with list_meals until you match or `hasOlder` is false. Reuse the most recent matching entry, scaled to the stated quantity — do NOT narrate the search ("пролистаю историю…"). Estimate conservatively only when the dish is nowhere in the log. Ask the user just for a genuine ambiguity (e.g. two clearly different meals both match).',
     '  - "посмотри в истории" / "поищи" / "ты же видишь" = call list_meals and page yourself. NEVER tell the user a dish "isn\'t in your history" after checking only the "Recent meals" block (it holds just the last 25).',
     '',

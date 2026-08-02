@@ -118,7 +118,12 @@ export const tools: Anthropic.Tool[] = [
             'For a mixed dish, pick the emoji of its dominant component. ' +
             'NEVER use the generic 🍽️ (plate with cutlery) or 🍴 (fork & knife) — those are placeholders, not food; always choose a real food emoji.',
         },
-        foodName: { type: 'string' },
+        foodName: {
+          type: 'string',
+          description:
+            'Name of THIS single product (log one product per add_meal call — never combine several foods into one name). ' +
+            "When the weight/portion is known, include it in grams, e.g. 'Куриная грудка 150 г', 'Овсянка 60 г', 'Банан 120 г'.",
+        },
         calories: { type: 'number' },
         protein: { type: 'number', description: 'Grams of protein.' },
         carbs: { type: 'number', description: 'Grams of carbohydrates.' },
@@ -149,7 +154,11 @@ export const tools: Anthropic.Tool[] = [
           description:
             'A specific food emoji for the dish (main ingredient/type). Never the generic 🍽️ or 🍴.',
         },
-        foodName: { type: 'string' },
+        foodName: {
+          type: 'string',
+          description:
+            "Single product; include the weight in grams when known, e.g. 'Овсянка 60 г'.",
+        },
         calories: { type: 'number' },
         protein: { type: 'number' },
         carbs: { type: 'number' },
