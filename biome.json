@@ -24,6 +24,14 @@
     }
   },
   "files": {
-    "ignore": ["node_modules", "dist", "drizzle", "bun.lockb"]
+    "ignore": [
+      "node_modules",
+      "dist",
+      "drizzle",
+      "bun.lockb",
+      "web/dist",
+      "playwright-report",
+      "test-results"
+    ]
   }
 }
