@@ -11,8 +11,9 @@ import type {
   ServerGoal,
   ServerMeal,
   ServerMemory,
+  ServerWeight,
 } from '../../shared/types.ts'
-import type { chatMessages, dailyGoals, meals, memories } from './schema.ts'
+import type { chatMessages, dailyGoals, meals, memories, weights } from './schema.ts'
 
 /**
  * Hono's c.json() serialises Date to an ISO string; model that here.
@@ -59,6 +60,7 @@ export type WireChecks = [
   >,
   Expect<Equals<Flatten<Jsonified<typeof dailyGoals.$inferSelect>>, ServerGoal>>,
   Expect<Equals<Flatten<Jsonified<typeof memories.$inferSelect>>, ServerMemory>>,
+  Expect<Equals<Flatten<Jsonified<typeof weights.$inferSelect>>, ServerWeight>>,
   // chat_messages.meta is jsonb — `unknown` on both sides.
   Expect<Equals<Flatten<Jsonified<typeof chatMessages.$inferSelect>>, ServerChatMessage>>,
 ]

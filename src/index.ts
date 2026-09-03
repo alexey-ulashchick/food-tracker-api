@@ -9,6 +9,7 @@ import { goalsRoute } from './routes/goals.ts'
 import { healthRoute } from './routes/health.ts'
 import { mealsRoute } from './routes/meals.ts'
 import { memoriesRoute } from './routes/memories.ts'
+import { weightsRoute } from './routes/weights.ts'
 import { staticRoute } from './static.ts'
 
 const app = new Hono()
@@ -25,6 +26,7 @@ app.route('/goals', goalsRoute)
 app.route('/memories', memoriesRoute)
 app.route('/chat', chatRoute)
 app.route('/day-summary', daySummaryRoute)
+app.route('/weights', weightsRoute)
 app.route('/mcp', mcpRoute)
 
 // SPA — must be last: everything above is API surface, and this ends in a

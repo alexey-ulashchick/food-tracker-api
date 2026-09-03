@@ -70,6 +70,16 @@ CREATE TABLE memories (
 );
 CREATE INDEX memories_user_idx ON memories (user_id, updated_at);
 
+CREATE TABLE weights (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date date NOT NULL,
+  kg real NOT NULL,
+  source text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX weights_user_date_uq ON weights (user_id, date);
+
 CREATE TABLE api_tokens (
   token text PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,

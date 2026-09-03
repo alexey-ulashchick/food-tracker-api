@@ -145,8 +145,29 @@ export const memories = pgTable(
   }),
 )
 
-// Long-lived bearer credentials for the MCP endpoint, used by clients that
-// can't inject a custom X-User-Id header (mobile Claude). Token is the PK and
+// Body weight, one row per calendar day. There is no in-app entry UI: the
+// user's own sync script POSTs batches to /weights and the web client only
+// reads, so the unique (user_id, date) index is what makes a re-run of that
+// script an upsert instead of a pile of duplicates.
+export const weights = pgTable(
+  'weights',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    date: date('date').notNull(),
+    kg: real('kg').notNull(),
+    // Free-text provenance ("apple-health", "manual", a scale model, …).
+    source: text('source'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userDateUq: uniqueIndex('weights_user_date_uq').on(t.userId, t.date),
+  }),
+)
+
+// Long-lived bearer credentials for the MCP endpoint, used by clients that// can't inject a custom X-User-Id header (mobile Claude). Token is the PK and
 // is shipped in the URL path (POST /mcp/:token) — treat the row like a
 // password. `revokedAt` lets us kill a token without deleting it (audit).
 export const apiTokens = pgTable(
