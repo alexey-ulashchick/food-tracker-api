@@ -14,7 +14,10 @@ import { type AuthEnv, auth } from '../middleware/auth.ts'
 const createMealSchema = z.object({
   // ISO 8601 string. Server fills "now" if omitted.
   timestamp: z.string().datetime().optional(),
-  meal: z.enum(['Breakfast', 'Lunch', 'Dinner']),
+  // Must stay in step with the meal_type enum in schema.ts — the LLM and MCP
+  // write paths already accept 'Snack', and a client meal-type picker would
+  // otherwise 400 on it.
+  meal: z.enum(['Breakfast', 'Lunch', 'Dinner', 'Snack']),
   emoji: z.string().nullish(),
   foodName: z.string().min(1).max(200),
   calories: z.number().nonnegative(),
@@ -95,12 +98,17 @@ export const mealsRoute = new Hono<AuthEnv>()
   .post('/', zValidator('json', createMealSchema), async (c) => {
     const userId = c.get('userId')
     const body = c.req.valid('json')
+    const tzOffsetMin = clientTzOffsetMin(c)
 
     const [row] = await db
       .insert(meals)
       .values({
         userId,
         timestamp: body.timestamp ? new Date(body.timestamp) : undefined,
+        // Stamp where the meal was eaten. Without this, REST-created rows
+        // land with a NULL offset and later get bucketed by whichever
+        // client happens to read them — see mealLocalDate's fallback.
+        tzOffsetMin,
         meal: body.meal,
         emoji: body.emoji ?? null,
         foodName: body.foodName,
@@ -111,7 +119,7 @@ export const mealsRoute = new Hono<AuthEnv>()
       })
       .returning()
 
-    return c.json(decorateLocalDate(row!, clientTzOffsetMin(c)), 201)
+    return c.json(decorateLocalDate(row!, tzOffsetMin), 201)
   })
   .delete('/:id', zValidator('param', idParamSchema), async (c) => {
     const userId = c.get('userId')

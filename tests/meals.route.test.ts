@@ -155,3 +155,70 @@ describe('GET /meals', () => {
     expect(rows[0]!.localDate).toBe('2026-06-29')
   })
 })
+
+describe('POST /meals', () => {
+  const post = (token: string, body: unknown, headers: Record<string, string> = {}) =>
+    makeApp().fetch(
+      new Request('http://x/meals', {
+        method: 'POST',
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(body),
+      }),
+    )
+
+  // The DB enum, the LLM write tools and the MCP tools have always accepted
+  // 'Snack'; only this route's zod schema did not.
+  test('accepts Snack as a meal type', async () => {
+    const { token } = await seedUser()
+    const res = await post(token, { meal: 'Snack', foodName: 'Nuts', calories: 180 })
+    expect(res.status).toBe(201)
+    expect((await res.json()) as { meal: string }).toMatchObject({ meal: 'Snack' })
+  })
+
+  test('still accepts the three main meal types', async () => {
+    const { token } = await seedUser()
+    for (const meal of ['Breakfast', 'Lunch', 'Dinner']) {
+      const res = await post(token, { meal, foodName: `x-${meal}`, calories: 100 })
+      expect(res.status).toBe(201)
+    }
+  })
+
+  test('rejects a meal type outside the enum', async () => {
+    const { token } = await seedUser()
+    expect((await post(token, { meal: 'Brunch', foodName: 'x', calories: 1 })).status).toBe(400)
+  })
+
+  // Without the stamp the row lands with a NULL offset and gets bucketed by
+  // whoever reads it next, which misfiles meals after the user travels.
+  test('stamps tzOffsetMin from the X-Client-TZ-Offset header', async () => {
+    const { token } = await seedUser()
+    const res = await post(
+      token,
+      { meal: 'Lunch', foodName: 'Borscht', calories: 400, timestamp: '2026-06-29T20:00:00.000Z' },
+      { 'X-Client-TZ-Offset': '180' },
+    )
+    expect(res.status).toBe(201)
+
+    const row = (await res.json()) as { tzOffsetMin: number | null; localDate: string }
+    expect(row.tzOffsetMin).toBe(180)
+    // 20:00 UTC is 23:00 MSK on the 29th — still June 29 locally.
+    expect(row.localDate).toBe('2026-06-29')
+  })
+
+  test('a meal logged late UTC but early next-day local keeps its local date', async () => {
+    const { token } = await seedUser()
+    const res = await post(
+      token,
+      { meal: 'Dinner', foodName: 'Late', calories: 300, timestamp: '2026-06-29T22:00:00.000Z' },
+      { 'X-Client-TZ-Offset': '180' },
+    )
+    // 22:00 UTC + 3h = 01:00 MSK on June 30.
+    expect((await res.json()) as { localDate: string }).toMatchObject({ localDate: '2026-06-30' })
+  })
+
+  test('falls back to UTC when the header is absent', async () => {
+    const { token } = await seedUser()
+    const res = await post(token, { meal: 'Lunch', foodName: 'x', calories: 1 })
+    expect((await res.json()) as { tzOffsetMin: number | null }).toMatchObject({ tzOffsetMin: 0 })
+  })
+})
