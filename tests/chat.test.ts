@@ -557,6 +557,11 @@ describe('POST /chat', () => {
   test('history from a previous day is kept but tagged with a day-boundary marker', async () => {
     const { userId, token } = await seedUser()
 
+    // Two rows are needed, not one: historyToMessages annotates a row only
+    // when its local date differs from the PREVIOUS row's, and the very first
+    // row has no predecessor. The current turn's message is appended after
+    // that pass, so it can never carry the marker either — with a single
+    // yesterday row there is simply no boundary to mark.
     const yesterday = new Date(Date.now() - 30 * 60 * 60 * 1000)
     await db.insert(chatMessages).values({
       userId,
@@ -564,6 +569,13 @@ describe('POST /chat', () => {
       kind: 'text',
       content: 'YESTERDAY_RECAP',
       createdAt: yesterday,
+    })
+    await db.insert(chatMessages).values({
+      userId,
+      role: 'user',
+      kind: 'text',
+      content: 'TODAY_FIRST',
+      createdAt: new Date(),
     })
 
     messagesCreate.mockResolvedValueOnce(
@@ -588,9 +600,48 @@ describe('POST /chat', () => {
     const flat = JSON.stringify(firstCall.messages)
     // The yesterday row survives — context like "как вчера" still works.
     expect(flat).toContain('YESTERDAY_RECAP')
-    // Today's first message is annotated so the model knows yesterday's
+    // The first row of the new day is annotated so the model knows yesterday's
     // budget numbers don't apply to the current turn.
     expect(flat).toContain('Day boundary')
+    const todayMessage = firstCall.messages.find(
+      (m) => typeof m.content === 'string' && m.content.includes('TODAY_FIRST'),
+    )
+    expect(String(todayMessage?.content)).toContain('Day boundary')
+  })
+
+  test('history confined to one day carries no boundary marker', async () => {
+    const { userId, token } = await seedUser()
+
+    await db.insert(chatMessages).values({
+      userId,
+      role: 'user',
+      kind: 'text',
+      content: 'FIRST',
+      createdAt: new Date(),
+    })
+    await db.insert(chatMessages).values({
+      userId,
+      role: 'ai',
+      kind: 'text',
+      content: 'SECOND',
+      createdAt: new Date(),
+    })
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({ content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn' }),
+    )
+    await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'привет' }),
+      }),
+    )
+
+    const firstCall = messagesCreate.mock.calls[0]?.[0] as {
+      messages: Array<{ role: string; content: unknown }>
+    }
+    expect(JSON.stringify(firstCall.messages)).not.toContain('Day boundary')
   })
 
   test('iteration cap: bulk tool calls run to completion, then a forced wrap-up recap is persisted', async () => {

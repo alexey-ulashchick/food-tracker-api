@@ -86,9 +86,22 @@ describe('classifyDietDay', () => {
   })
 
   test('yellow when calories +5..10% over', () => {
-    expect(classifyDietDay({ ...T, calories: 2100, protein: 150, fat: 60, carbs: 200 })).toBe(
+    expect(classifyDietDay({ ...T, calories: 2150, protein: 150, fat: 60, carbs: 200 })).toBe(
       'yellow',
     )
+  })
+
+  // calorieSeverity uses strict `>` comparisons, so each band opens just past
+  // its nominal percentage. The original fixture sat exactly on +5% and
+  // therefore scored severity 0.
+  test('calorie severity bands are exclusive at their lower edge', () => {
+    const at = (calories: number) => classifyDietDay({ ...T, calories, protein: 150, fat: 60, carbs: 200 })
+    expect(at(2100)).toBe('light_green') // exactly +5% — not yet yellow
+    expect(at(2101)).toBe('yellow')
+    expect(at(2200)).toBe('yellow') // exactly +10% — not yet orange
+    expect(at(2201)).toBe('orange')
+    expect(at(2400)).toBe('orange') // exactly +20% — not yet red
+    expect(at(2401)).toBe('red')
   })
 
   test('yellow when protein 70..85% of goal', () => {

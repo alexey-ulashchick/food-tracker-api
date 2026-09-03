@@ -129,14 +129,17 @@ describe('POST /chat/recommend', () => {
       carbsGGoal: 200,
       fatGGoal: 60,
     })
-    // Today's intake far under; only candidate food is oversized so the spec
-    // filter drops it — engine returns zero recommendations.
+    // buildCandidateFoods drops any food over 1.2 * the calorie goal, so every
+    // meal here has to clear 2400 kcal for the candidate list to come back
+    // empty. An earlier version of this fixture paired the oversized history
+    // item with a 50 kcal sip — but that sip is itself part of the 30-day
+    // history, survived the filter, and produced a combo.
     await seedMeal(userId, {
-      foodName: 'Sip',
-      calories: 50,
-      protein: 1,
-      fats: 0,
-      carbs: 5,
+      foodName: 'Пир горой',
+      calories: 3000,
+      protein: 120,
+      fats: 90,
+      carbs: 300,
       timestamp: new Date(),
     })
     await seedMeal(userId, {
@@ -161,6 +164,37 @@ describe('POST /chat/recommend', () => {
     const textEvt = events.find((e) => e.event === 'text')
     expect(textEvt).toBeDefined()
     expect((textEvt!.data as { content: string }).content).toContain('нет полезной комбинации')
+  })
+
+  // Guards the fixture above: if the filter threshold ever moves, a food that
+  // was meant to be excluded starts producing combos and the fallback branch
+  // silently stops being covered.
+  test('a food inside the calorie cap does produce a combo', async () => {
+    const { userId, token } = await seedUser()
+    await seedGoal(userId, {
+      date: todayUtc(),
+      calorieGoal: 2000,
+      proteinGGoal: 150,
+      carbsGGoal: 200,
+      fatGGoal: 60,
+    })
+    await seedMeal(userId, {
+      foodName: 'Sip',
+      calories: 50,
+      protein: 1,
+      fats: 0,
+      carbs: 5,
+      timestamp: new Date(),
+    })
+
+    const res = await makeApp().fetch(
+      new Request('http://x/chat/recommend', {
+        method: 'POST',
+        headers: authHeaders(token),
+      }),
+    )
+    const events = await readSSE(res)
+    expect(events.filter((e) => e.event === 'recommend').length).toBeGreaterThanOrEqual(1)
   })
 
   test('current_color=green produces a single empty-combo recommendation row', async () => {
