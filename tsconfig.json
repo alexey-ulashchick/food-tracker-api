@@ -4,5 +4,5 @@
     "lib": ["ESNext"],
     "types": ["bun"]
   },
-  "include": ["src/**/*", "scripts/**/*", "shared/**/*", "drizzle.config.ts"]
+  "include": ["src/**/*", "scripts/**/*", "shared/**/*", "drizzle.config.ts", "vite.config.ts"]
 }
