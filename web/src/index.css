@@ -1,1 +1,109 @@
 @import "tailwindcss";
+
+/* Ported from CalTracker/Theme.swift — see web/src/theme/tokens.ts for the
+   annotated source of every value. Kept in both places because Tailwind v4
+   needs them as CSS variables while the Canvas ring code needs them as JS. */
+@theme {
+  --color-surface: #1c1c1c;
+  --color-input: #121212;
+  --color-bubble: #2e2e2e;
+  --color-elevated: #292929;
+  --color-hairline: rgba(255, 255, 255, 0.06);
+  --color-subtle: rgba(255, 255, 255, 0.08);
+  --color-track: rgba(142, 142, 147, 0.16);
+  --color-control: rgba(142, 142, 147, 0.18);
+
+  --color-accent: #ff9500;
+  --color-overage: #ff3b30;
+  --color-label: #ffffff;
+  --color-label2: rgba(235, 235, 245, 0.6);
+  --color-label3: rgba(235, 235, 245, 0.3);
+
+  --color-day-gray: #6e6e73;
+  --color-day-blue: #5ac8fa;
+  --color-day-green: #34c759;
+  --color-day-light-green: #9fe3a0;
+  --color-day-yellow: #ffd60a;
+  --color-day-orange: #ff9f0a;
+  --color-day-red: #ff453a;
+
+  --radius-card: 18px;
+  --radius-action: 16px;
+  --radius-error: 14px;
+  --radius-field: 10px;
+  --radius-tooltip: 8px;
+  --radius-tile: 7px;
+
+  /* The Swift app uses fixed point sizes with no Dynamic Type. Port the exact
+     scale rather than snapping to Tailwind's defaults — half-point sizes like
+     14.5 and 12.5 are load-bearing in the meal rows and micro-labels. */
+  --text-9_5: 9.5px;
+  --text-10: 10px;
+  --text-10_5: 10.5px;
+  --text-11: 11px;
+  --text-11_5: 11.5px;
+  --text-12: 12px;
+  --text-12_5: 12.5px;
+  --text-13: 13px;
+  --text-13_5: 13.5px;
+  --text-14: 14px;
+  --text-14_5: 14.5px;
+  --text-15: 15px;
+  --text-16: 16px;
+  --text-18: 18px;
+  --text-19: 19px;
+  --text-20: 20px;
+  --text-22: 22px;
+  --text-24: 24px;
+  --text-28: 28px;
+  --text-32: 32px;
+  --text-40: 40px;
+  --text-44: 44px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #000;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* No rubber-banding: the app is a fixed shell with scrolling panes inside. */
+  overscroll-behavior-y: none;
+}
+
+/* Almost every number in the Swift UI carries .monospacedDigit(). */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* SwiftUI's .ultraThinMaterial — chat macro strip and composer. Tuned by eye
+   against the simulator; adjust here rather than at the call sites. */
+.material-thin {
+  background: rgba(37, 37, 37, 0.6);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+}
+
+/* Horizontal card deck (the /recommend stack). CSS scroll-snap replaces the
+   six iterations of custom gesture code the SwiftUI version needed: the
+   browser hands vertical drags to the parent scroller on its own. */
+.snap-deck {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  touch-action: pan-x;
+  scrollbar-width: none;
+}
+.snap-deck::-webkit-scrollbar {
+  display: none;
+}
+.snap-deck > * {
+  scroll-snap-align: center;
+  flex: 0 0 100%;
+}
