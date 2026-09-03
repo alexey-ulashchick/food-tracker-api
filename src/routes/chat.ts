@@ -32,6 +32,13 @@ const MAX_TOOL_ITERATIONS = 20
 // through. Small so a stubborn model can't spin against MAX_TOOL_ITERATIONS.
 const MAX_UNBACKED_NUDGES = 2
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
+// A client-side downscale persisted alongside the user row so chat history can
+// still show the photo after a reload. The full-size image goes to Anthropic
+// and is discarded — we never store it, so this field is the only thing that
+// makes history replay possible. 40 KB comfortably fits a 320px WebP at q0.7
+// while keeping the jsonb row small.
+const MAX_THUMB_BYTES = 40 * 1024
+const THUMB_RE = /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/
 
 const listMessagesSchema = z.object({
   limit: z.coerce.number().int().positive().max(200).default(50),
@@ -74,31 +81,17 @@ export const chatRoute = new Hono<AuthEnv>()
 
     return c.json(rows)
   })
-  // multipart/form-data: { content: string, image?: File }
+  // multipart/form-data: { content: string, image?: File, thumb?: data-URL }
   // JSON is also accepted (Content-Type: application/json) for text-only
-  // requests.
+  // requests. `thumb` is a client-side downscale of `image`; the full-size
+  // file is forwarded to Anthropic and dropped, so the thumb is what chat
+  // history replays. iOS omits it and keeps working.
   .post('/', async (c) => {
     const userId = c.get('userId')
 
-    const { content, image } = await readBody(c.req.raw)
-    if (!content || content.length === 0) {
-      return c.json({ error: 'content is required' }, 400)
-    }
-    if (content.length > 10_000) {
-      return c.json({ error: 'content too long (max 10000 chars)' }, 400)
-    }
-
-    let imagePayload: { mediaType: string; base64: string } | null = null
-    if (image) {
-      if (!ALLOWED_IMAGE_TYPES.has(image.type)) {
-        return c.json({ error: `unsupported image type: ${image.type}` }, 400)
-      }
-      const buf = await image.arrayBuffer()
-      imagePayload = {
-        mediaType: image.type,
-        base64: Buffer.from(buf).toString('base64'),
-      }
-    }
+    const parsed = await parseChatRequest(c.req.raw)
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    const { content, image: imagePayload } = parsed.value
 
     // Pull context BEFORE inserting the new user message — keeps the LLM
     // history clean (the current turn is added explicitly below). Then persist
@@ -112,7 +105,7 @@ export const chatRoute = new Hono<AuthEnv>()
         role: 'user',
         content,
         kind: 'text',
-        meta: imagePayload ? { hadImage: true, mediaType: imagePayload.mediaType } : null,
+        meta: userRowMeta(parsed.value),
       })
       .returning()
 
@@ -292,22 +285,81 @@ export const chatRoute = new Hono<AuthEnv>()
     })
   })
 
-async function readBody(req: Request): Promise<{ content: string; image: File | null }> {
+async function readBody(
+  req: Request,
+): Promise<{ content: string; image: File | null; thumb: string | null }> {
   const ct = req.headers.get('content-type') ?? ''
   if (ct.includes('application/json')) {
     const body = (await req.json().catch(() => null)) as { content?: unknown } | null
     return {
       content: typeof body?.content === 'string' ? body.content : '',
       image: null,
+      thumb: null,
     }
   }
   // Default: treat as multipart/form-data.
   const form = await req.formData()
   const rawContent = form.get('content')
   const rawImage = form.get('image')
+  const rawThumb = form.get('thumb')
   return {
     content: typeof rawContent === 'string' ? rawContent : '',
     image: rawImage instanceof File && rawImage.size > 0 ? rawImage : null,
+    thumb: typeof rawThumb === 'string' && rawThumb.length > 0 ? rawThumb : null,
+  }
+}
+
+type ParsedChatRequest = {
+  content: string
+  image: { mediaType: string; base64: string } | null
+  thumb: string | null
+}
+
+// Shared by POST /chat and POST /chat/stream so the two entry points can never
+// drift on what they accept. Returns a plain error string rather than throwing
+// — both callers turn it into a 400, but the streaming one has to do so before
+// it opens the SSE response. Exported for tests: it is the one piece of the
+// chat surface that can be exercised without a database.
+export async function parseChatRequest(
+  req: Request,
+): Promise<{ ok: true; value: ParsedChatRequest } | { ok: false; error: string }> {
+  const { content, image, thumb } = await readBody(req)
+
+  if (!content || content.length === 0) return { ok: false, error: 'content is required' }
+  if (content.length > 10_000) {
+    return { ok: false, error: 'content too long (max 10000 chars)' }
+  }
+
+  let imagePayload: ParsedChatRequest['image'] = null
+  if (image) {
+    if (!ALLOWED_IMAGE_TYPES.has(image.type)) {
+      return { ok: false, error: `unsupported image type: ${image.type}` }
+    }
+    const buf = await image.arrayBuffer()
+    imagePayload = { mediaType: image.type, base64: Buffer.from(buf).toString('base64') }
+  }
+
+  let thumbData: string | null = null
+  if (thumb) {
+    // A thumb without an image would render a photo bubble for a message that
+    // never carried one, so reject the combination outright.
+    if (!imagePayload) return { ok: false, error: 'thumb requires an image' }
+    if (thumb.length > MAX_THUMB_BYTES) return { ok: false, error: 'thumb too large' }
+    if (!THUMB_RE.test(thumb)) return { ok: false, error: 'thumb must be a data: URL' }
+    thumbData = thumb
+  }
+
+  return { ok: true, value: { content, image: imagePayload, thumb: thumbData } }
+}
+
+// meta for the persisted user row. `thumb` is omitted entirely when absent so
+// existing rows and iOS-originated ones keep exactly the shape they had.
+function userRowMeta(parsed: ParsedChatRequest): Record<string, unknown> | null {
+  if (!parsed.image) return null
+  return {
+    hadImage: true,
+    mediaType: parsed.image.mediaType,
+    ...(parsed.thumb ? { thumb: parsed.thumb } : {}),
   }
 }
 
