@@ -1,2 +1,6 @@
 [test]
+# Scope discovery to the backend suite. Without this, `bun test` also collects
+# web/src/**/*.test.tsx — the frontend tests, which are written against vitest
+# and fail under bun's runner. Those run via `bun run test:web`.
+root = "tests"
 preload = ["./tests/setup.ts"]
