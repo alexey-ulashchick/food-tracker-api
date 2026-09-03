@@ -1,7 +1,10 @@
-// Server-side port of CalTracker/DietDayClassifier.swift. KEEP IN SYNC with
-// the Swift original: the iOS app is being migrated to consume colors from
-// the server, but every threshold and decision branch must match the Swift
-// source exactly until that migration lands and the Swift copy is removed.
+// Single source of truth for day classification. This began as a port of
+// CalTracker/DietDayClassifier.swift; that Swift copy is retired along with
+// the iOS client, so the sync contract no longer applies and the prose here
+// is Russian — it is rendered verbatim by the web UI.
+//
+// Thresholds and branch order are load-bearing and must not drift: History
+// bars, the Today verdict and /chat/recommend all key off them.
 //
 // Maps a logged day's calories + macros against its targets to exactly one of
 // seven semantic colors used across History, Today, and /chat/recommend.
@@ -60,22 +63,22 @@ export function verdictDietDay(input: ClassifyInput): DietDayVerdict {
   if (K == null || P == null || F == null || k == null || p == null || f == null) {
     return {
       color: 'gray',
-      title: 'No data',
-      reason: 'Targets or actuals are missing for this day.',
+      title: 'Нет данных',
+      reason: 'За этот день не хватает целей или записей.',
     }
   }
   if (K <= 0 || P <= 0 || F <= 0) {
     return {
       color: 'gray',
-      title: 'No data',
-      reason: 'No valid targets are set for this day.',
+      title: 'Нет данных',
+      reason: 'На этот день не выставлены корректные цели.',
     }
   }
   if (k < 0 || p < 0 || f < 0) {
     return {
       color: 'gray',
-      title: 'No data',
-      reason: 'Logged actuals look invalid for this day.',
+      title: 'Нет данных',
+      reason: 'Записанные за день значения выглядят некорректно.',
     }
   }
 
@@ -83,8 +86,8 @@ export function verdictDietDay(input: ClassifyInput): DietDayVerdict {
   if (k < 0.75 * K && p < 0.70 * P) {
     return {
       color: 'blue',
-      title: 'Substantially under-eaten',
-      reason: `Calories ${intStr(k)} kcal (${pctStr(k, K)} of target) and protein ${intStr(p)} g (${pctStr(p, P)} of goal). Both ran well under — pairing low calories with low protein risks muscle loss on a cut.`,
+      title: 'Сильный недобор',
+      reason: `Калории ${intStr(k)} ккал (${pctStr(k, K)} от цели), белок ${intStr(p)} г (${pctStr(p, P)} от цели). И то и другое сильно ниже нормы — низкие калории вместе с низким белком на дефиците грозят потерей мышц.`,
     }
   }
 
@@ -99,23 +102,23 @@ export function verdictDietDay(input: ClassifyInput): DietDayVerdict {
     if (cs === severity) {
       const pctOver = Math.round((k / K - 1) * 100)
       const kcalOver = Math.round(k - K)
-      issues.push(`calories ran +${pctOver}% over goal (+${kcalOver} kcal)`)
+      issues.push(`калории на +${pctOver}% выше цели (+${kcalOver} ккал)`)
     }
     if (ps === severity) {
-      issues.push(`protein at ${pctStr(p, P)} of goal (${intStr(p)} / ${intStr(P)} g)`)
+      issues.push(`белок ${pctStr(p, P)} от цели (${intStr(p)} / ${intStr(P)} г)`)
     }
     if (fs === severity) {
-      issues.push(`fat at ${pctStr(f, F)} of target (${intStr(f)} / ${intStr(F)} g)`)
+      issues.push(`жиры ${pctStr(f, F)} от цели (${intStr(f)} / ${intStr(F)} г)`)
     }
     const reason = `${capitalizeFirst(joinList(issues))}.`
 
     switch (severity) {
       case 3:
-        return { color: 'red', title: 'Major issue', reason }
+        return { color: 'red', title: 'Серьёзное отклонение', reason }
       case 2:
-        return { color: 'orange', title: 'Significant issue', reason }
+        return { color: 'orange', title: 'Заметное отклонение', reason }
       default:
-        return { color: 'yellow', title: 'Minor issue', reason }
+        return { color: 'yellow', title: 'Мелкая погрешность', reason }
     }
   }
 
@@ -128,11 +131,11 @@ export function verdictDietDay(input: ClassifyInput): DietDayVerdict {
   })()
 
   if (k <= 1.03 * K && p >= 0.90 * P && f >= 0.50 * F && carbsAcceptable) {
-    const carbsClause = carbsMeasured ? ', carbs within ±30% of target' : ''
+    const carbsClause = carbsMeasured ? ', углеводы в пределах ±30% от цели' : ''
     return {
       color: 'green',
-      title: 'Strong day',
-      reason: `Calories within +3% of target, protein ≥ 90% of goal, fat ≥ 50% of target${carbsClause}.`,
+      title: 'Отличный день',
+      reason: `Калории в пределах +3% от цели, белок ≥ 90% от цели, жиры ≥ 50% от цели${carbsClause}.`,
     }
   }
 
@@ -141,24 +144,24 @@ export function verdictDietDay(input: ClassifyInput): DietDayVerdict {
   const notes: string[] = []
   if (k > 1.03 * K) {
     const pctOver = Math.round((k / K - 1) * 100)
-    notes.push(`calories ran +${pctOver}% over goal (above the +3% green line)`)
+    notes.push(`калории на +${pctOver}% выше цели (за границей +3% для зелёного)`)
   }
   if (p < 0.90 * P) {
-    notes.push(`protein at ${pctStr(p, P)} of goal (just below the 90% green line)`)
+    notes.push(`белок ${pctStr(p, P)} от цели (чуть ниже границы 90% для зелёного)`)
   }
   if (C != null && c != null && C > 0 && Math.abs(c - C) > 0.30 * C) {
     const dev = Math.round((Math.abs(c - C) / C) * 100)
-    const dir = c > C ? 'over' : 'under'
-    notes.push(`carbs ${dev}% ${dir} target (outside the ±30% green band)`)
+    const dir = c > C ? 'выше' : 'ниже'
+    notes.push(`углеводы на ${dev}% ${dir} цели (за коридором ±30% для зелёного)`)
   }
 
   return {
     color: 'light_green',
-    title: 'Good day',
+    title: 'Хороший день',
     reason:
       notes.length === 0
-        ? 'Every macro stayed in safe range; one of the stricter green thresholds was just missed.'
-        : `Every macro stayed in safe range, but ${joinList(notes)}.`,
+        ? 'Все макросы в безопасном диапазоне; чуть-чуть не хватило до строгих порогов зелёного.'
+        : `Все макросы в безопасном диапазоне, но ${joinList(notes)}.`,
   }
 }
 
@@ -202,7 +205,7 @@ function capitalizeFirst(s: string): string {
 function joinList(items: string[]): string {
   if (items.length === 0) return ''
   if (items.length === 1) return items[0]!
-  if (items.length === 2) return `${items[0]} and ${items[1]}`
+  if (items.length === 2) return `${items[0]} и ${items[1]}`
   const head = items.slice(0, -1).join(', ')
-  return `${head}, and ${items[items.length - 1]}`
+  return `${head} и ${items[items.length - 1]}`
 }

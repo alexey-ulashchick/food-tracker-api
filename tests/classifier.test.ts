@@ -134,26 +134,75 @@ describe('verdictDietDay', () => {
   test('green verdict mentions all three strict checks', () => {
     const v = verdictDietDay({ ...T, calories: 2000, protein: 150, fat: 60, carbs: 200 })
     expect(v.color).toBe('green')
-    expect(v.title).toBe('Strong day')
-    expect(v.reason).toContain('Calories within +3%')
-    expect(v.reason).toContain('protein ≥ 90%')
-    expect(v.reason).toContain('fat ≥ 50%')
-    expect(v.reason).toContain('carbs within ±30%')
+    expect(v.title).toBe('Отличный день')
+    expect(v.reason).toContain('Калории в пределах +3%')
+    expect(v.reason).toContain('белок ≥ 90%')
+    expect(v.reason).toContain('жиры ≥ 50%')
+    expect(v.reason).toContain('углеводы в пределах ±30%')
   })
 
   test('red verdict explains which dimension drove the verdict', () => {
     const v = verdictDietDay({ ...T, calories: 2500, protein: 150, fat: 60, carbs: 200 })
     expect(v.color).toBe('red')
-    expect(v.title).toBe('Major issue')
-    expect(v.reason).toContain('calories ran +25%')
+    expect(v.title).toBe('Серьёзное отклонение')
+    // capitalizeFirst has to work on Cyrillic, not just ASCII.
+    expect(v.reason).toContain('Калории на +25% выше цели')
+    expect(v.reason).toContain('+500 ккал')
   })
 
   test('blue verdict quotes the actual deltas', () => {
     const v = verdictDietDay({ ...T, calories: 1400, protein: 90, fat: 30, carbs: 200 })
     expect(v.color).toBe('blue')
-    expect(v.title).toBe('Substantially under-eaten')
-    expect(v.reason).toContain('1400 kcal')
+    expect(v.title).toBe('Сильный недобор')
+    expect(v.reason).toContain('1400 ккал')
     expect(v.reason).toContain('70%')
-    expect(v.reason).toContain('protein')
+    expect(v.reason).toContain('белок')
+  })
+
+  test('gray verdict distinguishes missing data from invalid targets', () => {
+    const missing = verdictDietDay({ ...T, calories: null, protein: 1, fat: 1, carbs: 1 })
+    expect(missing.title).toBe('Нет данных')
+    expect(missing.reason).toContain('не хватает целей или записей')
+
+    const noTargets = verdictDietDay({
+      ...T,
+      calorieGoal: 0,
+      calories: 1,
+      protein: 1,
+      fat: 1,
+      carbs: 1,
+    })
+    expect(noTargets.reason).toContain('не выставлены корректные цели')
+  })
+
+  test('light_green lists every missed threshold, joined with "и"', () => {
+    const v = verdictDietDay({ ...T, calories: 2060, protein: 130, fat: 55, carbs: 300 })
+    expect(v.color).toBe('light_green')
+    expect(v.title).toBe('Хороший день')
+    expect(v.reason).toContain('белок 87% от цели')
+    expect(v.reason).toContain('углеводы на 50% выше цели')
+    // joinList must use the Russian conjunction, not "and".
+    expect(v.reason).toContain(' и ')
+    expect(v.reason).not.toContain(' and ')
+  })
+
+  test('no verdict leaks English prose', () => {
+    const inputs = [
+      { calories: 1400, protein: 90, fat: 30, carbs: 200 },
+      { calories: 2500, protein: 150, fat: 60, carbs: 200 },
+      { calories: 2300, protein: 150, fat: 60, carbs: 200 },
+      { calories: 2100, protein: 150, fat: 60, carbs: 200 },
+      { calories: 2000, protein: 150, fat: 60, carbs: 200 },
+      { calories: 2000, protein: 130, fat: 55, carbs: 200 },
+      { calories: null, protein: 1, fat: 1, carbs: 1 },
+    ]
+    for (const input of inputs) {
+      const v = verdictDietDay({ ...T, ...input })
+      expect(v.title).toMatch(/[А-Яа-яЁё]/)
+      expect(v.reason).toMatch(/[А-Яа-яЁё]/)
+      // Any surviving Latin letters would be a missed translation. Digits,
+      // punctuation and the ккал/г units are all Cyrillic or symbolic.
+      expect(v.reason).not.toMatch(/[A-Za-z]/)
+    }
   })
 })
