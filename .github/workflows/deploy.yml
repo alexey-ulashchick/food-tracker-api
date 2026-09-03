@@ -6,9 +6,13 @@ on:
     # Skip the deploy when only docs / non-shipping files change.
     paths:
       - 'src/**'
+      - 'shared/**'
+      - 'web/**'
       - 'package.json'
       - 'bun.lock'
       - 'tsconfig.json'
+      - 'tsconfig.base.json'
+      - 'vite.config.ts'
       - 'Dockerfile'
       - '.dockerignore'
       - 'fly.toml'
@@ -37,6 +41,12 @@ jobs:
         with:
           bun-version: 1.3
       - run: bun run typecheck
+      - run: bun run typecheck:web
+      - run: bun run lint
+      - run: bun run test:web
+      # Catches a broken SPA build before Fly's remote builder does, where the
+      # same failure costs a full image build.
+      - run: bun run web:build
 
   deploy:
     name: Deploy to Fly.io

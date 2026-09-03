@@ -16,3 +16,10 @@ tests/
 scripts/
 biome.json
 bunfig.toml
+
+# web/ itself IS needed — the webbuild stage compiles it. Only its local
+# artefacts are excluded; the bundle is built inside the image.
+web/node_modules
+web/dist
+playwright-report
+test-results

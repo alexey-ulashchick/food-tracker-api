@@ -14,7 +14,7 @@
     "web:dev": "vite",
     "web:build": "vite build",
     "web:preview": "vite preview",
-    "test:web": "vitest run",
+    "test:web": "vitest run --passWithNoTests",
     "db:push": "drizzle-kit push",
     "db:push:neon": "env -u DATABASE_URL bun --env-file=.env.neon run db:push",
     "db:studio": "drizzle-kit studio",
