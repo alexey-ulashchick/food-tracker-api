@@ -3,12 +3,15 @@ import { eq } from 'drizzle-orm'
 import { db } from '../src/db/client.ts'
 import { chatMessages, dailyGoals, meals } from '../src/db/schema.ts'
 import {
+  type SseEvent,
   authHeaders,
   llmResponse,
   makeApp,
+  readSse,
   seedGoal,
   seedMeal,
   seedUser,
+  streamRequest,
   truncateAll,
 } from './helpers.ts'
 import { messagesCreate } from './setup.ts'
@@ -738,5 +741,261 @@ describe('POST /chat', () => {
       data: { meals: Array<{ id: string; foodName: string }> }
     }
     expect(page2.data.meals.some((m) => m.id === oldMeal.id)).toBe(true)
+  })
+})
+
+// ─── POST /chat/stream ──────────────────────────────────────────────────────
+// Same tool loop, same guards, same persistence as POST /chat — the tests
+// below only assert the streaming surface on top of it. The mocked SDK pulls
+// its final message from the same messagesCreate queue for both entry points
+// (see tests/setup.ts), so a scripted turn behaves identically either way.
+
+describe('POST /chat/stream', () => {
+  const names = (events: SseEvent[]) => events.map((e) => e.event)
+  const deltaText = (events: SseEvent[]) =>
+    events
+      .filter((e) => e.event === 'delta')
+      .map((e) => e.data.text as string)
+      .join('')
+
+  test('text-only turn: user → delta* → message → usage → done', async () => {
+    const { token } = await seedUser()
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Привет! Чем могу помочь?' }],
+        stop_reason: 'end_turn',
+      }),
+    )
+
+    const res = await makeApp().fetch(streamRequest(token, 'привет'))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/event-stream')
+
+    const events = await readSse(res)
+    expect(names(events)[0]).toBe('user')
+    expect(names(events).at(-1)).toBe('done')
+    expect(names(events)).toContain('usage')
+
+    // Text really arrives in pieces, not as one blob.
+    expect(events.filter((e) => e.event === 'delta').length).toBeGreaterThan(1)
+    expect(deltaText(events)).toBe('Привет! Чем могу помочь?')
+
+    const message = events.find((e) => e.event === 'message')
+    expect(message?.data.blockId).toBe('0-0')
+    expect((message?.data.row as { content: string }).content).toBe('Привет! Чем могу помочь?')
+  })
+
+  test('the message frame lands after the deltas it supersedes', async () => {
+    const { token } = await seedUser()
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({ content: [{ type: 'text', text: 'a'.repeat(40) }], stop_reason: 'end_turn' }),
+    )
+
+    const n = names(await readSse(await makeApp().fetch(streamRequest(token, 'hi'))))
+    expect(n.lastIndexOf('delta')).toBeLessThan(n.indexOf('message'))
+  })
+
+  test('the persisted user row is emitted before the model runs', async () => {
+    const { token } = await seedUser()
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({ content: [{ type: 'text', text: 'ок' }], stop_reason: 'end_turn' }),
+    )
+
+    const events = await readSse(await makeApp().fetch(streamRequest(token, 'первое сообщение')))
+    expect(events[0]?.event).toBe('user')
+    expect((events[0]?.data as { content: string }).content).toBe('первое сообщение')
+  })
+
+  test('a write tool reports start then ok and yields a card', async () => {
+    const { userId, token } = await seedUser()
+    await seedGoal(userId, { date: new Date().toISOString().slice(0, 10) })
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          {
+            type: 'tool_use',
+            id: 't1',
+            name: 'add_meal',
+            input: {
+              meal: 'Lunch',
+              emoji: '🍎',
+              foodName: 'Яблоко',
+              calories: 95,
+              protein: 0,
+              carbs: 25,
+              fats: 0,
+            },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({ content: [{ type: 'text', text: 'Записал' }], stop_reason: 'end_turn' }),
+    )
+
+    const events = await readSse(await makeApp().fetch(streamRequest(token, 'съел яблоко')))
+
+    const tools = events.filter((e) => e.event === 'tool')
+    expect(tools.map((t) => t.data.status)).toEqual(['start', 'ok'])
+    expect(tools[0]?.data.name).toBe('add_meal')
+
+    const card = events.find((e) => e.event === 'card')
+    expect((card?.data as { kind: string }).kind).toBe('meal_added')
+
+    // The meal really landed, exactly as it would through POST /chat.
+    const rows = await db.select().from(meals).where(eq(meals.userId, userId))
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.foodName).toBe('Яблоко')
+  })
+
+  test('a failing tool reports status error and emits no card', async () => {
+    const { token } = await seedUser()
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          // No such meal id — executeTool comes back { ok: false }.
+          {
+            type: 'tool_use',
+            id: 't1',
+            name: 'delete_meal',
+            input: { mealId: '00000000-0000-0000-0000-000000000000' },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({ content: [{ type: 'text', text: 'Не нашёл' }], stop_reason: 'end_turn' }),
+    )
+
+    const events = await readSse(await makeApp().fetch(streamRequest(token, 'удали обед')))
+
+    expect(events.filter((e) => e.event === 'tool').at(-1)?.data.status).toBe('error')
+    expect(names(events)).not.toContain('card')
+  })
+
+  // The write-claim guard can only decide once every tool has run, by which
+  // point the false line is already on the user's screen. That is the entire
+  // reason `retract` exists.
+  test('an unbacked write claim is streamed, then retracted and never persisted', async () => {
+    const { userId, token } = await seedUser()
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({ content: [{ type: 'text', text: 'Записал творог' }], stop_reason: 'end_turn' }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Уточни порцию, пожалуйста' }],
+        stop_reason: 'end_turn',
+      }),
+    )
+
+    const events = await readSse(await makeApp().fetch(streamRequest(token, 'запиши творог')))
+
+    const retract = events.find((e) => e.event === 'retract')
+    expect(retract).toBeDefined()
+    expect(retract?.data.blockIds).toEqual(['0-0'])
+    // It must cancel deltas the client has already rendered, so it comes last.
+    expect(names(events).indexOf('retract')).toBeGreaterThan(names(events).indexOf('delta'))
+
+    const rows = await db.select().from(chatMessages).where(eq(chatMessages.userId, userId))
+    const aiText = rows.filter((r) => r.role === 'ai').map((r) => r.content)
+    expect(aiText).not.toContain('Записал творог')
+    expect(aiText).toContain('Уточни порцию, пожалуйста')
+  })
+
+  test('a claim backed by a real write is not retracted', async () => {
+    const { userId, token } = await seedUser()
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          { type: 'text', text: 'Записал творог' },
+          {
+            type: 'tool_use',
+            id: 't1',
+            name: 'add_meal',
+            input: {
+              meal: 'Breakfast',
+              emoji: '🥛',
+              foodName: 'Творог',
+              calories: 180,
+              protein: 30,
+              carbs: 6,
+              fats: 4,
+            },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({ content: [{ type: 'text', text: 'Готово' }], stop_reason: 'end_turn' }),
+    )
+
+    const events = await readSse(await makeApp().fetch(streamRequest(token, 'запиши творог')))
+    expect(names(events)).not.toContain('retract')
+
+    const rows = await db.select().from(chatMessages).where(eq(chatMessages.userId, userId))
+    expect(rows.filter((r) => r.role === 'ai').map((r) => r.content)).toContain('Записал творог')
+  })
+
+  test('usage is stamped on the last ai row and reported once', async () => {
+    const { token } = await seedUser()
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({ content: [{ type: 'text', text: 'ок' }], stop_reason: 'end_turn' }),
+    )
+
+    const events = await readSse(await makeApp().fetch(streamRequest(token, 'привет')))
+    const usage = events.filter((e) => e.event === 'usage')
+    expect(usage).toHaveLength(1)
+    expect(usage[0]!.data).toHaveProperty('messageId')
+    expect(usage[0]!.data).toHaveProperty('costUsd')
+  })
+
+  test('a photo thumbnail is persisted on the streamed user row', async () => {
+    const { userId, token } = await seedUser()
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({ content: [{ type: 'text', text: 'Вижу' }], stop_reason: 'end_turn' }),
+    )
+
+    const thumb = 'data:image/webp;base64,UklGRg=='
+    const form = new FormData()
+    form.set('content', 'что это?')
+    form.set('image', new File([new Uint8Array([1, 2, 3])], 'p.png', { type: 'image/png' }))
+    form.set('thumb', thumb)
+    const res = await makeApp().fetch(
+      new Request('http://x/chat/stream', {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: form,
+      }),
+    )
+
+    await readSse(res)
+    const rows = await db.select().from(chatMessages).where(eq(chatMessages.userId, userId))
+    const userRow = rows.find((r) => r.role === 'user')
+    expect(userRow?.meta).toMatchObject({ hadImage: true, mediaType: 'image/png', thumb })
+  })
+
+  // Validation has to happen before streamSSE takes over the response, or the
+  // status is already 200 and the error is unreportable.
+  test('an invalid body 400s as JSON instead of opening a stream', async () => {
+    const { token } = await seedUser()
+    const res = await makeApp().fetch(streamRequest(token, ''))
+    expect(res.status).toBe(400)
+    expect(res.headers.get('content-type')).toContain('application/json')
+  })
+
+  test('an LLM failure closes the stream with an error frame', async () => {
+    const { token } = await seedUser()
+    messagesCreate.mockRejectedValueOnce(new Error('upstream exploded'))
+
+    const events = await readSse(await makeApp().fetch(streamRequest(token, 'привет')))
+    const error = events.find((e) => e.event === 'error')
+    expect(error?.data.code).toBe('internal')
+    expect(String(error?.data.message)).toContain('upstream exploded')
   })
 })

@@ -96,3 +96,32 @@ export function llmResponse(args: {
     ...args,
   }
 }
+
+export type SseEvent = { event: string; data: Record<string, unknown> }
+
+// Parses an SSE response body into typed events. Comment frames (the
+// heartbeat POST /chat/stream sends) are skipped, matching what an
+// EventSource client does.
+export async function readSse(res: Response): Promise<SseEvent[]> {
+  const body = await res.text()
+  const events: SseEvent[] = []
+  for (const frame of body.split('\n\n')) {
+    if (!frame.trim() || frame.trimStart().startsWith(':')) continue
+    const event = /^event:\s*(.*)$/m.exec(frame)?.[1]
+    const data = /^data:\s*([\s\S]*)$/m.exec(frame)?.[1]
+    if (event && data !== undefined) events.push({ event, data: JSON.parse(data) })
+  }
+  return events
+}
+
+// POST /chat/stream with a multipart body, the way the web client sends it.
+export function streamRequest(token: string, content: string, extra: Record<string, string> = {}) {
+  const form = new FormData()
+  form.set('content', content)
+  for (const [k, v] of Object.entries(extra)) form.set(k, v)
+  return new Request('http://x/chat/stream', {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: form,
+  })
+}

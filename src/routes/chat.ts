@@ -39,6 +39,9 @@ const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'im
 // while keeping the jsonb row small.
 const MAX_THUMB_BYTES = 40 * 1024
 const THUMB_RE = /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/
+// Comment frame interval for POST /chat/stream. Fly's proxy closes idle
+// connections and a tool loop can go quiet between LLM calls.
+const HEARTBEAT_MS = 15_000
 
 const listMessagesSchema = z.object({
   limit: z.coerce.number().int().positive().max(200).default(50),
@@ -57,6 +60,25 @@ type ChatContext = {
   todaysGoal: Goal | undefined
   memories: Memory[]
 }
+
+/**
+ * Progress sink for POST /chat/stream. Event names and payloads:
+ *
+ *   user      ChatMessage   the persisted user row, before the model runs
+ *   delta     {blockId,text} one text_delta from Anthropic
+ *   tool      {name,status}  status ∈ start | ok | error
+ *   retract   {blockIds}     the write-claim guard suppressed those blocks
+ *   message   ChatMessage    a persisted ai text row
+ *   card      ChatMessage    a persisted action card
+ *   usage     {messageId,…}  per-turn totals, stamped on the last ai row
+ *   done      {count}        end of turn
+ *   error     {code,message} the loop threw
+ *
+ * `retract` exists because the guard decides after the fact: a streamed
+ * bubble is already on screen by the time we know the model claimed a write
+ * it never made.
+ */
+type ChatEmit = (event: string, data: unknown) => Promise<void>
 
 export const chatRoute = new Hono<AuthEnv>()
   .use(auth)
@@ -121,6 +143,107 @@ export const chatRoute = new Hono<AuthEnv>()
     })
 
     return c.json({ user: userMsg!, ai: aiMessages }, 201)
+  })
+  // Streaming twin of POST /chat: same body, same tool loop, same guards. The
+  // only difference is that progress is reported as it happens instead of
+  // arriving in one blob at the end — a bulk turn can run 20 tool iterations,
+  // which is a long time to show nothing. POST /chat stays as-is for the iOS
+  // client until it is retired.
+  //
+  // See the ChatEmit doc comment for the event contract. The subtle one is
+  // `retract`: the write-claim guard decides only after every tool has run,
+  // by which point a false "записал" is already on screen.
+  .post('/stream', async (c) => {
+    const userId = c.get('userId')
+
+    // Validate before opening the stream: a 400 is only expressible while we
+    // still own the response status.
+    const parsed = await parseChatRequest(c.req.raw)
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    const { content, image: imagePayload } = parsed.value
+
+    const ctx = await fetchChatContext(c, userId)
+
+    const [userMsg] = await db
+      .insert(chatMessages)
+      .values({
+        userId,
+        role: 'user',
+        content,
+        kind: 'text',
+        meta: userRowMeta(parsed.value),
+      })
+      .returning()
+
+    const messages: Anthropic.MessageParam[] = historyToMessages(ctx.history, ctx.tzOffsetMin)
+    messages.push(buildCurrentUserMessage(content, imagePayload))
+
+    const userTag = userId.slice(0, 8)
+
+    return streamSSE(c, async (stream) => {
+      // Token deltas are emitted from Anthropic's synchronous streamEvent
+      // handler, which cannot await, so writes are fired and forgotten.
+      // Ordering itself is safe — writeSSE goes through a WritableStream
+      // writer, whose queue preserves call order — but two things still need
+      // handling: a rejected write on a dead socket would surface as an
+      // unhandled rejection, and the callback must not return until the last
+      // frame has landed. Chaining gives us both a swallow point and a drain
+      // point.
+      let queue: Promise<void> = Promise.resolve()
+      const enqueue = (write: () => Promise<void>): Promise<void> => {
+        queue = queue.then(write).catch(() => {
+          // A dead socket must not abort the tool loop: the rows are already
+          // persisted and the client reconciles with GET /chat on reconnect.
+        })
+        return queue
+      }
+
+      const heartbeat = setInterval(() => {
+        // Comment frame: ignored by EventSource, but keeps Fly's proxy from
+        // dropping a connection that goes quiet between LLM calls.
+        void enqueue(() => stream.write(': ping\n\n').then(() => undefined))
+      }, HEARTBEAT_MS)
+
+      try {
+        if (userMsg) {
+          await enqueue(() => stream.writeSSE({ event: 'user', data: JSON.stringify(userMsg) }))
+        }
+
+        const rows = await runToolLoop({
+          userId,
+          systemPrompt: buildSystemPrompt(ctx),
+          messages,
+          tzOffsetMin: ctx.tzOffsetMin,
+          today: ctx.today,
+          emit: (event, data) =>
+            enqueue(() => stream.writeSSE({ event, data: JSON.stringify(data) })),
+        })
+
+        await enqueue(() =>
+          stream.writeSSE({ event: 'done', data: JSON.stringify({ count: rows.length }) }),
+        )
+      } catch (err) {
+        // streamSSE swallows callback exceptions silently — log and re-emit so
+        // the client renders an error instead of a typing dot that never
+        // resolves. Same reasoning as /chat/recommend below.
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error(
+          `[chat/stream] error user=${userTag}`,
+          err instanceof Error ? err.stack : err,
+        )
+        await enqueue(() =>
+          stream.writeSSE({
+            event: 'error',
+            data: JSON.stringify({ code: 'internal', message: msg }),
+          }),
+        )
+      } finally {
+        clearInterval(heartbeat)
+        // Let anything still queued (a trailing delta, the error frame) land
+        // before streamSSE closes the socket.
+        await queue
+      }
+    })
   })
   // SSE stream of food-recommendation cards. The client hits this when the
   // user types "/recommend" in chat; the server is the only place that knows
@@ -470,8 +593,15 @@ async function runToolLoop(args: {
   messages: Anthropic.MessageParam[]
   tzOffsetMin: number
   today: string
+  /**
+   * When present the loop streams the Anthropic call and reports progress as
+   * it happens. Everything else — tool execution, the write-claim guard,
+   * persistence — is identical either way, so the two entry points can never
+   * disagree about what actually gets written.
+   */
+  emit?: ChatEmit
 }): Promise<ChatMessage[]> {
-  const { userId, systemPrompt, tzOffsetMin, today } = args
+  const { userId, systemPrompt, tzOffsetMin, today, emit } = args
   const messages = [...args.messages]
   const persisted: ChatMessage[] = []
   const userTag = userId.slice(0, 8)
@@ -505,14 +635,31 @@ async function runToolLoop(args: {
 
   for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
     const startedAt = performance.now()
-    const response = await anthropic.messages.create({
+    const request: Anthropic.MessageCreateParamsNonStreaming = {
       model: DEFAULT_MODEL,
       max_tokens: DEFAULT_MAX_TOKENS,
       system: systemPrompt,
       tools,
       messages,
       metadata: { user_id: userId },
-    })
+    }
+    let response: Anthropic.Message
+    if (emit) {
+      const live = anthropic.messages.stream(request)
+      // Raw events rather than the SDK's convenience 'text' event: we need the
+      // content-block index so a bubble can be addressed later if the
+      // write-claim guard retracts it.
+      live.on('streamEvent', (e) => {
+        if (e.type === 'content_block_delta' && e.delta.type === 'text_delta') {
+          void emit('delta', { blockId: `${iter}-${e.index}`, text: e.delta.text })
+        } else if (e.type === 'content_block_start' && e.content_block.type === 'tool_use') {
+          void emit('tool', { name: e.content_block.name, status: 'start' })
+        }
+      })
+      response = await live.finalMessage()
+    } else {
+      response = await anthropic.messages.create(request)
+    }
     const ms = Math.round(performance.now() - startedAt)
     const blockSummary = summarizeBlocks(response.content)
     const callUsage = priceUsage(DEFAULT_MODEL, response.usage)
@@ -532,15 +679,21 @@ async function runToolLoop(args: {
     // at all) — persisting that text would show the user a write that never
     // happened. We decide once every tool has run and `didWrite` is known.
     const pendingTexts: string[] = []
+    // Stream ids of the text blocks above, so a retract can name exactly the
+    // bubbles the client already rendered for this iteration.
+    const pendingBlockIds: string[] = []
     const pendingCards: Array<{
       result: Awaited<ReturnType<typeof executeTool>>
       input: unknown
     }> = []
 
-    for (const block of response.content) {
+    for (const [blockIndex, block] of response.content.entries()) {
       if (block.type === 'text') {
         const text = block.text.trim()
-        if (text) pendingTexts.push(text)
+        if (text) {
+          pendingTexts.push(text)
+          pendingBlockIds.push(`${iter}-${blockIndex}`)
+        }
       } else if (block.type === 'tool_use') {
         const inputPreview = previewInput(block.input)
         console.log(
@@ -564,6 +717,11 @@ async function runToolLoop(args: {
             `[chat] tool-err user=${userTag} name=${block.name} took=${toolMs}ms err=${result.error}`,
           )
         }
+        await emit?.('tool', {
+          name: block.name,
+          status: result.ok ? 'ok' : 'error',
+          ...(result.ok ? {} : { error: result.error }),
+        })
 
         if (result.ok && isWriteTool(block.name)) {
           didWrite = true
@@ -596,6 +754,9 @@ async function runToolLoop(args: {
       )
       const nudge =
         "SYSTEM: You did NOT successfully write anything this turn, so NOTHING was logged / updated / removed — the app shows no card and today's totals are unchanged. If the user asked you to log, edit, or delete something, call add_meal / update_meal / delete_meal NOW, in this turn. Never claim success without an actual write tool_result."
+      // The streaming client already rendered these blocks as they arrived;
+      // tell it to drop them, since they are never persisted.
+      if (pendingBlockIds.length > 0) await emit?.('retract', { blockIds: pendingBlockIds })
       messages.push({ role: 'assistant', content: response.content })
       messages.push(
         toolResults.length > 0
@@ -607,12 +768,17 @@ async function runToolLoop(args: {
 
     // Safe to persist. Text first, then the action cards, so the text bubble
     // renders above the card the write produced.
-    for (const t of pendingTexts) {
+    for (const [i, t] of pendingTexts.entries()) {
       const [row] = await db
         .insert(chatMessages)
         .values({ userId, role: 'ai', content: t, kind: 'text' })
         .returning()
-      if (row) persisted.push(row)
+      if (row) {
+        persisted.push(row)
+        // Carries the provisional blockId so the client can swap its streamed
+        // bubble for the persisted row instead of appending a duplicate.
+        await emit?.('message', { blockId: pendingBlockIds[i] ?? null, row })
+      }
     }
 
     // After any write, refetch today's totals and tack them onto every
@@ -629,7 +795,10 @@ async function runToolLoop(args: {
       }
       for (const c of pendingCards) {
         const card = await persistActionCard(userId, c.result, c.input)
-        if (card) persisted.push(card)
+        if (card) {
+          persisted.push(card)
+          await emit?.('card', card)
+        }
       }
     }
 
@@ -661,21 +830,33 @@ async function runToolLoop(args: {
       `[chat] iteration-cap user=${userTag} iters=${MAX_TOOL_ITERATIONS} — forcing tools-off wrap-up`,
     )
     const wrapSystem = `${systemPrompt}\n\nSYSTEM NOTE: You have reached the tool-call limit for this turn, so tools are now disabled. Reply with ONE short line: summarise what you just did, and if the task is not fully finished, tell the user exactly what's left and that they can ask you to continue.`
-    const wrap = await anthropic.messages.create({
+    const wrapRequest: Anthropic.MessageCreateParamsNonStreaming = {
       model: DEFAULT_MODEL,
       max_tokens: DEFAULT_MAX_TOKENS,
       system: wrapSystem,
       // No `tools` → the model cannot call anything and must produce text.
       messages,
       metadata: { user_id: userId },
-    })
+    }
+    let wrap: Anthropic.Message
+    if (emit) {
+      const live = anthropic.messages.stream(wrapRequest)
+      live.on('streamEvent', (e) => {
+        if (e.type === 'content_block_delta' && e.delta.type === 'text_delta') {
+          void emit('delta', { blockId: `wrap-${e.index}`, text: e.delta.text })
+        }
+      })
+      wrap = await live.finalMessage()
+    } else {
+      wrap = await anthropic.messages.create(wrapRequest)
+    }
     const wrapUsage = priceUsage(DEFAULT_MODEL, wrap.usage)
     turnUsage.inputTokens += wrapUsage.inputTokens
     turnUsage.outputTokens += wrapUsage.outputTokens
     turnUsage.cacheCreationTokens += wrapUsage.cacheCreationTokens
     turnUsage.cacheReadTokens += wrapUsage.cacheReadTokens
     turnUsage.costUsd += wrapUsage.costUsd
-    for (const block of wrap.content) {
+    for (const [blockIndex, block] of wrap.content.entries()) {
       if (block.type !== 'text') continue
       const text = block.text.trim()
       if (!text) continue
@@ -683,7 +864,10 @@ async function runToolLoop(args: {
         .insert(chatMessages)
         .values({ userId, role: 'ai', content: text, kind: 'text' })
         .returning()
-      if (row) persisted.push(row)
+      if (row) {
+        persisted.push(row)
+        await emit?.('message', { blockId: `wrap-${blockIndex}`, row })
+      }
     }
   }
 
@@ -705,6 +889,7 @@ async function runToolLoop(args: {
       .where(eq(chatMessages.id, last.id))
       .returning()
     if (updated) persisted[persisted.length - 1] = updated
+    await emit?.('usage', { messageId: last.id, ...turnUsage })
   }
 
   console.log(

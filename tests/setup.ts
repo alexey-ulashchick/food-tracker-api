@@ -58,9 +58,51 @@ export const messagesCreate = mock(async () => {
   )
 })
 
+// POST /chat/stream drives the same tool loop through messages.stream()
+// instead. The fake stream pulls its final message from the SAME queue as
+// messagesCreate, so a test can script a turn once and exercise either entry
+// point — and the two can never silently diverge. Before returning it replays
+// the wire events the real SDK would have emitted (text_delta per chunk,
+// content_block_start per tool_use), which is what the route turns into
+// `delta` and `tool` frames.
+export const messagesStream = mock((..._args: unknown[]) => {
+  const handlers: Array<(event: unknown) => void> = []
+  return {
+    on(_event: string, fn: (event: unknown) => void) {
+      handlers.push(fn)
+      return this
+    },
+    async finalMessage() {
+      const message = (await messagesCreate()) as unknown as {
+        content: Array<Record<string, unknown>>
+      }
+      message.content.forEach((block, index) => {
+        if (block.type === 'text') {
+          // Chunked so tests can assert that deltas really stream rather than
+          // arriving as one blob.
+          for (const piece of String(block.text).match(/.{1,8}/g) ?? []) {
+            for (const h of handlers) {
+              h({ type: 'content_block_delta', index, delta: { type: 'text_delta', text: piece } })
+            }
+          }
+        } else if (block.type === 'tool_use') {
+          for (const h of handlers) {
+            h({
+              type: 'content_block_start',
+              index,
+              content_block: { type: 'tool_use', name: block.name },
+            })
+          }
+        }
+      })
+      return message
+    },
+  }
+})
+
 mock.module('@anthropic-ai/sdk', () => ({
   default: class MockAnthropic {
-    messages = { create: messagesCreate }
+    messages = { create: messagesCreate, stream: messagesStream }
   },
 }))
 
