@@ -6,7 +6,14 @@ import { parseChatRequest } from '../src/routes/chat.ts'
 // loop, the write-claim guard) lives in chat.test.ts.
 
 const PNG_THUMB = 'data:image/png;base64,iVBORw0KGgo='
-const imageFile = () => new File([new Uint8Array([1, 2, 3])], 'p.png', { type: 'image/png' })
+
+// Bun's FormData serialiser ignores an explicit File.type and re-derives the
+// part's Content-Type from the filename extension — a file called 'a' arrives
+// with type '', and 'a.txt' declared as image/png arrives as text/plain. Real
+// browsers send the header themselves, so this only bites in tests: every
+// fixture below needs an extension that matches the type under test.
+const imageFile = (type = 'image/png', name = 'p.png') =>
+  new File([new Uint8Array([1, 2, 3])], name, { type })
 
 function multipart(build: (fd: FormData) => void): Request {
   const fd = new FormData()
@@ -44,14 +51,22 @@ describe('parseChatRequest — content', () => {
 
 describe('parseChatRequest — image', () => {
   test('accepts the four types Anthropic supports', async () => {
-    for (const type of ['image/jpeg', 'image/png', 'image/gif', 'image/webp']) {
+    const cases: Array<[string, string]> = [
+      ['image/jpeg', 'a.jpg'],
+      ['image/png', 'a.png'],
+      ['image/gif', 'a.gif'],
+      ['image/webp', 'a.webp'],
+    ]
+    for (const [type, name] of cases) {
       const r = await parseChatRequest(
         multipart((f) => {
           f.set('content', 'hi')
-          f.set('image', new File([new Uint8Array([1])], 'a', { type }))
+          f.set('image', imageFile(type, name))
         }),
       )
       expect(r.ok).toBe(true)
+      expect((r as { ok: true; value: { image: { mediaType: string } | null } }).value.image)
+        .toMatchObject({ mediaType: type })
     }
   })
 
@@ -59,7 +74,7 @@ describe('parseChatRequest — image', () => {
     const r = await parseChatRequest(
       multipart((f) => {
         f.set('content', 'hi')
-        f.set('image', new File([new Uint8Array([1])], 'a.tiff', { type: 'image/tiff' }))
+        f.set('image', imageFile('image/tiff', 'a.tiff'))
       }),
     )
     expect(r).toMatchObject({ ok: false, error: 'unsupported image type: image/tiff' })
