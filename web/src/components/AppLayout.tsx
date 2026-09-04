@@ -32,6 +32,9 @@ export function AppLayout() {
         position: 'relative',
       }}
     >
+      {/* Pays back the notch inset the viewport-fit=cover layout reaches into. */}
+      <div className="safe-top" />
+
       <ErrorBanner />
 
       <main

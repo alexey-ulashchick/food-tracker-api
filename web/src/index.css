@@ -69,6 +69,10 @@ body,
 
 body {
   margin: 0;
+  /* In standalone mode there is no browser chrome to absorb an overscroll, and
+     text selection on a long-press reads as a bug rather than a feature. */
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
   background: #000;
   color: #fff;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
@@ -191,4 +195,21 @@ body {
    the Swift version fought this with an eager VStack and manual re-anchoring. */
 .chat-scroll {
   overflow-anchor: auto;
+}
+
+/* Safe areas. The layout reaches under the notch and the home indicator
+   (viewport-fit=cover), so every fixed edge has to pay the inset back. */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Inputs must stay at 16px or iOS Safari zooms the page when they focus. */
+input,
+textarea,
+button,
+select {
+  font-family: inherit;
 }

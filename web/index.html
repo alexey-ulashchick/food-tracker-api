@@ -2,12 +2,26 @@
 <html lang="ru" class="dark">
   <head>
     <meta charset="UTF-8" />
+    <!-- viewport-fit=cover lets the layout reach under the notch and the home
+         indicator; the safe-area insets then keep content clear of both. -->
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
     />
     <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark" />
     <title>Cal Tracker</title>
+
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+
+    <!-- Standalone mode on iOS still needs the legacy pair: the manifest alone
+         does not remove Safari's chrome when launched from the home screen. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CalTracker" />
   </head>
   <body>
     <div id="root"></div>
