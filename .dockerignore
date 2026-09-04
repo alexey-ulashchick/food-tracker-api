@@ -23,3 +23,5 @@ web/node_modules
 web/dist
 playwright-report
 test-results
+e2e/
+playwright.config.ts

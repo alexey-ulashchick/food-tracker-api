@@ -1,9 +1,17 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { env } from '../env.ts'
+import { fakeAnthropic } from './fakeAnthropic.ts'
 
-export const anthropic = new Anthropic({
-  apiKey: env.ANTHROPIC_API_KEY,
-})
+/**
+ * With E2E_FAKE_LLM=1 the client is swapped for a scripted stand-in, so the
+ * end-to-end suite can drive a real chat turn — streaming, tool calls, action
+ * cards — without an Anthropic key or any spend. Guarded on NODE_ENV so the
+ * flag cannot take effect in production even if it leaks into the environment.
+ */
+export const anthropic =
+  process.env.E2E_FAKE_LLM === '1' && env.NODE_ENV !== 'production'
+    ? fakeAnthropic
+    : new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
 
 // Sensible defaults — Sonnet 5 for the chat assistant: near-Opus reliability
 // on tool-use, macro reasoning, and edits. Haiku 4.5 was too weak here (it

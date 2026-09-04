@@ -19,3 +19,5 @@ drizzle/
 
 # Misc
 *.tsbuildinfo
+playwright-report/
+test-results/

@@ -8,11 +8,14 @@ on:
       - 'src/**'
       - 'shared/**'
       - 'web/**'
+      - 'e2e/**'
+      - 'tests/**'
       - 'package.json'
       - 'bun.lock'
       - 'tsconfig.json'
       - 'tsconfig.base.json'
       - 'vite.config.ts'
+      - 'playwright.config.ts'
       - 'Dockerfile'
       - '.dockerignore'
       - 'fly.toml'
@@ -25,14 +28,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  typecheck:
-    name: Typecheck
+  static:
+    name: Typecheck, lint, unit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       # Node + npm for the install: Bun's parallel installer flakes on
       # ConnectionRefused inside GitHub-hosted runners. npm is reliable here.
-      # Bun is still used for the typecheck script itself.
+      # Bun is still used for the scripts themselves.
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -42,16 +45,75 @@ jobs:
           bun-version: 1.3
       - run: bun run typecheck
       - run: bun run typecheck:web
+      - run: bun run typecheck:e2e
       - run: bun run lint
       - run: bun run test:web
       # Catches a broken SPA build before Fly's remote builder does, where the
       # same failure costs a full image build.
       - run: bun run web:build
 
+  integration:
+    name: Backend and end-to-end
+    runs-on: ubuntu-latest
+    # tests/setup.ts refuses any non-localhost DATABASE_URL, so this has to be a
+    # service container rather than a shared database.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: food
+          POSTGRES_PASSWORD: food
+          POSTGRES_DB: food
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://food:food@localhost:5432/food
+      # Never used: the SDK is mocked in unit tests and stubbed in e2e. env.ts
+      # validates it as non-empty at import time, hence the placeholder.
+      ANTHROPIC_API_KEY: ci-unused
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-package-lock --no-audit --no-fund
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3
+
+      - run: bun run db:push
+      - run: bun test
+
+      - name: Mint an e2e token
+        id: token
+        run: |
+          TOKEN=$(bun scripts/issue-token.ts --user "$(uuidgen)" --label ci-e2e \
+            | grep -oE 'ft_[0-9a-f]{64}' | head -1)
+          test -n "$TOKEN"
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - run: npx playwright install --with-deps chromium webkit
+      - run: bun run test:e2e
+        env:
+          E2E_TOKEN: ${{ steps.token.outputs.token }}
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
+
   deploy:
     name: Deploy to Fly.io
     runs-on: ubuntu-latest
-    needs: typecheck
+    needs: [static, integration]
     # Lets the workflow create deployments visible in the GitHub UI.
     permissions:
       contents: read

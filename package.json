@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit",
     "typecheck:web": "tsc -p web --noEmit",
     "//lint": "Formatter is enforced on new code only. src/ predates any CI formatting check and has drifted; reformatting it would strip the padded numeric literals that keep the threshold tables in src/lib/dietDayClassifier.ts readable, for no behavioural gain. So: full check on new code, lint rules only on src/.",
-    "lint": "biome check shared web/src && biome lint src",
-    "format": "biome format --write shared web/src",
+    "lint": "biome check shared web/src e2e && biome lint src",
+    "format": "biome format --write shared web/src e2e",
     "web:dev": "vite",
     "web:build": "vite build",
     "web:preview": "vite preview",
@@ -24,7 +24,9 @@
     "import:md:neon": "env -u DATABASE_URL bun --env-file=.env.neon run import:md",
     "issue-token": "bun scripts/issue-token.ts",
     "issue-token:neon": "env -u DATABASE_URL bun --env-file=.env.neon run issue-token",
-    "test": "bun test"
+    "test": "bun test",
+    "test:e2e": "playwright test",
+    "typecheck:e2e": "tsc -p e2e --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
@@ -45,12 +47,14 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/bun": "^1.1.0",
     "@types/d3-scale": "^4.0.9",
     "@types/d3-shape": "^3.2.0",
+    "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
