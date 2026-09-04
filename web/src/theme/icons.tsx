@@ -294,3 +294,69 @@ export function TrayIcon({ size = 15, color }: IconProps) {
     </svg>
   )
 }
+
+/** plus */
+export function PlusIcon({ size = 16, color }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color ?? 'currentColor'}
+      strokeWidth={2.6}
+      strokeLinecap="round"
+      aria-hidden="true"
+      style={{ display: 'block' }}
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  )
+}
+
+/** sparkles */
+export function SparklesIcon(props: IconProps) {
+  return (
+    <Svg {...props} size={props.size ?? 16}>
+      <path d="M12 2.5l1.5 4.2 4.2 1.5-4.2 1.5L12 14l-1.5-4.3L6.3 8.2l4.2-1.5L12 2.5Zm6.5 10l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9.9-2.4ZM6 14l.8 2.2 2.2.8-2.2.8L6 20l-.8-2.2L3 17l2.2-.8L6 14Z" />
+    </Svg>
+  )
+}
+
+/** arrow.up */
+export function ArrowUpIcon({ size = 16, color }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color ?? 'currentColor'}
+      strokeWidth={2.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ display: 'block' }}
+    >
+      <path d="M12 19V6M6 12l6-6 6 6" />
+    </svg>
+  )
+}
+
+/** xmark.circle.fill — clears an attachment. */
+export function CloseCircleIcon(props: IconProps) {
+  return (
+    <Svg {...props} size={props.size ?? 18}>
+      <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm3.5 12.1a1 1 0 0 1-1.4 1.4L12 13.4l-2.1 2.1a1 1 0 0 1-1.4-1.4l2.1-2.1-2.1-2.1a1 1 0 0 1 1.4-1.4l2.1 2.1 2.1-2.1a1 1 0 0 1 1.4 1.4L13.4 12l2.1 2.1Z" />
+    </Svg>
+  )
+}
+
+/** doc.on.doc — copy. */
+export function CopyIcon(props: IconProps) {
+  return (
+    <Svg {...props} size={props.size ?? 14}>
+      <path d="M9 2h7a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-1v-2h1a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v1H6V5a3 3 0 0 1 3-3ZM5 7h7a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-9a3 3 0 0 1 3-3Z" />
+    </Svg>
+  )
+}

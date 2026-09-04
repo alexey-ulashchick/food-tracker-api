@@ -9,3 +9,25 @@ import { afterEach } from 'vitest'
 afterEach(() => {
   cleanup()
 })
+
+// jsdom implements neither of these, and both are used by real screens: the
+// chat list anchors to its newest row, and IntersectionObserver drives the
+// History list's infinite scroll.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {}
+}
+if (!('IntersectionObserver' in globalThis)) {
+  class NoopIntersectionObserver implements IntersectionObserver {
+    readonly root = null
+    readonly rootMargin = ''
+    readonly thresholds: readonly number[] = []
+    disconnect() {}
+    observe() {}
+    unobserve() {}
+    takeRecords(): IntersectionObserverEntry[] {
+      return []
+    }
+  }
+  globalThis.IntersectionObserver =
+    NoopIntersectionObserver as unknown as typeof IntersectionObserver
+}

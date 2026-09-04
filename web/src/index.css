@@ -169,3 +169,26 @@ body {
     opacity: 0.45;
   }
 }
+
+/* The copy affordance on a chat row. Hidden until hover on a pointer device;
+   always visible on touch, where there is no hover to reveal it. */
+.chat-copy {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.chat-row:hover .chat-copy,
+.chat-copy:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .chat-copy {
+    opacity: 0.5;
+  }
+}
+
+/* The chat list appends at the bottom; anchoring stops the view from sliding
+   when content lands above the scroll position. SwiftUI has no equivalent —
+   the Swift version fought this with an eager VStack and manual re-anchoring. */
+.chat-scroll {
+  overflow-anchor: auto;
+}
