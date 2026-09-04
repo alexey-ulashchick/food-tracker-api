@@ -281,7 +281,10 @@ describe('MacroRing drawing', () => {
     render(<MacroRing value={0.5} stops={palette.protein} size={100} strokeWidth={10} />)
     const firstFill = calls.findIndex((c) => c.op === 'fill')
     expect(valueBefore('set:shadowColor', firstFill)).toBe('rgba(0,0,0,1)')
-    expect(valueBefore('set:shadowBlur', firstFill)).toBeCloseTo(10 * 0.18 * 2, 9)
+    // SwiftUI radius is sigma and canvas blur is 2 * sigma; two stacked
+    // shadows convolve to sigma * sqrt(2). Missing either factor makes the
+    // shadow visibly too tight.
+    expect(valueBefore('set:shadowBlur', firstFill)).toBeCloseTo(10 * 0.18 * Math.SQRT2 * 2, 9)
   })
 
   test('segments are stroked with round caps, matching the Swift StrokeStyle', () => {
@@ -306,11 +309,11 @@ describe('MacroRing drawing', () => {
       <MacroRing value={0.5} stops={palette.protein} size={100} strokeWidth={10} />,
     )
     const canvas = container.querySelector('canvas')!
-    // 100 box + 8 shadow padding either side = 116 CSS px, times dpr 2.
-    expect(canvas.width).toBe(232)
-    expect(canvas.style.width).toBe('116px')
+    // strokeWidth 10 → blur 5.09 → pad ceil(10.18) = 11. Box 100 + 2 * 11 = 122.
+    expect(canvas.width).toBe(244)
+    expect(canvas.style.width).toBe('122px')
     // The origin is shifted so ring coordinates still run 0..size.
-    expect(calls[0]).toMatchObject({ op: 'setTransform', args: [2, 0, 0, 2, 16, 16] })
+    expect(calls[0]).toMatchObject({ op: 'setTransform', args: [2, 0, 0, 2, 22, 22] })
   })
 
   // Regression: the head's outer edge sits exactly on size/2, so with a canvas
@@ -326,19 +329,33 @@ describe('MacroRing drawing', () => {
 
     expect(box.style.width).toBe('156px')
     expect(Number.parseFloat(canvas.style.width)).toBeGreaterThan(156)
-    expect(canvas.style.top).toBe('-8px')
-    expect(canvas.style.left).toBe('-8px')
+    expect(canvas.style.top).toBe(canvas.style.left)
 
-    // The overhang must exceed the blur radius, or the shadow still clips.
-    const blur = 13 * 0.18 * 2
+    // The overhang must clear the whole Gaussian tail (~3 sigma = 1.5 * blur),
+    // or the shadow is still sliced at the boundary.
+    const blur = 13 * 0.18 * Math.SQRT2 * 2
     const overhang = (Number.parseFloat(canvas.style.width) - 156) / 2
-    expect(overhang).toBeGreaterThan(blur)
+    expect(overhang).toBeGreaterThanOrEqual(blur * 1.5)
+  })
+
+  test('the shadow padding scales with the stroke so it is never clipped', () => {
+    for (const strokeWidth of [3.5, 4.5, 9, 13, 18]) {
+      calls = []
+      const { container, unmount } = render(
+        <MacroRing value={0.6} stops={palette.protein} size={120} strokeWidth={strokeWidth} />,
+      )
+      const canvas = container.querySelector('canvas')!
+      const overhang = (Number.parseFloat(canvas.style.width) - 120) / 2
+      const blur = strokeWidth * 0.18 * Math.SQRT2 * 2
+      expect(overhang, `stroke ${strokeWidth}`).toBeGreaterThanOrEqual(blur * 1.5)
+      unmount()
+    }
   })
 
   test('the cleared area covers the padding, not just the box', () => {
     render(<MacroRing value={0.5} stops={palette.protein} size={100} strokeWidth={10} />)
     const clear = calls.find((c) => c.op === 'clearRect')!
-    expect(clear.args).toEqual([-8, -8, 116, 116])
+    expect(clear.args).toEqual([-11, -11, 122, 122])
   })
 
   // Geometry the screenshot could not settle: rings must be concentric and

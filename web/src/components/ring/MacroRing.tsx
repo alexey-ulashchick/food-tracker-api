@@ -22,13 +22,30 @@ import {
 const SEGMENT_MAX_DEGREES = 90
 
 /**
- * Room reserved around the ring for the head's drop shadow. The blur is
- * strokeWidth * 0.18 * 2 and the widest stroke in the app is 18, so 8px covers
- * every call site with margin. Padding costs a few pixels of backing store and
- * buys a shadow that behaves like SwiftUI's — spilling past the frame instead
- * of being sliced off at it.
+ * The head's shadow, ported from the two stacked
+ * `.shadow(color: .black.opacity(1), radius: strokeWidth * 0.18)` modifiers in
+ * MacroRing.swift.
+ *
+ * Two conversions are needed, and missing either makes the shadow too tight:
+ *   * SwiftUI's `radius` is the Gaussian sigma; canvas `shadowBlur` is 2 * sigma.
+ *   * Stacking two shadows of sigma s convolves them into sigma s * sqrt(2).
+ *
+ * So blur = strokeWidth * 0.18 * sqrt(2) * 2, about 0.51 * strokeWidth.
  */
-const SHADOW_PAD = 8
+const HEAD_SHADOW_SIGMA_RATIO = 0.18
+/** Swift stacks two identical shadows; two fills reproduce the added density. */
+const HEAD_SHADOW_PASSES = 2
+
+const headShadowBlur = (strokeWidth: number) =>
+  strokeWidth * HEAD_SHADOW_SIGMA_RATIO * Math.SQRT2 * HEAD_SHADOW_PASSES
+
+/**
+ * Room reserved around the ring so the shadow is not sliced off at the canvas
+ * boundary — the head's outer edge lands exactly on size / 2. A Gaussian is
+ * spent by ~3 sigma, which is 1.5 * blur; 2 * blur leaves margin, with a floor
+ * for the very thin strokes.
+ */
+const shadowPad = (strokeWidth: number) => Math.max(8, Math.ceil(headShadowBlur(strokeWidth) * 2))
 
 /** Conic-gradient offsets must stay inside [0, 1] and ascend. */
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
@@ -46,6 +63,7 @@ type Props = {
 
 export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const pad = shadowPad(strokeWidth)
   // Joined so the effect re-runs when the palette changes, without making the
   // dependency array depend on array identity.
   const stopKey = stops.join(',')
@@ -61,13 +79,13 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
     // The head circle's outer edge lands exactly on size/2 — the box edge — so
     // its drop shadow would be clipped by the canvas bounds. SwiftUI's .frame()
     // does not clip, and that escaping shadow is the whole spiral-depth effect
-    // (it falls on the ring below). Grow the backing store by SHADOW_PAD on
-    // every side and shift the origin; the CSS box stays `size` via a negative
-    // offset applied by the caller-visible wrapper below.
-    const outer = size + SHADOW_PAD * 2
+    // (it falls on the ring below). Grow the backing store by `pad` on every
+    // side and shift the origin; the CSS box stays `size` via a negative offset
+    // applied by the caller-visible wrapper below.
+    const outer = size + pad * 2
     canvas.width = Math.round(outer * dpr)
     canvas.height = Math.round(outer * dpr)
-    ctx.setTransform(dpr, 0, 0, dpr, SHADOW_PAD * dpr, SHADOW_PAD * dpr)
+    ctx.setTransform(dpr, 0, 0, dpr, pad * dpr, pad * dpr)
 
     const cx = size / 2
     const cy = size / 2
@@ -75,7 +93,7 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
 
     const draw = (progress: number) => {
       // Clear in the padded space, not just the box.
-      ctx.clearRect(-SHADOW_PAD, -SHADOW_PAD, outer, outer)
+      ctx.clearRect(-pad, -pad, outer, outer)
 
       ctx.beginPath()
       ctx.arc(cx, cy, radius, 0, Math.PI * 2)
@@ -107,9 +125,7 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
           ctx.save()
           ctx.fillStyle = rgbToCss(ringColor(rgbStops, endT))
           ctx.shadowColor = 'rgba(0,0,0,1)'
-          // SwiftUI's shadow radius is the blur sigma; canvas shadowBlur is
-          // roughly 2σ. Swift stacks two identical shadows, hence two fills.
-          ctx.shadowBlur = strokeWidth * 0.18 * 2
+          ctx.shadowBlur = headShadowBlur(strokeWidth)
           ctx.beginPath()
           ctx.arc(
             cx + Math.cos(a1) * radius,
@@ -118,8 +134,7 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
             0,
             Math.PI * 2,
           )
-          ctx.fill()
-          ctx.fill()
+          for (let pass = 0; pass < HEAD_SHADOW_PASSES; pass++) ctx.fill()
           ctx.restore()
         }
 
@@ -179,7 +194,7 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [value, size, strokeWidth, stopKey, dimmed])
+  }, [value, size, strokeWidth, stopKey, dimmed, pad])
 
   return (
     // Decorative: every ring is accompanied by the same figures as text (the
@@ -188,8 +203,8 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
     // aria-hidden because biome classifies <canvas> itself as interactive and
     // rejects both aria-hidden and role="presentation" on it directly.
     //
-    // The layout box is exactly `size`; the canvas is SHADOW_PAD larger on each
-    // side and pulled back into place, so the head's shadow has somewhere to go
+    // The layout box is exactly `size`; the canvas is `pad` larger on each side
+    // and pulled back into place, so the head's shadow has somewhere to go
     // without changing how the ring measures or where a RingStack centres it.
     <span
       aria-hidden="true"
@@ -199,10 +214,10 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
         ref={canvasRef}
         style={{
           position: 'absolute',
-          top: -SHADOW_PAD,
-          left: -SHADOW_PAD,
-          width: size + SHADOW_PAD * 2,
-          height: size + SHADOW_PAD * 2,
+          top: -pad,
+          left: -pad,
+          width: size + pad * 2,
+          height: size + pad * 2,
           display: 'block',
           // Shadows must reach the neighbouring ring, so nothing may capture
           // pointer events on the padded overhang.
