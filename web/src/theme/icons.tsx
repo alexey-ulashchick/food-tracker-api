@@ -264,3 +264,33 @@ export function Spinner({ size = 14, color }: IconProps) {
     />
   )
 }
+
+/** flame.fill */
+export function FlameIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 2c.6 3.2-1.3 4.6-2.6 6C8 9.5 7 10.9 7 13a5 5 0 0 0 10 0c0-2.6-1.6-4.3-2.8-5.8C13 5.7 12.3 4.2 12 2Zm.2 10c.3 1.3-.6 1.9-1.1 2.5-.5.6-.8 1.2-.8 2a2 2 0 0 0 4 0c0-1-.6-1.7-1.1-2.4-.5-.6-.9-1.2-1-2.1Z" />
+    </Svg>
+  )
+}
+
+/** tray */
+export function TrayIcon({ size = 15, color }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color ?? 'currentColor'}
+      strokeWidth={1.9}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ display: 'block', flexShrink: 0 }}
+    >
+      <path d="M3 13h4l1.5 3h7L17 13h4" />
+      <path d="M4.5 5.5h15L21 13v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4l1.5-7.5Z" />
+    </svg>
+  )
+}

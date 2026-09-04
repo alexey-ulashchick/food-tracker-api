@@ -1,5 +1,6 @@
 import { AppLayout } from '@/components/AppLayout'
 import { RequireToken } from '@/components/RequireToken'
+import { History } from '@/screens/History'
 import { Kitchen } from '@/screens/Kitchen'
 import { Login } from '@/screens/Login'
 import { Placeholder } from '@/screens/Placeholder'
@@ -28,10 +29,7 @@ export function AppRoutes() {
           path="chat"
           element={<Placeholder title="Чат" note="Экран появится на шаге 22." />}
         />
-        <Route
-          path="history"
-          element={<Placeholder title="История" note="Экран появится на шагах 20–21." />}
-        />
+        <Route path="history" element={<History />} />
         <Route
           path="you"
           element={<Placeholder title="Профиль" note="Экран появится на шаге 23." />}
