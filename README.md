@@ -1,6 +1,13 @@
 # Food Tracker API
 
-Backend service for the Food Tracker iOS app. Stores user data (meals, goals, chat history) in Postgres and proxies LLM calls to Anthropic Claude.
+Food Tracker: the API **and** the web client, in one repository.
+
+Stores user data (meals, goals, weight, chat history) in Postgres and proxies LLM
+calls to Anthropic Claude. The web app is served by the same Hono process on the
+same origin, so there is no CORS layer and no second deploy.
+
+The iOS app in `../ios-project` is being retired; every API change here has been
+additive, so it keeps working until the cutover.
 
 ## Stack
 
@@ -11,6 +18,9 @@ Backend service for the Food Tracker iOS app. Stores user data (meals, goals, ch
 - **Anthropic Claude** via `@anthropic-ai/sdk`
 - **Zod** for env + request validation
 - **Biome** for lint + format
+- **React 19 + Vite + Tailwind** for the web client (`web/`)
+- **TanStack Query** for server state, **Zustand** for the little that is not
+- **Vitest** for the client, **bun test** for the server, **Playwright** end to end
 
 ## Quick start
 
@@ -21,7 +31,24 @@ docker compose up -d                   # Postgres at localhost:5432
 cp .env.example .env                   # add your ANTHROPIC_API_KEY
 bun install
 bun run db:push                        # apply schema (no migrations yet)
-bun run dev                            # server at http://localhost:3000
+bun run dev                            # API at http://localhost:3000
+```
+
+For the web client, in a second terminal:
+
+```bash
+bun run web:dev                        # app at http://localhost:5173
+```
+
+Vite proxies every API path to `:3000`, so the browser only ever sees one origin
+— the same arrangement as production. Log in with a token from
+`bun run issue-token`.
+
+To exercise what production actually serves, build the bundle instead and let
+Hono serve it:
+
+```bash
+bun run web:build && bun run start     # everything on http://localhost:3000
 ```
 
 Health check:
@@ -59,7 +86,12 @@ Plain commands target the local DB (`.env`); the `*:neon` variants override `DAT
 | `bun run db:studio` / `bun run db:studio:neon` | Open Drizzle Studio (DB browser at localhost:4983) |
 | `bun run import:md [dir]` / `bun run import:md:neon [dir]` | Import food-diary markdown files for the test user (default `~/Downloads`) |
 | `bun run issue-token -- --user <uuid> [--label <name>]` / `:neon` | Issue an MCP bearer token for `/mcp/:token` (mobile Claude) |
-| `bun test` | Run tests (uses local docker by default) |
+| `bun test` | Backend tests (uses local docker by default) |
+| `bun run web:dev` | Vite dev server for the web client, proxying the API |
+| `bun run web:build` | Build the SPA into `web/dist`, which `src/static.ts` serves |
+| `bun run test:web` | Vitest — client logic and components |
+| `bun run test:e2e` | Playwright against the built app (needs `E2E_TOKEN`) |
+| `bun run typecheck:web` / `:e2e` | `tsc` for the browser and Playwright projects |
 
 ## Importing food-diary markdown
 
@@ -110,14 +142,16 @@ curl -X POST http://localhost:3000/mcp/ft_... \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-This is "dev grade" auth — anyone holding the token can act as the user. Real per-device identity (Sign in with Apple / magic-link) replaces this whole layer when the iOS client gains a login flow.
+This is "dev grade" auth — anyone holding the token can act as the user. Real per-device identity (magic link, passkeys) would replace this whole layer. The web client pastes the same token and keeps it in `localStorage`, which is a deliberate trade-off for a single-user app: any XSS leaks a credential that never expires and can only be revoked with SQL.
 
 ## MCP server (for Claude Desktop / Claude.ai / mobile)
 
-The same backend exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint as a Streamable HTTP server. Tools wrap the existing routes so Claude can read and write meals + goals directly:
+The same backend exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint as a Streamable HTTP server. Tools wrap the existing routes so Claude can read and write meals, goals and
+memories directly — twelve of them, matching the chat write tools name for name:
 
-- `list_meals`, `get_meals_for_day`, `create_meal`, `delete_meal`
-- `list_goals`, `get_goal_for_day`, `upsert_goal`
+- meals: `list_meals`, `get_meals_for_day`, `add_meal`, `update_meal`, `delete_meal`
+- goals: `list_goals`, `get_goal_for_day`, `set_goal`
+- memories: `list_memories`, `add_memory`, `update_memory`, `delete_memory`
 
 Two equivalent front-doors, same bearer token in both:
 
@@ -148,7 +182,7 @@ Mint a token with `bun run issue-token` (see [Auth](#auth-bearer-token)).
 }
 ```
 
-For local development point `url` at `http://localhost:3000/mcp`. Restart Claude Desktop and the seven tools show up in the connector list.
+For local development point `url` at `http://localhost:3000/mcp`. Restart Claude Desktop and the twelve tools show up in the connector list.
 
 ### Connect Claude mobile / Claude.ai web
 
@@ -185,27 +219,74 @@ curl -s -X POST http://localhost:3000/mcp/ft_<token> \
 ## Layout
 
 ```
+shared/                   # wire types used by BOTH the server and the client
+├── types.ts              # DTOs; src/db/wire-check.ts fails the build on drift
+└── dietDayTitles.ts      # one verdict-name map, so chat and History agree
+
 src/
 ├── index.ts              # Hono app + Bun.serve
 ├── env.ts                # Zod-validated env
+├── static.ts             # serves web/dist; owns the /chat route split
 ├── db/
 │   ├── client.ts         # postgres.js + Drizzle
-│   └── schema.ts         # tables (Drizzle DSL)
-├── routes/               # health, meals, goals, chat
-├── middleware/           # auth, errors
-├── mcp/                  # MCP server (tools + Streamable HTTP route)
+│   ├── schema.ts         # tables (Drizzle DSL)
+│   └── wire-check.ts     # type-level guard: schema vs shared/types.ts
+├── routes/               # health, meals, goals, memories, weights, chat, day-summary
+├── lib/                  # dietDayClassifier, recommend engine, mealLocalDate
+├── middleware/           # auth, tokenAuth, errors
+├── mcp/                  # MCP server (12 tools + Streamable HTTP route)
 └── llm/
-    └── anthropic.ts      # Anthropic client
+    ├── anthropic.ts      # Anthropic client (or the fake, under E2E_FAKE_LLM)
+    ├── fakeAnthropic.ts  # scripted stand-in for end-to-end runs
+    └── tools.ts          # tool schemas + executeTool
+
+web/
+├── index.html            # PWA meta, safe-area viewport
+├── public/               # manifest.webmanifest, icons
+└── src/
+    ├── api/              # fetch wrapper, SSE parser, endpoints, query keys
+    ├── components/       # rings (Canvas), charts (SVG), cards, chat bubbles
+    ├── lib/              # pure logic: dates, metrics, weight, chat mapping
+    ├── screens/          # Today, Chat, History, You, Memories, Weight, Login
+    ├── theme/            # tokens ported from Theme.swift, hand-drawn icons
+    └── store/            # UI-only Zustand state
+e2e/                      # Playwright specs
 
 scripts/
-└── import-md.ts          # markdown food-diary importer
+├── import-md.ts          # markdown food-diary importer
+└── issue-token.ts        # mints an ft_ bearer token
 
 tests/
 ├── setup.ts              # bun preload: per-process random schema + SDK mock
 ├── init.sql              # DDL mirroring schema.ts
-├── helpers.ts            # makeApp, truncateAll, seed*, llmResponse
-└── chat.test.ts          # representative integration tests
+├── helpers.ts            # makeApp, truncateAll, seed*, llmResponse, readSse
+└── *.test.ts             # chat, meals, weights, recommend, classifier, static
 ```
+
+### The /chat collision
+
+`/chat` is both a screen and an API endpoint. Renaming either was not an option:
+the screen's URL should read `/chat`, and the iOS build in the field cannot be
+changed. They are told apart by `Accept` — a browser navigation asks for
+`text/html`, while `fetch` and `URLSession` do not. `tests/static.route.test.ts`
+pins the behaviour, including a check that every client route really reaches the
+app.
+
+## Weight
+
+There is no in-app entry UI. Weight arrives through `POST /weights`, which the
+user's own sync script drives; the web client only reads it.
+
+```bash
+TOKEN=ft_...
+curl -X POST localhost:3000/weights \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '[{"date":"2026-03-01","kg":78.9},{"date":"2026-03-02","kg":78.4}]'
+```
+
+A single object works too. Rows upsert on `(user_id, date)`, so replaying a
+backfill is safe — re-running the command above leaves two rows, not four.
+
 
 ## Deploy (Fly.io + Neon)
 
@@ -213,7 +294,7 @@ The app runs on **Fly.io** (Bun-friendly, instant HTTPS, scale-to-zero), the dat
 
 Already in the repo:
 
-- `Dockerfile` — two-stage Bun build (`oven/bun:1.3-alpine`, frozen prod install, no compile step).
+- `Dockerfile` — three stages: npm installs prod deps, a second stage builds the SPA, and `oven/bun:1.3-slim` runs `src/index.ts` with no compile step.
 - `.dockerignore` — excludes `tests/`, `scripts/`, `.env*`, `drizzle/`, etc.
 - `fly.toml` — `iad` region (matches Neon), shared-cpu-1x / 256 MB VM, scale-to-zero, `/health` check, force HTTPS.
 
@@ -268,12 +349,17 @@ curl https://food-tracker-api-oc5olq.fly.dev/health
 
 First request after idle wakes the machine (~1-2s) and Neon's branch (~300-500ms) — both sleep on inactivity. Combined wake-up is hidden inside any `/chat` round-trip to Anthropic.
 
-### Updating the iOS client
+### Retiring the iOS client
 
-After the URL is live, point the app at it and drop the localhost ATS exception:
+The web app replaces `../ios-project`. Every API change made for it was
+additive, so both clients can run side by side during the changeover:
 
-1. `CalTracker/APIClient.swift` — change `baseURL` to `https://food-tracker-api-oc5olq.fly.dev`.
-2. `CalTracker/Info.plist` — remove the entire `NSAppTransportSecurity` block (HTTPS is enough; no exception domain needed).
+1. Deploy, open the Fly URL on the phone and install it from the share sheet
+   ("On Home Screen"). It launches without browser chrome.
+2. Run both for a week. The one visible difference is that day verdicts are now
+   Russian — `src/lib/dietDayClassifier.ts` is shared, so iOS shows them too.
+3. Then archive the iOS repository. Do not delete it: it stays the reference for
+   the visual details this port was measured against.
 
 ### Cost reality check
 
