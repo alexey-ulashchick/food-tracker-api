@@ -360,3 +360,63 @@ export function CopyIcon(props: IconProps) {
     </Svg>
   )
 }
+
+/** scalemass */
+export function ScaleIcon({ size = 16, color }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color ?? 'currentColor'}
+      strokeWidth={1.9}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ display: 'block', flexShrink: 0 }}
+    >
+      <rect x={3} y={4} width={18} height={17} rx={4} />
+      <path d="M8 11a4 4 0 0 1 8 0" />
+      <path d="M12 11 10.5 8" />
+    </svg>
+  )
+}
+
+/** dollarsign.circle.fill */
+export function DollarIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm.9 15.3v1a.9.9 0 0 1-1.8 0v-1c-1.5-.2-2.6-1-2.8-2.2a.9.9 0 0 1 1.8-.3c.1.5.8.9 1.9.9 1.1 0 1.8-.4 1.8-1s-.5-.8-2-1.1c-1.9-.4-3.2-1-3.2-2.5 0-1.2 1-2.1 2.5-2.4v-1a.9.9 0 0 1 1.8 0v1c1.4.2 2.4 1 2.7 2a.9.9 0 0 1-1.7.5c-.2-.5-.8-.8-1.8-.8-1.1 0-1.7.4-1.7.9 0 .5.5.7 2 1 1.9.4 3.2 1 3.2 2.6 0 1.3-1 2.2-2.7 2.4Z" />
+    </Svg>
+  )
+}
+
+/** key.fill */
+export function KeyIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M15.5 2a6.5 6.5 0 0 0-6.3 8.2L2.4 17a1.4 1.4 0 0 0-.4 1v3.1c0 .5.4.9.9.9h3c.4 0 .7-.1 1-.4l1-1v-1.7h1.7v-1.7h1.7l1.5-1.5A6.5 6.5 0 1 0 15.5 2Zm1.8 5.6a1.6 1.6 0 1 1 0-3.2 1.6 1.6 0 0 1 0 3.2Z" />
+    </Svg>
+  )
+}
+
+/** arrow.down / arrow.up for the weight trend pill. */
+export function TrendArrowIcon({ size = 9, color, dir }: IconProps & { dir: 'up' | 'down' }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color ?? 'currentColor'}
+      strokeWidth={3.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ display: 'block', flexShrink: 0 }}
+    >
+      {dir === 'down' ? <path d="M12 5v13M6 12l6 6 6-6" /> : <path d="M12 19V6M6 12l6-6 6 6" />}
+    </svg>
+  )
+}

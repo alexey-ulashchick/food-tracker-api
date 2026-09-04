@@ -4,8 +4,10 @@ import { Chat } from '@/screens/Chat'
 import { History } from '@/screens/History'
 import { Kitchen } from '@/screens/Kitchen'
 import { Login } from '@/screens/Login'
-import { Placeholder } from '@/screens/Placeholder'
+import { Memories } from '@/screens/Memories'
 import { Today } from '@/screens/Today'
+import { Weight } from '@/screens/Weight'
+import { You } from '@/screens/You'
 import { Navigate, Route, Routes } from 'react-router'
 
 // Routes mirror the four live tabs plus the two screens You pushes.
@@ -28,18 +30,9 @@ export function AppRoutes() {
         <Route index element={<Today />} />
         <Route path="chat" element={<Chat />} />
         <Route path="history" element={<History />} />
-        <Route
-          path="you"
-          element={<Placeholder title="Профиль" note="Экран появится на шаге 23." />}
-        />
-        <Route
-          path="you/memories"
-          element={<Placeholder title="Память" note="Экран появится на шаге 23." />}
-        />
-        <Route
-          path="you/weight"
-          element={<Placeholder title="Вес" note="Экран появится на шаге 23." />}
-        />
+        <Route path="you" element={<You />} />
+        <Route path="you/memories" element={<Memories />} />
+        <Route path="you/weight" element={<Weight />} />
       </Route>
 
       {/* Anything unknown lands on Today rather than a blank page. */}
