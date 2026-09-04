@@ -640,7 +640,14 @@ async function runToolLoop(args: {
       max_tokens: DEFAULT_MAX_TOKENS,
       system: systemPrompt,
       tools,
-      messages,
+      // A copy, not the live array. `messages` keeps growing as the loop feeds
+      // tool results back, so handing the SDK the array itself means every
+      // request object ends up aliasing the same, later-mutated stack. The
+      // wire payload is unaffected (it is serialised immediately), but anything
+      // holding on to a request — a test asserting what the model saw on
+      // iteration N, a logger, a retry wrapper — would read the final state
+      // instead of that iteration's.
+      messages: [...messages],
       metadata: { user_id: userId },
     }
     let response: Anthropic.Message
@@ -835,7 +842,7 @@ async function runToolLoop(args: {
       max_tokens: DEFAULT_MAX_TOKENS,
       system: wrapSystem,
       // No `tools` → the model cannot call anything and must produce text.
-      messages,
+      messages: [...messages],
       metadata: { user_id: userId },
     }
     let wrap: Anthropic.Message
