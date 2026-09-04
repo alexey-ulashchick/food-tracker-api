@@ -1,7 +1,18 @@
+import { CalorieMeter } from '@/components/CalorieMeter'
+import { ChatBubble, TypingBubble } from '@/components/ChatBubble'
+import { MacroPie } from '@/components/MacroPie'
+import { ScreenHeader } from '@/components/ScreenHeader'
 import { MacroRing } from '@/components/ring/MacroRing'
 import { RingStack } from '@/components/ring/RingStack'
 import { OVERAGE_END_T } from '@/components/ring/ringColor'
-import { dietDayColor, palette, surface } from '@/theme/tokens'
+import {
+  CHIP_BG_ALPHA,
+  dayTypeTint,
+  dietDayColor,
+  palette,
+  surface,
+  withAlpha,
+} from '@/theme/tokens'
 import { useState } from 'react'
 
 // Component sandbox. This is the tool for the pixel-fidelity pass: open it
@@ -51,12 +62,50 @@ function Labelled({ label, children }: { label: string; children: React.ReactNod
   )
 }
 
+function Chip({ label: text, tint }: { label: string; tint: string }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        font: '600 12.5px system-ui',
+        color: tint,
+        background: withAlpha(tint, CHIP_BG_ALPHA),
+        borderRadius: 999,
+        padding: '6px 11px',
+      }}
+    >
+      {text}
+    </span>
+  )
+}
+
+function Pie({ protein, carbs, fat }: { protein: number; carbs: number; fat: number }) {
+  return (
+    <MacroPie
+      protein={protein}
+      carbs={carbs}
+      fat={fat}
+      proteinColor={palette.protein[1]}
+      carbsColor={palette.carbs[1]}
+      fatColor={palette.fat[1]}
+      size={28}
+    />
+  )
+}
+
 export function Kitchen() {
   const [live, setLive] = useState(0.62)
 
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', padding: '8px 16px 24px' }}>
-      <h1 style={{ font: '700 32px system-ui', margin: '8px 0 14px' }}>Песочница</h1>
+      <div style={{ marginBottom: 14 }}>
+        <ScreenHeader
+          title="Песочница"
+          subtitle="Пн, 3 сент"
+          trailing={<Chip label="Тренировочный день" tint={dayTypeTint.training} />}
+        />
+      </div>
 
       <Card title="Кольцо — заполнение">
         <Row>
@@ -163,6 +212,59 @@ export function Kitchen() {
               {Math.round(live * 100)}%
             </div>
           </div>
+        </div>
+      </Card>
+
+      <Card title="Калорийная шкала — large, под целью">
+        <CalorieMeter
+          current={1748}
+          goal={2650}
+          stops={palette.calories}
+          accessory={<Chip label="Тренировочный день" tint={dayTypeTint.training} />}
+        />
+      </Card>
+
+      <Card title="Калорийная шкала — large, перебор">
+        <CalorieMeter
+          current={2900}
+          goal={2650}
+          stops={palette.calories}
+          accessory={<Chip label="День отдыха" tint={dayTypeTint.rest} />}
+        />
+      </Card>
+
+      <Card title="Калорийная шкала — medium и small">
+        <CalorieMeter current={1100} goal={2250} stops={palette.calories} size="medium" />
+        <div style={{ height: 18 }} />
+        <CalorieMeter current={400} goal={2650} stops={palette.calories} size="small" />
+      </Card>
+
+      <Card title="MacroPie — разбивка по граммам">
+        <Row>
+          <Labelled label="20/20/20">
+            <Pie protein={20} carbs={20} fat={20} />
+          </Labelled>
+          <Labelled label="40/10/5">
+            <Pie protein={40} carbs={10} fat={5} />
+          </Labelled>
+          <Labelled label="только белок">
+            <Pie protein={30} carbs={0} fat={0} />
+          </Labelled>
+          <Labelled label="нет данных">
+            <Pie protein={0} carbs={0} fat={0} />
+          </Labelled>
+        </Row>
+      </Card>
+
+      <Card title="Пузыри чата">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <ChatBubble isUser text="латте с овсяным молоком и банан" />
+          <ChatBubble
+            isUser={false}
+            text={'## Записал\n- 1 латте (`овсяное`)\n- 1 **банан**\nОсталось *900* ккал.'}
+          />
+          <ChatBubble isUser={false} text="Ссылка: [документация](https://example.com)" />
+          <TypingBubble />
         </div>
       </Card>
 
