@@ -2,6 +2,12 @@ import { CalorieMeter } from '@/components/CalorieMeter'
 import { ChatBubble, TypingBubble } from '@/components/ChatBubble'
 import { MacroPie } from '@/components/MacroPie'
 import { ScreenHeader } from '@/components/ScreenHeader'
+import { FoodCard, GoalCard, MealUpdateCard, MemoryCard } from '@/components/cards/FoodCard'
+import {
+  RecommendationCard,
+  RecommendationErrorCard,
+  RecommendationStack,
+} from '@/components/cards/RecommendationCard'
 import { MacroRing } from '@/components/ring/MacroRing'
 import { RingStack } from '@/components/ring/RingStack'
 import { OVERAGE_END_T } from '@/components/ring/ringColor'
@@ -14,6 +20,7 @@ import {
   surface,
   withAlpha,
 } from '@/theme/tokens'
+import type { RecommendationMeta } from '@shared/types.ts'
 import { useState } from 'react'
 
 // Component sandbox. This is the tool for the pixel-fidelity pass: open it
@@ -62,6 +69,53 @@ function Labelled({ label, children }: { label: string; children: React.ReactNod
     </div>
   )
 }
+
+const oat = { emoji: '🥣', name: 'Овсянка с банаНОМ', kcal: 320, protein: 12, carbs: 54, fat: 6 }
+const oatFixed = { ...oat, name: 'Овсянка с бананом', kcal: 350, protein: 14, carbs: 54, fat: 8 }
+const latte = {
+  emoji: '☕️',
+  name: 'Латте на овсяном молоке',
+  kcal: 150,
+  protein: 5,
+  carbs: 18,
+  fat: 6,
+}
+
+const rec = (
+  color: RecommendationMeta['color'],
+  foods: Array<[string, string, number, number, number, number]>,
+): RecommendationMeta => ({
+  currentColor: 'yellow',
+  color,
+  foods: foods.map(([emoji, displayName, calories, protein, fat, carbs], i) => ({
+    id: `${color}-${i}`,
+    displayName,
+    emoji,
+    calories,
+    protein,
+    fat,
+    carbs,
+  })),
+  addedMacros: {
+    calories: foods.reduce((a, f) => a + f[2], 0),
+    protein: foods.reduce((a, f) => a + f[3], 0),
+    fat: foods.reduce((a, f) => a + f[4], 0),
+    carbs: foods.reduce((a, f) => a + f[5], 0),
+  },
+  finalMacros: { calories: 2480, protein: 168, fat: 71, carbs: 302 },
+})
+
+const recGreen = rec('green', [
+  ['🥛', 'Творог 200 г', 180, 30, 4, 6],
+  ['🍌', 'Банан', 105, 1, 0, 27],
+])
+const recYellow = rec('yellow', [['🍫', 'Протеиновый батончик', 210, 20, 7, 21]])
+const recOrange = rec('orange', [
+  ['🍗', 'Куриная грудка 150 г', 240, 46, 5, 0],
+  ['🍚', 'Рис отварной 100 г', 130, 3, 0, 28],
+  ['🥦', 'Брокколи 200 г', 68, 6, 1, 11],
+])
+const recEmpty = rec('green', [])
 
 function Chip({ label: text, tint }: { label: string; tint: string }) {
   return (
@@ -270,6 +324,48 @@ export function Kitchen() {
           <ChatBubble isUser={false} text="Ссылка: [документация](https://example.com)" />
           <TypingBubble />
         </div>
+      </Card>
+
+      <Card title="Карточки действий">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <FoodCard item={oat} action="added" />
+          <FoodCard item={latte} action="removed" />
+          <MealUpdateCard before={oat} after={oatFixed} />
+          <GoalCard
+            item={{
+              date: '2026-09-03',
+              dayType: 'training',
+              kcal: 2650,
+              protein: 170,
+              carbs: 330,
+              fat: 74,
+            }}
+          />
+          <MemoryCard content="Аллергия: лактоза" action={{ kind: 'added' }} />
+          <MemoryCard
+            content="Любимый завтрак: овсянка с бананом"
+            action={{ kind: 'updated', before: 'Любимый завтрак: овсянка' }}
+          />
+          <MemoryCard content="Не ест грибы" action={{ kind: 'removed' }} />
+        </div>
+      </Card>
+
+      <Card title="Рекомендации — одиночные">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <RecommendationCard item={recGreen} />
+          <RecommendationCard item={recEmpty} />
+          <RecommendationErrorCard message="Сначала выстави цель на день: без цели рекомендация невозможна." />
+        </div>
+      </Card>
+
+      {/* Cards must all take the height of the tallest variant, and swiping
+          sideways must not disturb the vertical scroll of the page. */}
+      <Card title="Колода /recommend — свайп по горизонтали">
+        <RecommendationStack variants={[recGreen, recYellow, recOrange]} />
+      </Card>
+
+      <Card title="Колода из одного варианта — без чипа">
+        <RecommendationStack variants={[recYellow]} />
       </Card>
 
       <Card title="Цвета дня">

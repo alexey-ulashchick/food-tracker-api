@@ -19,6 +19,8 @@
 // Carbs are intentionally weak: an out-of-band carb day can keep a day from
 // being green, but never produces yellow/orange/red.
 
+import { DIET_DAY_TITLES } from '../../shared/dietDayTitles.ts'
+
 export type DietDayColor =
   | 'gray'
   | 'blue'
@@ -63,21 +65,21 @@ export function verdictDietDay(input: ClassifyInput): DietDayVerdict {
   if (K == null || P == null || F == null || k == null || p == null || f == null) {
     return {
       color: 'gray',
-      title: 'Нет данных',
+      title: DIET_DAY_TITLES.gray,
       reason: 'За этот день не хватает целей или записей.',
     }
   }
   if (K <= 0 || P <= 0 || F <= 0) {
     return {
       color: 'gray',
-      title: 'Нет данных',
+      title: DIET_DAY_TITLES.gray,
       reason: 'На этот день не выставлены корректные цели.',
     }
   }
   if (k < 0 || p < 0 || f < 0) {
     return {
       color: 'gray',
-      title: 'Нет данных',
+      title: DIET_DAY_TITLES.gray,
       reason: 'Записанные за день значения выглядят некорректно.',
     }
   }
@@ -86,7 +88,7 @@ export function verdictDietDay(input: ClassifyInput): DietDayVerdict {
   if (k < 0.75 * K && p < 0.70 * P) {
     return {
       color: 'blue',
-      title: 'Сильный недобор',
+      title: DIET_DAY_TITLES.blue,
       reason: `Калории ${intStr(k)} ккал (${pctStr(k, K)} от цели), белок ${intStr(p)} г (${pctStr(p, P)} от цели). И то и другое сильно ниже нормы — низкие калории вместе с низким белком на дефиците грозят потерей мышц.`,
     }
   }
@@ -114,11 +116,11 @@ export function verdictDietDay(input: ClassifyInput): DietDayVerdict {
 
     switch (severity) {
       case 3:
-        return { color: 'red', title: 'Серьёзное отклонение', reason }
+        return { color: 'red', title: DIET_DAY_TITLES.red, reason }
       case 2:
-        return { color: 'orange', title: 'Заметное отклонение', reason }
+        return { color: 'orange', title: DIET_DAY_TITLES.orange, reason }
       default:
-        return { color: 'yellow', title: 'Мелкая погрешность', reason }
+        return { color: 'yellow', title: DIET_DAY_TITLES.yellow, reason }
     }
   }
 
@@ -134,7 +136,7 @@ export function verdictDietDay(input: ClassifyInput): DietDayVerdict {
     const carbsClause = carbsMeasured ? ', углеводы в пределах ±30% от цели' : ''
     return {
       color: 'green',
-      title: 'Отличный день',
+      title: DIET_DAY_TITLES.green,
       reason: `Калории в пределах +3% от цели, белок ≥ 90% от цели, жиры ≥ 50% от цели${carbsClause}.`,
     }
   }
@@ -157,7 +159,7 @@ export function verdictDietDay(input: ClassifyInput): DietDayVerdict {
 
   return {
     color: 'light_green',
-    title: 'Хороший день',
+    title: DIET_DAY_TITLES.light_green,
     reason:
       notes.length === 0
         ? 'Все макросы в безопасном диапазоне; чуть-чуть не хватило до строгих порогов зелёного.'
