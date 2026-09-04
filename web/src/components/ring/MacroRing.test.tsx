@@ -194,9 +194,56 @@ describe('MacroRing drawing', () => {
       <MacroRing value={0.5} stops={palette.protein} size={100} strokeWidth={10} />,
     )
     const canvas = container.querySelector('canvas')!
-    expect(canvas.width).toBe(200) // 100 * dpr(2)
-    expect(canvas.style.width).toBe('100px')
-    expect(calls[0]).toMatchObject({ op: 'setTransform', args: [2, 0, 0, 2, 0, 0] })
+    // 100 box + 8 shadow padding either side = 116 CSS px, times dpr 2.
+    expect(canvas.width).toBe(232)
+    expect(canvas.style.width).toBe('116px')
+    // The origin is shifted so ring coordinates still run 0..size.
+    expect(calls[0]).toMatchObject({ op: 'setTransform', args: [2, 0, 0, 2, 16, 16] })
+  })
+
+  // Regression: the head's outer edge sits exactly on size/2, so with a canvas
+  // the same size as the layout box its drop shadow was sliced off at the
+  // boundary. SwiftUI's .frame() does not clip, and that escaping shadow is
+  // what makes the ring look layered.
+  test('the canvas overhangs the layout box so the head shadow is not clipped', () => {
+    const { container } = render(
+      <MacroRing value={0.75} stops={palette.protein} size={156} strokeWidth={13} />,
+    )
+    const box = container.querySelector('span')!
+    const canvas = container.querySelector('canvas')!
+
+    expect(box.style.width).toBe('156px')
+    expect(Number.parseFloat(canvas.style.width)).toBeGreaterThan(156)
+    expect(canvas.style.top).toBe('-8px')
+    expect(canvas.style.left).toBe('-8px')
+
+    // The overhang must exceed the blur radius, or the shadow still clips.
+    const blur = 13 * 0.18 * 2
+    const overhang = (Number.parseFloat(canvas.style.width) - 156) / 2
+    expect(overhang).toBeGreaterThan(blur)
+  })
+
+  test('the cleared area covers the padding, not just the box', () => {
+    render(<MacroRing value={0.5} stops={palette.protein} size={100} strokeWidth={10} />)
+    const clear = calls.find((c) => c.op === 'clearRect')!
+    expect(clear.args).toEqual([-8, -8, 116, 116])
+  })
+
+  // Geometry the screenshot could not settle: rings must be concentric and
+  // shrink by exactly (strokeWidth + gap) * 2 per level.
+  test('a ring is centred in its own box whatever the size', () => {
+    for (const size of [26, 36, 92, 156, 240]) {
+      calls = []
+      const strokeWidth = 13
+      render(
+        <MacroRing value={0.5} stops={palette.protein} size={size} strokeWidth={strokeWidth} />,
+      )
+      const track = calls.find((c) => c.op === 'arc')!
+      const [cx, cy, radius] = track.args as number[]
+      expect(cx).toBeCloseTo(size / 2, 9)
+      expect(cy).toBeCloseTo(size / 2, 9)
+      expect(radius).toBeCloseTo((size - strokeWidth) / 2, 9)
+    }
   })
 
   test('the track uses the systemGray token, not a CSS grey', () => {

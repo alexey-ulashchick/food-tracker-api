@@ -10,6 +10,7 @@ import {
   dayTypeTint,
   dietDayColor,
   palette,
+  singleRingSpec,
   surface,
   withAlpha,
 } from '@/theme/tokens'
@@ -77,6 +78,27 @@ function Chip({ label: text, tint }: { label: string; tint: string }) {
     >
       {text}
     </span>
+  )
+}
+
+// History rows and the chat macro strip show three INDEPENDENT rings side by
+// side, not a nested stack — at those sizes nesting collapses the innermost
+// ring to a radius narrower than its own stroke.
+function MacroRow({ spec }: { spec: { size: number; strokeWidth: number } }) {
+  const values = [0.78, 0.54, 1.14] as const
+  const stops = [palette.protein, palette.carbs, palette.fat] as const
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      {values.map((value, i) => (
+        <MacroRing
+          key={`${spec.size}-${i}-${value}`}
+          value={value}
+          stops={stops[i]!}
+          size={spec.size}
+          strokeWidth={spec.strokeWidth}
+        />
+      ))}
+    </div>
   )
 }
 
@@ -153,29 +175,11 @@ export function Kitchen() {
               gap={3}
             />
           </Labelled>
-          <Labelled label="История 26/3.5">
-            <RingStack
-              rings={[
-                { value: 0.78, stops: palette.protein },
-                { value: 0.54, stops: palette.carbs },
-                { value: 1.14, stops: palette.fat },
-              ]}
-              size={26}
-              strokeWidth={3.5}
-              gap={2}
-            />
+          <Labelled label="История 26/3.5 — три отдельных">
+            <MacroRow spec={singleRingSpec.historyRow} />
           </Labelled>
-          <Labelled label="Чат 36/4.5">
-            <RingStack
-              rings={[
-                { value: 0.78, stops: palette.protein },
-                { value: 0.54, stops: palette.carbs },
-                { value: 1.14, stops: palette.fat },
-              ]}
-              size={36}
-              strokeWidth={4.5}
-              gap={2}
-            />
+          <Labelled label="Чат 36/4.5 — три отдельных">
+            <MacroRow spec={singleRingSpec.chatStrip} />
           </Labelled>
           <Labelled label="без цели">
             <RingStack

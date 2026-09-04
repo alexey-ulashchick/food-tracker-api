@@ -21,6 +21,15 @@ import {
 
 const SEGMENT_MAX_DEGREES = 90
 
+/**
+ * Room reserved around the ring for the head's drop shadow. The blur is
+ * strokeWidth * 0.18 * 2 and the widest stroke in the app is 18, so 8px covers
+ * every call site with margin. Padding costs a few pixels of backing store and
+ * buys a shadow that behaves like SwiftUI's — spilling past the frame instead
+ * of being sliced off at it.
+ */
+const SHADOW_PAD = 8
+
 type Props = {
   /** 0..∞, where 1 means "at goal". */
   value: number
@@ -46,16 +55,24 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
 
     const rgbStops: Rgb[] = stopKey.split(',').map(hexToRgb)
     const dpr = window.devicePixelRatio || 1
-    canvas.width = Math.round(size * dpr)
-    canvas.height = Math.round(size * dpr)
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    // The head circle's outer edge lands exactly on size/2 — the box edge — so
+    // its drop shadow would be clipped by the canvas bounds. SwiftUI's .frame()
+    // does not clip, and that escaping shadow is the whole spiral-depth effect
+    // (it falls on the ring below). Grow the backing store by SHADOW_PAD on
+    // every side and shift the origin; the CSS box stays `size` via a negative
+    // offset applied by the caller-visible wrapper below.
+    const outer = size + SHADOW_PAD * 2
+    canvas.width = Math.round(outer * dpr)
+    canvas.height = Math.round(outer * dpr)
+    ctx.setTransform(dpr, 0, 0, dpr, SHADOW_PAD * dpr, SHADOW_PAD * dpr)
 
     const cx = size / 2
     const cy = size / 2
     const radius = (size - strokeWidth) / 2
 
     const draw = (progress: number) => {
-      ctx.clearRect(0, 0, size, size)
+      // Clear in the padded space, not just the box.
+      ctx.clearRect(-SHADOW_PAD, -SHADOW_PAD, outer, outer)
 
       ctx.beginPath()
       ctx.arc(cx, cy, radius, 0, Math.PI * 2)
@@ -154,8 +171,28 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
     // here a screen reader is not already told. The wrapper carries
     // aria-hidden because biome classifies <canvas> itself as interactive and
     // rejects both aria-hidden and role="presentation" on it directly.
-    <span aria-hidden="true" style={{ display: 'block', width: size, height: size }}>
-      <canvas ref={canvasRef} style={{ width: size, height: size, display: 'block' }} />
+    //
+    // The layout box is exactly `size`; the canvas is SHADOW_PAD larger on each
+    // side and pulled back into place, so the head's shadow has somewhere to go
+    // without changing how the ring measures or where a RingStack centres it.
+    <span
+      aria-hidden="true"
+      style={{ display: 'block', width: size, height: size, position: 'relative' }}
+    >
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: 'absolute',
+          top: -SHADOW_PAD,
+          left: -SHADOW_PAD,
+          width: size + SHADOW_PAD * 2,
+          height: size + SHADOW_PAD * 2,
+          display: 'block',
+          // Shadows must reach the neighbouring ring, so nothing may capture
+          // pointer events on the padded overhang.
+          pointerEvents: 'none',
+        }}
+      />
     </span>
   )
 }

@@ -90,12 +90,23 @@ export const layout = {
   maxWidth: 480,
 } as const
 
-/** Ring geometry per call site, from the Swift view bodies. */
+/**
+ * Ring geometry per call site, from the Swift view bodies.
+ *
+ * Only Today nests its rings. History rows and the chat macro strip render
+ * three INDEPENDENT rings side by side (ringFor(idx:) and the P/C/F strip
+ * respectively) — nesting at those sizes is not just wrong, it is degenerate:
+ * a 26pt stack with a 3.5pt stroke leaves the third ring a radius of 0.25.
+ */
 export const ringSpec = {
-  today: { size: 156, strokeWidth: 13, gap: 3 },
-  chatStrip: { size: 36, strokeWidth: 4.5, gap: 2 },
-  historyRow: { size: 26, strokeWidth: 3.5, gap: 2 },
-  default: { size: 240, strokeWidth: 18, gap: 4 },
+  todayStack: { size: 156, strokeWidth: 13, gap: 3 },
+  defaultStack: { size: 240, strokeWidth: 18, gap: 4 },
+} as const
+
+/** Standalone rings, one per macro, laid out in a row. */
+export const singleRingSpec = {
+  historyRow: { size: 26, strokeWidth: 3.5 },
+  chatStrip: { size: 36, strokeWidth: 4.5 },
 } as const
 
 /** Adds an alpha channel to a #RRGGBB literal. */
