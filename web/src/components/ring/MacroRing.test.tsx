@@ -21,6 +21,9 @@ function fakeContext(): CanvasRenderingContext2D {
     (...args: unknown[]) => {
       calls.push({ op, args })
     }
+  // Property assignments are recorded too, so a test can assert the colour a
+  // shape was actually painted with rather than inferring it from gradient
+  // stops.
   const ctx = {
     canvas: {},
     setTransform: record('setTransform'),
@@ -31,6 +34,27 @@ function fakeContext(): CanvasRenderingContext2D {
     fill: record('fill'),
     save: record('save'),
     restore: record('restore'),
+    set fillStyle(v: unknown) {
+      calls.push({ op: 'set:fillStyle', args: [v] })
+    },
+    set strokeStyle(v: unknown) {
+      calls.push({ op: 'set:strokeStyle', args: [v] })
+    },
+    set shadowBlur(v: unknown) {
+      calls.push({ op: 'set:shadowBlur', args: [v] })
+    },
+    set shadowColor(v: unknown) {
+      calls.push({ op: 'set:shadowColor', args: [v] })
+    },
+    set lineWidth(v: unknown) {
+      calls.push({ op: 'set:lineWidth', args: [v] })
+    },
+    set lineCap(v: unknown) {
+      calls.push({ op: 'set:lineCap', args: [v] })
+    },
+    set lineJoin(v: unknown) {
+      calls.push({ op: 'set:lineJoin', args: [v] })
+    },
     createConicGradient: (startAngle: number, x: number, y: number) => {
       calls.push({ op: 'createConicGradient', args: [startAngle, x, y] })
       return {
@@ -42,6 +66,14 @@ function fakeContext(): CanvasRenderingContext2D {
     },
   }
   return ctx as unknown as CanvasRenderingContext2D
+}
+
+/** The value assigned to a property immediately before the given call index. */
+function valueBefore(op: string, index: number): unknown {
+  for (let i = index - 1; i >= 0; i--) {
+    if (calls[i]!.op === op) return calls[i]!.args[0]
+  }
+  return undefined
 }
 
 beforeEach(() => {
@@ -155,10 +187,14 @@ describe('MacroRing drawing', () => {
   // finish within the first few degrees of each segment.
   test('conic stops are scaled into the segment share of a full turn', () => {
     render(<MacroRing value={0.25} stops={palette.protein} size={100} strokeWidth={10} />)
-    const scaled = gradientStops.filter((s) => s.offset < 1).map((s) => s.offset)
-    // A single 90° segment occupies a quarter turn, so no interior stop may
-    // sit beyond 0.25.
-    expect(Math.max(...scaled)).toBeLessThanOrEqual(0.25 + 1e-9)
+    // The arc itself occupies a quarter turn, so its colour ramp must finish by
+    // 0.25 — a stop past that would mean the gradient was laid out across the
+    // whole turn instead of the segment. The two stops beyond it are the
+    // deliberate cap holds, checked separately below.
+    const rampEnd = 0.25
+    const ramp = gradientStops.filter((s) => s.offset <= rampEnd)
+    expect(ramp.length).toBeGreaterThanOrEqual(2)
+    expect(ramp.at(-1)!.offset).toBeCloseTo(rampEnd, 9)
     expect(gradientStops.some((s) => s.offset === 1)).toBe(true)
   })
 
@@ -170,11 +206,87 @@ describe('MacroRing drawing', () => {
     expect(deg((grads[1]!.args as number[])[0]!)).toBeCloseTo(90, 6)
   })
 
+  // Regression: a round cap overhangs the arc at both ends, and the leading one
+  // reaches back past 0° — which in a conic gradient wraps to just under 1.0.
+  // Painting the end colour there made every segment stamp its darkest shade
+  // over the previous one, visible as notches at 90°, 180° and 270°.
+  test('the wrap-around region carries the start colour, not the end colour', () => {
+    render(<MacroRing value={1} stops={palette.protein} size={100} strokeWidth={10} />)
+
+    // Second segment: starts at t = 0.25, ends at 0.5. Its start colour must be
+    // what sits at offset 1, so the leading cap cannot darken segment one.
+    const perSegment = gradientStops.reduce<Array<Array<{ offset: number; color: string }>>>(
+      (acc, stop) => {
+        if (stop.offset === 0) acc.push([])
+        acc[acc.length - 1]?.push(stop)
+        return acc
+      },
+      [],
+    )
+    expect(perSegment).toHaveLength(4)
+
+    for (const seg of perSegment) {
+      const first = seg[0]!
+      const last = seg.at(-1)!
+      expect(last.offset).toBe(1)
+      expect(last.color).toBe(first.color)
+    }
+  })
+
+  test('the end colour is held just past the arc to cover the trailing cap', () => {
+    render(<MacroRing value={0.25} stops={palette.protein} size={100} strokeWidth={10} />)
+    const share = 0.25
+    // radius 45, strokeWidth 10 → cap spans 5/45 rad, ~0.0177 of a turn.
+    const capFrac = 10 / 2 / 45 / (Math.PI * 2)
+    const held = gradientStops.find((s) => s.offset > share && s.offset < 1)
+    expect(held).toBeDefined()
+    expect(held!.offset).toBeCloseTo(share + capFrac * 1.5, 6)
+  })
+
+  test('gradient offsets stay within [0, 1] and never descend', () => {
+    for (const value of [0.05, 0.25, 1, 1.15, 2.3]) {
+      gradientStops = []
+      calls = []
+      render(<MacroRing value={value} stops={palette.fat} size={92} strokeWidth={9} />)
+      let prev = -1
+      for (const stop of gradientStops) {
+        expect(stop.offset).toBeGreaterThanOrEqual(0)
+        expect(stop.offset).toBeLessThanOrEqual(1)
+        // A new segment restarts at 0; within a segment offsets ascend.
+        if (stop.offset === 0) prev = 0
+        else {
+          expect(stop.offset).toBeGreaterThanOrEqual(prev)
+          prev = stop.offset
+        }
+      }
+    }
+  })
+
   test('the overage knee turns the head red once the ramp completes', () => {
     render(<MacroRing value={OVERAGE_END_T} stops={palette.protein} size={100} strokeWidth={10} />)
-    // The head takes ringColor at the tip, which past the ramp is systemRed.
-    const headFill = gradientStops.at(-1)?.color
-    expect(headFill).toBe('rgb(255, 59, 48)')
+    // Read the fill actually assigned before the head is painted, rather than
+    // inferring it from gradient stops.
+    const firstFill = calls.findIndex((c) => c.op === 'fill')
+    expect(valueBefore('set:fillStyle', firstFill)).toBe('rgb(255, 59, 48)')
+  })
+
+  test('under the goal the head takes the palette end colour', () => {
+    render(<MacroRing value={1} stops={palette.protein} size={100} strokeWidth={10} />)
+    const firstFill = calls.findIndex((c) => c.op === 'fill')
+    // protein's last stop, #0091EA.
+    expect(valueBefore('set:fillStyle', firstFill)).toBe('rgb(0, 145, 234)')
+  })
+
+  test('the head shadow is opaque black and scales with the stroke', () => {
+    render(<MacroRing value={0.5} stops={palette.protein} size={100} strokeWidth={10} />)
+    const firstFill = calls.findIndex((c) => c.op === 'fill')
+    expect(valueBefore('set:shadowColor', firstFill)).toBe('rgba(0,0,0,1)')
+    expect(valueBefore('set:shadowBlur', firstFill)).toBeCloseTo(10 * 0.18 * 2, 9)
+  })
+
+  test('segments are stroked with round caps, matching the Swift StrokeStyle', () => {
+    render(<MacroRing value={0.5} stops={palette.protein} size={100} strokeWidth={10} />)
+    expect(calls.some((c) => c.op === 'set:lineCap' && c.args[0] === 'round')).toBe(true)
   })
 
   test('zero draws the track and nothing else', () => {

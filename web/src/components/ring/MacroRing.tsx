@@ -30,6 +30,9 @@ const SEGMENT_MAX_DEGREES = 90
  */
 const SHADOW_PAD = 8
 
+/** Conic-gradient offsets must stay inside [0, 1] and ascend. */
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
+
 type Props = {
   /** 0..∞, where 1 means "at goal". */
   value: number
@@ -127,10 +130,23 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
         const share = (a1 - a0) / (Math.PI * 2)
         const grad = ctx.createConicGradient(a0, cx, cy)
         for (const stop of gradientStops(rgbStops, startT, endT)) {
-          grad.addColorStop(Math.min(1, stop.location * share), rgbToCss(stop.color))
+          grad.addColorStop(clamp01(stop.location * share), rgbToCss(stop.color))
         }
-        // Pin the remainder so the unused sweep cannot bleed back round.
-        grad.addColorStop(1, rgbToCss(ringColor(rgbStops, endT)))
+
+        // Round caps overhang the arc by strokeWidth / 2 at BOTH ends, and the
+        // leading one reaches backwards past 0° — which in a conic gradient
+        // wraps around to just below 1.0. Leaving the end colour there made
+        // every segment stamp its darkest shade over the previous segment,
+        // showing up as notches at 90°, 180° and 270°. So: hold the end colour
+        // just far enough past the arc to cover the trailing cap, then hand the
+        // wrap-around region back to the start colour.
+        const capFrac = radius > 0 ? strokeWidth / 2 / radius / (Math.PI * 2) : 0
+        const endHold = clamp01(share + capFrac * 1.5)
+        grad.addColorStop(endHold, rgbToCss(ringColor(rgbStops, endT)))
+        if (endHold < 1) {
+          grad.addColorStop(Math.min(1, endHold + 1e-4), rgbToCss(ringColor(rgbStops, startT)))
+          grad.addColorStop(1, rgbToCss(ringColor(rgbStops, startT)))
+        }
 
         ctx.beginPath()
         ctx.arc(cx, cy, radius, a0, a1)
