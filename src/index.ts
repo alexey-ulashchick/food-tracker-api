@@ -10,12 +10,16 @@ import { healthRoute } from './routes/health.ts'
 import { mealsRoute } from './routes/meals.ts'
 import { memoriesRoute } from './routes/memories.ts'
 import { weightsRoute } from './routes/weights.ts'
-import { staticRoute } from './static.ts'
+import { spaNavigation, staticRoute } from './static.ts'
 
 const app = new Hono()
 
 app.use('*', logger())
 app.onError(errorHandler)
+
+// Before the API: claims the client-side routes whose paths also exist as API
+// endpoints, but only for browser navigations. See src/static.ts.
+app.route('/', spaNavigation)
 
 // Public
 app.route('/health', healthRoute)
