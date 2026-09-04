@@ -214,3 +214,53 @@ export function EyeIcon({ size = 16, color, off }: IconProps & { off?: boolean }
     </svg>
   )
 }
+
+/** fork.knife */
+export function ForkKnifeIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6.2 2a.8.8 0 0 1 .8.8V8a1.4 1.4 0 0 0 2.8 0V2.8a.8.8 0 0 1 1.6 0V8a3 3 0 0 1-2.2 2.9V21a.8.8 0 0 1-1.6 0V10.9A3 3 0 0 1 5.4 8V2.8A.8.8 0 0 1 6.2 2Zm10.6 0a.8.8 0 0 1 .8.8v6.9c0 1-.5 1.9-1.4 2.4V21a.8.8 0 0 1-1.6 0v-8.9c-.9-.5-1.4-1.4-1.4-2.4V2.8a.8.8 0 0 1 1.6 0v6.9c0 .4.2.7.6.9V2.8a.8.8 0 0 1 1.4 0Z" />
+    </Svg>
+  )
+}
+
+/** checkmark */
+export function TickIcon({ size = 16, color }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color ?? 'currentColor'}
+      strokeWidth={3.2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ display: 'block' }}
+    >
+      <path d="M4 12.5 9.5 18 20 6.5" />
+    </svg>
+  )
+}
+
+/**
+ * Inline activity indicator. Replaces SwiftUI's ProgressView(.small); the
+ * animation lives in index.css so it does not need a JS ticker.
+ */
+export function Spinner({ size = 14, color }: IconProps) {
+  return (
+    <span
+      className="spinner"
+      aria-hidden="true"
+      style={{
+        width: size,
+        height: size,
+        borderWidth: Math.max(1.5, size / 9),
+        borderColor: color ?? 'rgba(235,235,245,0.35)',
+        borderTopColor: color ?? 'rgba(235,235,245,0.9)',
+        flexShrink: 0,
+      }}
+    />
+  )
+}

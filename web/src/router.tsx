@@ -3,6 +3,7 @@ import { RequireToken } from '@/components/RequireToken'
 import { Kitchen } from '@/screens/Kitchen'
 import { Login } from '@/screens/Login'
 import { Placeholder } from '@/screens/Placeholder'
+import { Today } from '@/screens/Today'
 import { Navigate, Route, Routes } from 'react-router'
 
 // Routes mirror the four live tabs plus the two screens You pushes.
@@ -22,7 +23,7 @@ export function AppRoutes() {
           </RequireToken>
         }
       >
-        <Route index element={<Placeholder title="Сегодня" note="Экран появится на шаге 19." />} />
+        <Route index element={<Today />} />
         <Route
           path="chat"
           element={<Placeholder title="Чат" note="Экран появится на шаге 22." />}
