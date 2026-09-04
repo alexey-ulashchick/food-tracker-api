@@ -107,3 +107,36 @@ body {
   scroll-snap-align: center;
   flex: 0 0 100%;
 }
+
+/* TypingBubble dots: opacity = 0.3 + 0.7 * |sin(phase * pi)| across a 1.2s
+   cycle. Sampled at 12.5% steps — |sin| peaks mid-cycle and returns to 0.3 at
+   both ends, so the three dots (offset by 0.18 of a cycle) chase each other. */
+@keyframes typing-dot {
+  0% {
+    opacity: 0.3;
+  }
+  12.5% {
+    opacity: 0.57;
+  }
+  25% {
+    opacity: 0.79;
+  }
+  37.5% {
+    opacity: 0.95;
+  }
+  50% {
+    opacity: 1;
+  }
+  62.5% {
+    opacity: 0.95;
+  }
+  75% {
+    opacity: 0.79;
+  }
+  87.5% {
+    opacity: 0.57;
+  }
+  100% {
+    opacity: 0.3;
+  }
+}

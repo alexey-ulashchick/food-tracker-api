@@ -33,6 +33,11 @@ export const label = {
 /** AccentColor.colorset — iOS system orange. */
 export const accent = '#FF9500'
 
+/** iOS systemBlue in dark mode. The user's chat bubble uses SwiftUI's .blue,
+ *  not the app accent — a detail worth stating because the rest of the UI is
+ *  orange. Links inside an AI bubble use it too. */
+export const systemBlue = '#0A84FF'
+
 /** iOS systemRed, rgb(1.0, 0.23, 0.19). Drives the ring's overage ramp. */
 export const overage = '#FF3B30'
 
