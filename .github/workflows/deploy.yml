@@ -20,6 +20,10 @@ on:
       - '.dockerignore'
       - 'fly.toml'
       - '.github/workflows/deploy.yml'
+  # Checks also run on a pull request, so a branch can be validated before it
+  # reaches main. The deploy job below opts out of that trigger.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 # Stop deploys from racing each other if you push twice in a row.
@@ -114,6 +118,8 @@ jobs:
     name: Deploy to Fly.io
     runs-on: ubuntu-latest
     needs: [static, integration]
+    # Validation is welcome on a pull request; shipping from one is not.
+    if: github.event_name != 'pull_request'
     # Lets the workflow create deployments visible in the GitHub UI.
     permissions:
       contents: read
