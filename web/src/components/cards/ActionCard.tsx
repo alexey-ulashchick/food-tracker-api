@@ -28,6 +28,10 @@ export function ActionCard({
   return (
     <div style={{ display: 'flex' }}>
       <div
+        // Anchors the end-to-end assertions. Card copy shares vocabulary with
+        // the bubbles around it — the recap for a logged apple says "яблоко"
+        // too — so text alone cannot address a card unambiguously.
+        data-testid="action-card"
         style={{
           maxWidth: 300,
           width: '100%',

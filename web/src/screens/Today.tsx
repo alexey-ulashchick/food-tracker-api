@@ -513,7 +513,12 @@ function MealsLog({ meals, loading }: { meals: ServerMeal[]; loading: boolean })
 
 function MealRow({ meal }: { meal: ServerMeal }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px' }}>
+    <div
+      // Lets the end-to-end suite address a logged meal without matching on
+      // the food name, which also appears in chat text.
+      data-testid="meal-row"
+      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px' }}
+    >
       <span style={{ fontSize: 22, width: 30, flexShrink: 0, textAlign: 'center' }}>
         {meal.emoji ?? '🍽'}
       </span>

@@ -36,17 +36,29 @@ test('a chat turn streams deltas and lands a meal card', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'Чат' })).toBeVisible()
 
+  // A retry replays this turn against a database that still holds the previous
+  // attempt's apple, so the assertions below count from whatever the history
+  // already contains instead of expecting exactly one. No stream is open yet,
+  // so the page really does reach network idle here.
+  await page.waitForLoadState('networkidle')
+  const cards = page.getByTestId('action-card').filter({ hasText: 'Добавлено' })
+  const cardsBefore = await cards.count()
+
   await page.getByPlaceholder('Расскажи, что ты съел…').fill('съел яблоко')
   await page.keyboard.press('Enter')
 
-  // The scripted turn calls add_meal, so the action card is what proves the
-  // whole path — stream, tool execution, persistence, render.
-  await expect(page.getByText('Добавлено')).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByText('Яблоко')).toBeVisible()
+  // The scripted turn calls add_meal, so a new action card is what proves the
+  // whole path — stream, tool execution, persistence, render. The food name is
+  // matched inside the card: on its own it also hits the user's own message and
+  // the model's recap, which is what made an earlier version of this ambiguous.
+  await expect(cards).toHaveCount(cardsBefore + 1, { timeout: 20_000 })
+  await expect(cards.last()).toContainText('Яблоко')
 
   // And the write is reflected on Today without a reload.
   await page.getByRole('link', { name: 'Сегодня' }).click()
-  await expect(page.getByText('Яблоко')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByTestId('meal-row').filter({ hasText: 'Яблоко' }).first()).toBeVisible({
+    timeout: 20_000,
+  })
 })
 
 test('swiping the recommend deck does not move the page scroll', async ({ page }) => {
@@ -55,7 +67,10 @@ test('swiping the recommend deck does not move the page scroll', async ({ page }
 
   await page.getByRole('button', { name: 'Рекомендация' }).click()
 
-  // Either variants arrive or the no-goal card does; both end the turn.
+  // Either variants arrive or the no-goal card does; both end the turn. The
+  // card used to be erased a moment after it rendered — /chat/recommend gives
+  // up on a missing goal before persisting anything, so the refetch that ends
+  // a turn had nothing to replace it with. See reset() in useChatStream.
   const deck = page.locator('.snap-deck')
   const noGoal = page.getByText('Сначала выстави цель', { exact: false })
   await expect(deck.or(noGoal).first()).toBeVisible({ timeout: 20_000 })

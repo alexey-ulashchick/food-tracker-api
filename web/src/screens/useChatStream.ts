@@ -33,8 +33,14 @@ export function useChatStream({ onError }: Options) {
   const [usage, setUsage] = useState<Record<string, TurnUsage>>({})
   const [status, setStatus] = useState<ChatStatus>({ kind: 'idle' })
 
+  // Drops the turn's local mirror once the screen has refetched the persisted
+  // rows. Items the server never wrote have no such replacement and would
+  // simply blink out, so they are kept: /chat/recommend answers a missing daily
+  // goal before it persists anything at all, and that card is the only feedback
+  // the click produces. A retained card cannot pile up — the next turn's
+  // setLive replaces the whole list.
   const reset = useCallback(() => {
-    setLive([])
+    setLive((items) => items.filter((i) => i.kind === 'recommendationError'))
     setUsage({})
   }, [])
 
