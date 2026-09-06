@@ -1,25 +1,33 @@
 #!/usr/bin/env bash
-# Installs dependencies from the committed bun.lock.
+# Installs dependencies. Bun runs every script in this repo, but not the install
+# — three approaches have been tried on GitHub runners and only the last works:
 #
-# Two failure modes have been observed on GitHub runners, and this script exists
-# to avoid both:
+#   * `bun install` cannot reach the registry here at all. Every tarball fails
+#     with ConnectionRefused / FailedToOpenSocket, tiny ones included, and
+#     dropping --network-concurrency from 48 to 4 changed nothing. This is the
+#     same flake the Dockerfile has warned about since before the web client
+#     existed.
+#   * `npm install --no-package-lock` crashes arborist on the full dependency
+#     graph: "Cannot read properties of null (reading 'edgesOut')". The flag is
+#     what does it — npm has to build an ideal tree with nothing to work from.
+#   * `npm install`, allowed to use a lockfile, is fine. That runs below.
 #
-#   * `npm install --no-package-lock` crashes arborist on this dependency graph
-#     ("Cannot read properties of null (reading 'edgesOut')"). It also re-resolved
-#     every ^range on each run, so CI could pass on versions development never
-#     saw.
-#   * `bun install` at its default --network-concurrency of 48 saturates the
-#     registry connection and dies with ConnectionRefused / FailedToOpenSocket
-#     part-way through the platform-specific tarballs (esbuild, tailwind oxide,
-#     lightningcss, rolldown). Four concurrent requests is steady, and slower
-#     only by a couple of seconds because the tarballs are small.
-#
-# The retry covers whatever is left: a transient registry hiccup should not fail
-# a build.
+# `npm ci` is preferred once package-lock.json is committed, because it installs
+# the locked tree without resolving anything. Until then `npm install` re-resolves
+# every ^range on each run, so CI can pass on versions development never saw —
+# worth fixing, but not worth blocking a deploy on.
 set -euo pipefail
 
+install_once() {
+  if [ -f package-lock.json ]; then
+    npm ci --no-audit --no-fund
+  else
+    npm install --no-audit --no-fund
+  fi
+}
+
 for attempt in 1 2 3; do
-  if bun install --frozen-lockfile --network-concurrency 4; then
+  if install_once; then
     exit 0
   fi
   echo "::warning::dependency install failed (attempt ${attempt}/3), retrying"
