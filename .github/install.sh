@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Installs dependencies. Bun runs every script in this repo, but not the install
-# — three approaches have been tried on GitHub runners and only the last works:
+# Installs dependencies. Bun runs every script in this repo, but not the install:
+# `bun install` cannot reach the registry from a GitHub runner at all. Every
+# tarball fails with ConnectionRefused / FailedToOpenSocket, tiny ones included,
+# and dropping --network-concurrency from 48 to 4 changed nothing. This is the
+# same flake the Dockerfile has warned about since before the web client existed.
 #
-#   * `bun install` cannot reach the registry here at all. Every tarball fails
-#     with ConnectionRefused / FailedToOpenSocket, tiny ones included, and
-#     dropping --network-concurrency from 48 to 4 changed nothing. This is the
-#     same flake the Dockerfile has warned about since before the web client
-#     existed.
-#   * `npm install --no-package-lock` crashes arborist on the full dependency
-#     graph: "Cannot read properties of null (reading 'edgesOut')". The flag is
-#     what does it — npm has to build an ideal tree with nothing to work from.
-#   * `npm install`, allowed to use a lockfile, is fine. That runs below.
+# So: npm, on the Node that setup-node pins in the workflow. Version matters —
+# npm 10.8.2 (bundled with Node 20) cannot resolve this graph, dying in arborist
+# with "Cannot read properties of null (reading 'edgesOut')". npm 10.9, bundled
+# with Node 22, installs it cleanly. Do not lower node-version without checking
+# that.
 #
-# `npm ci` is preferred once package-lock.json is committed, because it installs
-# the locked tree without resolving anything. Until then `npm install` re-resolves
-# every ^range on each run, so CI can pass on versions development never saw —
-# worth fixing, but not worth blocking a deploy on.
+# `npm ci` is preferred once package-lock.json is committed: it installs the
+# locked tree without resolving one, which sidesteps the arborist path above
+# entirely. Until then `npm install` re-resolves every ^range on each run, so CI
+# can pass on versions development never saw — worth fixing, but not worth
+# blocking a deploy on.
 set -euo pipefail
 
 install_once() {
