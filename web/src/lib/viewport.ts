@@ -37,7 +37,6 @@ export function viewportMetrics(): Record<string, string> {
     root: String(root?.getBoundingClientRect().height ?? 0),
     'inset-t': inset('--sat'),
     'inset-b': inset('--sab'),
-    corr: String(heightCorrection()),
     standalone: window.matchMedia('(display-mode: standalone)').matches ? 'да' : 'нет',
   }
 }
@@ -45,39 +44,25 @@ export function viewportMetrics(): Record<string, string> {
 /** Less height lost than this is browser chrome collapsing, not a keyboard. */
 const KEYBOARD_MIN_PX = 120
 
-/** Reads a px-valued custom property off <html>. */
-function cssPx(name: string): number {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(name)
-  return Number.parseFloat(raw) || 0
-}
-
 /**
- * How much every height iOS reports understates the screen.
+ * The height the shell fills: what the browser reports, uncorrected.
  *
- * On this device, installed to the home screen, the readout is
+ * A previous attempt added the top safe area back, on the theory that iOS was
+ * understating the viewport. The readout looked conclusive —
  *
  *   inner 844   client 844   visual 844   screen 912   inset-t 68   inset-b 34
  *
- * and 912 − 844 is exactly the top inset. The webview does cover the screen —
- * it reports a bottom inset for the home indicator, which it would not do if it
- * stopped short — but every height it exposes is short by the top safe area.
- * All three agree, which is why taking max() of two of them changed nothing, and
- * why height:100% and 100dvh both left the tab bar hanging: they resolve against
- * that same understated viewport.
+ * with 912 − 844 exactly the top inset. It was wrong: at 912 the tab bar was
+ * clipped off the bottom of the screen, so 844 is the real height and
+ * screen.height is the value that cannot be trusted here. It is still reported
+ * in the Профиль readout, but nothing is computed from it.
  *
- * Applied only when the arithmetic actually lines up (reported + inset fits
- * within the screen) and only in standalone, which is where this was measured.
- * In a browser tab the reported height is honest and moves with the chrome, so
- * correcting it would push the bar under the toolbar instead.
+ * Which also settles the band under the tab bar: it is not missing screen, it is
+ * the bar's own env(safe-area-inset-bottom), keeping the labels clear of the home
+ * indicator exactly as a native tab bar does.
  */
-function heightCorrection(): number {
-  if (!window.matchMedia('(display-mode: standalone)').matches) return 0
-
-  const reported = Math.max(window.innerHeight, document.documentElement.clientHeight)
-  const screenHeight = window.screen?.height ?? 0
-  const insetTop = cssPx('--sat')
-
-  return screenHeight > 0 && insetTop > 0 && reported + insetTop <= screenHeight ? insetTop : 0
+function reportedHeight(): number {
+  return Math.max(window.innerHeight, document.documentElement.clientHeight)
 }
 
 export function trackViewport(): () => void {
@@ -86,12 +71,8 @@ export function trackViewport(): () => void {
   let published = -1
 
   const apply = () => {
-    // The same correction goes on both: the visual viewport is reported in the
-    // same understated coordinates, so leaving it raw would float the composer
-    // a safe-area above the keys.
-    const correction = heightCorrection()
-    const frame = Math.max(window.innerHeight, document.documentElement.clientHeight) + correction
-    const visual = Math.round(vv?.height ?? frame) + (vv ? correction : 0)
+    const frame = reportedHeight()
+    const visual = Math.round(vv?.height ?? frame)
     // The keyboard shrinks only the visual viewport, so the gap between the two
     // is what reveals it.
     const keyboardOpen = frame - visual > KEYBOARD_MIN_PX

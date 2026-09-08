@@ -167,74 +167,23 @@ describe('trackViewport', () => {
   })
 })
 
-// The device readout that drove this: inner/client/visual all 844, screen 912,
-// inset-t 68. The webview does span the screen — it reports a bottom inset for
-// the home indicator — but every height it exposes is short by the top inset,
-// which is what left the tab bar hanging above the bottom edge.
-describe('the standalone height correction', () => {
-  const SCREEN = 912
-  const INSET_TOP = 68
-
-  function stubScreen(height: number) {
-    vi.stubGlobal('screen', { height })
-  }
-
-  function stubInsetTop(px: number) {
-    document.documentElement.style.setProperty('--sat', `${px}px`)
-  }
-
-  test('adds the top inset back so the shell spans the screen', () => {
-    stubDisplayMode(true)
-    stubScreen(SCREEN)
-    stubInsetTop(INSET_TOP)
+// A previous attempt added the top safe area back here, reading screen 912 against
+// inner/client/visual 844 as proof that iOS understated the viewport. At 912 the
+// tab bar was clipped off the bottom, so 844 is the real height and screen.height
+// is the untrustworthy number. Pinned so the same inference is not made twice.
+describe('screen.height', () => {
+  test('is not used to stretch the shell, even when it looks like it should be', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: q.includes('standalone'),
+      addEventListener() {},
+      removeEventListener() {},
+    }))
+    vi.stubGlobal('screen', { height: 912 })
+    document.documentElement.style.setProperty('--sat', '68px')
     stubVisualViewport(LAYOUT_HEIGHT)
 
     const stop = trackViewport()
-    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe(`${SCREEN}px`)
-    stop()
-  })
-
-  test('corrects the visual viewport too, so the composer sits on the keys', () => {
-    stubDisplayMode(true)
-    stubScreen(SCREEN)
-    stubInsetTop(INSET_TOP)
-    const vv = stubVisualViewport(LAYOUT_HEIGHT)
-    const stop = trackViewport()
-
-    vv.height = 400
-    vv.emit('resize')
-
-    expect(document.documentElement.dataset.keyboard).toBe('open')
-    // Raw 400 would leave a safe-area-sized gap between composer and keyboard.
-    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('468px')
-    stop()
-  })
-
-  test('leaves a browser tab alone, where the reported height is honest', () => {
-    stubDisplayMode(false)
-    stubScreen(SCREEN)
-    stubInsetTop(INSET_TOP)
-    stubVisualViewport(LAYOUT_HEIGHT)
-
-    const stop = trackViewport()
-    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe(
-      `${LAYOUT_HEIGHT}px`,
-    )
-    stop()
-  })
-
-  test('declines to correct when the arithmetic does not line up', () => {
-    // A screen that the corrected height would overshoot: the premise does not
-    // hold, so no guessing — better a short shell than a bar pushed off-screen.
-    stubDisplayMode(true)
-    stubScreen(LAYOUT_HEIGHT)
-    stubInsetTop(INSET_TOP)
-    stubVisualViewport(LAYOUT_HEIGHT)
-
-    const stop = trackViewport()
-    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe(
-      `${LAYOUT_HEIGHT}px`,
-    )
+    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('844px')
     stop()
   })
 })
