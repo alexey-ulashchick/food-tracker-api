@@ -127,7 +127,8 @@ export function Kcal({
     <span
       className="tnum"
       style={{
-        font: `700 ${size}px inherit`,
+        fontWeight: 700,
+        fontSize: size,
         color: muted ? label.secondary : palette.calories[1],
         whiteSpace: 'nowrap',
       }}

@@ -14,6 +14,33 @@
 // `data-keyboard` on <html> follows SwiftUI, where the keyboard simply covers the
 // tab bar: it hides while typing instead of stealing 52px above the keys.
 
+/**
+ * What the browser reports about the viewport, for the Профиль footer.
+ *
+ * The tab bar sat above the physical bottom edge through two rounds of fixes
+ * aimed at the wrong cause, because the same symptom has two incompatible
+ * explanations that need opposite corrections: either the shell is shorter than
+ * the screen, or viewport-fit=cover is not in effect and the safe-area insets
+ * read as zero. These numbers tell the two apart at a glance instead of by
+ * inference from a photo.
+ */
+export function viewportMetrics(): Record<string, string> {
+  const style = getComputedStyle(document.documentElement)
+  const inset = (name: string) => style.getPropertyValue(name).trim() || '—'
+  const root = document.getElementById('root')
+
+  return {
+    inner: String(window.innerHeight),
+    client: String(document.documentElement.clientHeight),
+    visual: String(Math.round(window.visualViewport?.height ?? 0)),
+    screen: String(window.screen?.height ?? 0),
+    root: String(root?.getBoundingClientRect().height ?? 0),
+    'inset-t': inset('--sat'),
+    'inset-b': inset('--sab'),
+    standalone: window.matchMedia('(display-mode: standalone)').matches ? 'да' : 'нет',
+  }
+}
+
 /** Less height lost than this is browser chrome collapsing, not a keyboard. */
 const KEYBOARD_MIN_PX = 120
 

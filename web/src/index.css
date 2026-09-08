@@ -70,27 +70,34 @@ body {
   overflow: hidden;
 }
 
+/* Mirrored into custom properties so viewportMetrics() can read them back —
+   env() is not visible to getComputedStyle on its own. */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+}
+
 /* The frame.
 
-   Height is the layout viewport by default, which under viewport-fit=cover
-   includes the safe areas — so the tab bar reaches the physical bottom edge and
-   its own inset padding is what lifts the icons off the home indicator.
+   100dvh rather than height:100%: the percentage chain resolves against the
+   initial containing block, and on iOS that has not reliably been the full
+   screen under viewport-fit=cover. dvh names the viewport directly.
 
-   --app-height (the visual viewport, published by trackViewport) is used ONLY
+   --app-height (the visual viewport, published by trackViewport) applies ONLY
    while the keyboard is up. iOS reports a visual viewport that excludes the safe
-   areas, so applying it all the time cut the shell short and left the bar
-   hanging some 60px above the bottom with its inset padding counted twice.
+   areas, so using it at rest cut the shell short and left the tab bar hanging
+   above the bottom edge.
 
    Deliberately not position:fixed: the document cannot scroll, so a plain block
    already fills the visible area, and the extra compositing layer is what made
    iOS stop repainting card backgrounds and text while canvas kept drawing. */
 #root {
-  height: 100%;
+  height: 100dvh;
   overflow: hidden;
 }
 
 html[data-keyboard="open"] #root {
-  height: var(--app-height, 100%);
+  height: var(--app-height, 100dvh);
 }
 
 /* The keyboard covers the tab bar in the SwiftUI original. Match that rather

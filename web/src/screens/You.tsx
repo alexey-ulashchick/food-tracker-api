@@ -3,11 +3,13 @@ import { listMemories, listWeights } from '@/api/endpoints'
 import { qk } from '@/api/keys'
 import { ScreenHeader } from '@/components/ScreenHeader'
 import { COST_DISPLAY_LABELS, COST_DISPLAY_MODES } from '@/lib/costDisplay'
+import { viewportMetrics } from '@/lib/viewport'
 import { formatKg, latestWeight } from '@/lib/weight'
 import { useUi } from '@/store/ui'
 import { BrainIcon, ChevronIcon, DollarIcon, KeyIcon, ScaleIcon, Spinner } from '@/theme/icons'
 import { accent, label, layout, radius, surface, systemBlue, withAlpha } from '@/theme/tokens'
 import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 
 // Port of CalTracker/YouView.swift, cut back to what is real.
@@ -93,7 +95,8 @@ export function You() {
                   borderRadius: 8,
                   background: active ? surface.subtle : 'transparent',
                   color: active ? label.primary : label.secondary,
-                  font: `${active ? 600 : 400} 12px inherit`,
+                  fontWeight: active ? 600 : 400,
+                  fontSize: 12,
                   padding: '7px 4px',
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
@@ -137,6 +140,43 @@ export function You() {
           </button>
         </div>
       </Card>
+
+      <ViewportDiagnostics />
+    </div>
+  )
+}
+
+// Reads the numbers the layout depends on. Two rounds of tab-bar fixes went to
+// the wrong cause because the symptom — a bar short of the bottom edge — has two
+// incompatible explanations: a shell shorter than the screen, or safe-area insets
+// reading zero because viewport-fit=cover is not in effect. Guessing from a photo
+// cannot separate them; these can.
+function ViewportDiagnostics() {
+  const [metrics, setMetrics] = useState(viewportMetrics)
+
+  // After paint, so #root has been measured.
+  useEffect(() => {
+    const id = setTimeout(() => setMetrics(viewportMetrics()), 0)
+    return () => clearTimeout(id)
+  }, [])
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '2px 10px',
+        padding: '0 4px',
+        fontWeight: 400,
+        fontSize: 10.5,
+        color: label.tertiary,
+      }}
+    >
+      {Object.entries(metrics).map(([key, value]) => (
+        <span key={key} className="tnum">
+          {key} {value}
+        </span>
+      ))}
     </div>
   )
 }

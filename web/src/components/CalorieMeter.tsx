@@ -53,7 +53,7 @@ export function CalorieMeter({ current, goal, stops, size = 'large', accessory }
       {/* Both halves share a baseline in Swift (.lastTextBaseline). */}
       <div style={{ display: 'flex', alignItems: 'baseline' }}>
         <span style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-          <span className="tnum" style={{ font: `700 ${NUM_FONT[size]}px inherit` }}>
+          <span className="tnum" style={{ fontWeight: 700, fontSize: NUM_FONT[size] }}>
             {Math.round(current)}
           </span>
           <span className="tnum" style={{ fontWeight: 500, fontSize: 14, color: label.secondary }}>
@@ -74,7 +74,8 @@ export function CalorieMeter({ current, goal, stops, size = 'large', accessory }
           <span
             className="tnum"
             style={{
-              font: `700 ${size === 'large' ? 28 : 20}px inherit`,
+              fontWeight: 700,
+              fontSize: size === 'large' ? 28 : 20,
               color: over > 0 ? '#FF3B30' : tint,
             }}
           >

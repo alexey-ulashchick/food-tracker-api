@@ -141,7 +141,8 @@ function DiffRow({
       <span
         className="tnum"
         style={{
-          font: `${changed ? 600 : 400} 11.5px inherit`,
+          fontWeight: changed ? 600 : 400,
+          fontSize: 11.5,
           color: changed ? label.primary : label.secondary,
         }}
       >

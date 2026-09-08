@@ -12,8 +12,10 @@ import { describe, expect, test } from 'vitest'
 // Use fontWeight/fontSize/lineHeight separately. `font: 'inherit'` alone is fine,
 // and so is a shorthand naming a real family.
 
-/** A CSS-wide keyword sitting where the family belongs, i.e. after other parts. */
-const INVALID = /font:\s*'[^']+\s+(inherit|initial|unset|revert)'/g
+/** A CSS-wide keyword sitting where the family belongs, i.e. after other parts.
+ *  Both quoted and template forms — the first sweep missed the templates, and
+ *  one of them was the 40px calorie figure. */
+const INVALID = /font:\s*(['`])[^'`]+\s+(inherit|initial|unset|revert)\1/g
 
 // Read through Vite rather than node:fs — the web project deliberately has no
 // Node types, and browser sources should not be able to reach for them.
@@ -35,6 +37,7 @@ describe('the font shorthand', () => {
 
   test('the scan actually catches the broken form', () => {
     expect("style={{ font: '600 14px inherit' }}".match(INVALID)).not.toBeNull()
+    expect('style={{ font: `700 ${size}px inherit` }}'.match(INVALID)).not.toBeNull()
     expect("style={{ font: 'inherit' }}".match(INVALID)).toBeNull()
     expect("style={{ font: '600 13px system-ui' }}".match(INVALID)).toBeNull()
   })
