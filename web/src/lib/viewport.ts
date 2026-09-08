@@ -6,10 +6,11 @@
 // scroll-to-focus that follows strands it in the middle of the screen. That is
 // what the tab bar and the chat composer were both doing.
 //
-// Publishing the visual viewport height instead lets the shell be a plain block
-// of exactly the visible height, with the bar as an ordinary flex child. Nothing
-// is position:fixed: extra compositing layers are what made iOS stop repainting
-// the card backgrounds and the text.
+// So the shell shrinks to the visual viewport while the keyboard is up, and the
+// bar is an ordinary flex child rather than a fixed overlay guessing where the
+// bottom is. At rest the shell is height:100% — see index.css for why nothing is
+// measured there. Nothing is position:fixed either: extra compositing layers are
+// what made iOS stop repainting the card backgrounds and the text.
 //
 // `data-keyboard` on <html> follows SwiftUI, where the keyboard simply covers the
 // tab bar: it hides while typing instead of stealing 52px above the keys.
@@ -18,19 +19,14 @@
 const KEYBOARD_MIN_PX = 120
 
 /**
- * The height the shell fills: what the browser reports, uncorrected.
+ * The layout viewport, for telling a keyboard apart from browser chrome.
  *
- * A previous attempt added the top safe area back, on the theory that iOS was
- * understating the viewport. The readout from the device looked conclusive —
- *
- *   inner 844   client 844   visual 844   screen 912   inset-t 68   inset-b 34
- *
- * with 912 − 844 exactly the top inset. It was wrong: at 912 the tab bar was
- * clipped off the bottom of the screen. So 844 is the real height, the app was
- * filling the screen all along, and screen.height is the value that cannot be
- * trusted here. Nothing is computed from it.
+ * Not used to size the shell at rest: that is `height: 100%` in CSS, which is
+ * the layout viewport by definition. Every measured stand-in tried here —
+ * innerHeight, clientHeight, the two combined, plus 100dvh — came out short of
+ * the screen on iOS and left the tab bar hanging above the bottom edge.
  */
-function reportedHeight(): number {
+function layoutHeight(): number {
   return Math.max(window.innerHeight, document.documentElement.clientHeight)
 }
 
@@ -40,23 +36,22 @@ export function trackViewport(): () => void {
   let published = -1
 
   const apply = () => {
-    const frame = reportedHeight()
-    const visual = Math.round(vv?.height ?? frame)
+    const layout = layoutHeight()
+    const visual = Math.round(vv?.height ?? layout)
     // The keyboard shrinks only the visual viewport, so the gap between the two
     // is what reveals it.
-    const keyboardOpen = frame - visual > KEYBOARD_MIN_PX
-    const height = keyboardOpen ? visual : frame
+    const keyboardOpen = layout - visual > KEYBOARD_MIN_PX
 
     // Only on a real change. visualViewport's scroll event fires continuously
     // during a drag, and setting a custom property on <html> invalidates style
     // for the entire tree — cheap to skip, expensive to repeat.
-    if (height !== published) {
-      published = height
-      root.style.setProperty('--app-height', `${height}px`)
-
-      if (keyboardOpen) root.dataset.keyboard = 'open'
-      else delete root.dataset.keyboard
+    if (visual !== published) {
+      published = visual
+      root.style.setProperty('--app-height', `${visual}px`)
     }
+
+    if (keyboardOpen) root.dataset.keyboard = 'open'
+    else delete root.dataset.keyboard
 
     // The document is overflow:hidden and has nothing to scroll, but iOS scrolls
     // it anyway when it decides a focused field needs revealing — which drags the

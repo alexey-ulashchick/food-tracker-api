@@ -54,32 +54,12 @@ afterEach(() => {
 })
 
 describe('trackViewport', () => {
-  test('publishes the layout viewport height as --app-height at rest', () => {
+  test('publishes the visual viewport height as --app-height', () => {
     stubVisualViewport(LAYOUT_HEIGHT)
     const stop = trackViewport()
 
     expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('844px')
     stop()
-  })
-
-  test('takes the larger of innerHeight and clientHeight', () => {
-    // iOS has under-reported one or the other depending on version and display
-    // mode, and the one that spans the screen is the larger.
-    vi.stubGlobal('innerHeight', 700)
-    Object.defineProperty(document.documentElement, 'clientHeight', {
-      value: 844,
-      configurable: true,
-    })
-    stubVisualViewport(844)
-
-    const stop = trackViewport()
-    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('844px')
-
-    stop()
-    Object.defineProperty(document.documentElement, 'clientHeight', {
-      value: 0,
-      configurable: true,
-    })
   })
 
   test('flags the keyboard once the viewport loses more than browser chrome', () => {
@@ -100,17 +80,16 @@ describe('trackViewport', () => {
     stop()
   })
 
-  test('a collapsing browser toolbar is not a keyboard, and does not shorten the shell', () => {
+  test('a collapsing browser toolbar is not a keyboard', () => {
     const vv = stubVisualViewport(LAYOUT_HEIGHT)
     const stop = trackViewport()
 
     vv.height = LAYOUT_HEIGHT - 100
     vv.emit('resize')
 
+    // Without the flag the shell keeps its CSS height:100%, so what is published
+    // here does not reach it — only the keyboard branch reads --app-height.
     expect(document.documentElement.dataset.keyboard).toBeUndefined()
-    // At rest the shell spans the layout viewport, not the visual one. Following
-    // the visual viewport here is what left the tab bar short of the bottom edge.
-    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('844px')
     stop()
   })
 
@@ -167,23 +146,26 @@ describe('trackViewport', () => {
   })
 })
 
-// A previous attempt added the top safe area back here, reading screen 912 against
-// inner/client/visual 844 as proof that iOS understated the viewport. At 912 the
-// tab bar was clipped off the bottom, so 844 is the real height and screen.height
-// is the untrustworthy number. Pinned so the same inference is not made twice.
-describe('screen.height', () => {
-  test('is not used to stretch the shell, even when it looks like it should be', () => {
-    vi.stubGlobal('matchMedia', (q: string) => ({
-      matches: q.includes('standalone'),
-      addEventListener() {},
-      removeEventListener() {},
-    }))
-    vi.stubGlobal('screen', { height: 912 })
-    document.documentElement.style.setProperty('--sat', '68px')
-    stubVisualViewport(LAYOUT_HEIGHT)
-
+// The band under the tab bar was chased through four different height
+// expressions before the cause turned out to be elsewhere, so what the shell is
+// sized by at rest is worth stating: nothing here. CSS height:100% is the layout
+// viewport by definition, and --app-height only reaches the shell while the
+// keyboard is up.
+describe('sizing at rest', () => {
+  test('the keyboard flag is the only thing that hands the shell a measurement', () => {
+    const vv = stubVisualViewport(LAYOUT_HEIGHT)
     const stop = trackViewport()
-    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('844px')
+
+    expect(document.documentElement.dataset.keyboard).toBeUndefined()
+
+    vv.height = 400
+    vv.emit('resize')
+    expect(document.documentElement.dataset.keyboard).toBe('open')
+    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('400px')
+
+    vv.height = LAYOUT_HEIGHT
+    vv.emit('resize')
+    expect(document.documentElement.dataset.keyboard).toBeUndefined()
     stop()
   })
 })
