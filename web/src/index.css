@@ -62,9 +62,29 @@
 }
 
 html,
-body,
-#root {
+body {
   height: 100%;
+  /* The shell is a fixed frame containing one scroll pane. The document itself
+     must never scroll: on iOS a scrolled document drags `position: fixed`
+     elements out of alignment, which is how the tab bar ended up mid-screen. */
+  overflow: hidden;
+}
+
+/* The frame. --app-height is published from visualViewport by trackViewport();
+   100dvh covers the first paint and anything without that API. */
+#root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-height, 100dvh);
+  overflow: hidden;
+}
+
+/* The keyboard covers the tab bar in the SwiftUI original. Match that rather
+   than leaving a row of tabs wedged between the composer and the keys. */
+html[data-keyboard="open"] .tab-bar {
+  display: none;
 }
 
 body {

@@ -4,8 +4,13 @@ import { ChatTabIcon, HistoryTabIcon, TodayTabIcon, YouTabIcon } from '@/theme/i
 import { accent, label, layout, surface, withAlpha } from '@/theme/tokens'
 import { NavLink, Outlet } from 'react-router'
 
-// The app shell: a phone-width column, a fixed bottom tab bar, and one global
-// error banner.
+// The app shell: a phone-width column filling the viewport frame, one scroll
+// pane, a tab bar at its foot, and one global error banner.
+//
+// Nothing here is `position: fixed`. The frame (#root) is, and it is sized to the
+// visual viewport by trackViewport(), so the bar is simply the last child of a
+// flex column — it cannot drift behind the keyboard or strand itself mid-screen
+// the way a fixed bottom bar does on iOS.
 //
 // Four tabs, matching the live ones in RootView.swift. The Badges tab existed
 // in the Swift source but was commented out, so it is not ported.
@@ -17,7 +22,7 @@ const TABS = [
   { to: '/you', label: 'Профиль', Icon: YouTabIcon },
 ] as const
 
-/** Tall enough for icon + caption, plus whatever the home indicator needs. */
+/** Tall enough for icon + caption; the home indicator is paid for separately. */
 const TAB_BAR_HEIGHT = 52
 
 export function AppLayout() {
@@ -26,14 +31,16 @@ export function AppLayout() {
       style={{
         maxWidth: layout.maxWidth,
         margin: '0 auto',
-        minHeight: '100%',
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
       }}
     >
-      {/* Pays back the notch inset the viewport-fit=cover layout reaches into. */}
-      <div className="safe-top" />
+      {/* Pays back the notch inset the viewport-fit=cover layout reaches into.
+          Part of the frame rather than of the scrolled content, so a screen's
+          sticky header stops below the notch instead of sliding under it. */}
+      <div className="safe-top" style={{ flexShrink: 0 }} />
 
       <ErrorBanner />
 
@@ -41,8 +48,12 @@ export function AppLayout() {
         style={{
           flex: 1,
           minWidth: 0,
-          // Clear the tab bar and the home indicator below it.
-          paddingBottom: `calc(${TAB_BAR_HEIGHT}px + env(safe-area-inset-bottom, 0px))`,
+          // The app's only scroller. minHeight:0 is what lets it shrink inside
+          // the column instead of pushing the tab bar off the bottom.
+          minHeight: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
         }}
       >
         <Outlet />
@@ -56,22 +67,15 @@ export function AppLayout() {
 function TabBar() {
   return (
     <nav
-      className="material-thin"
+      className="material-thin tab-bar"
       style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        // The bar spans the viewport, but its contents stay inside the column.
+        flexShrink: 0,
         borderTop: `0.5px solid ${surface.hairline}`,
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-        zIndex: 10,
       }}
     >
       <div
         style={{
-          maxWidth: layout.maxWidth,
-          margin: '0 auto',
           height: TAB_BAR_HEIGHT,
           display: 'grid',
           gridTemplateColumns: `repeat(${TABS.length}, 1fr)`,
@@ -111,6 +115,7 @@ function ErrorBanner() {
   return (
     <div
       style={{
+        flexShrink: 0,
         display: 'flex',
         alignItems: 'flex-start',
         gap: 8,
@@ -122,7 +127,20 @@ function ErrorBanner() {
       <span style={{ color: accent, display: 'flex', paddingTop: 1 }}>
         <WarnCircleIcon size={15} />
       </span>
-      <span style={{ flex: 1, minWidth: 0 }}>{lastError}</span>
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          // A raw API error is one long unbroken JSON string. Without a break
+          // opportunity it widens the layout, and the whole app scrolls sideways.
+          overflowWrap: 'anywhere',
+          // Long enough to read, bounded so a wall of JSON cannot take the screen.
+          maxHeight: '5.5em',
+          overflowY: 'auto',
+        }}
+      >
+        {lastError}
+      </span>
       <button
         type="button"
         onClick={() => setError(null)}

@@ -80,13 +80,16 @@ test('swiping the recommend deck does not move the page scroll', async ({ page }
     return
   }
 
-  const before = await page.evaluate(() => window.scrollY)
+  // The document never scrolls — the shell is a fixed frame and <main> is the
+  // one scroll pane — so window.scrollY would be a vacuous 0 either way.
+  const pane = page.locator('main')
+  const before = await pane.evaluate((el) => el.scrollTop)
   await deck.first().evaluate((el) => {
     el.scrollBy({ left: 200 })
   })
   await page.waitForTimeout(300)
-  // The horizontal scroller must not have dragged the page with it.
-  expect(await page.evaluate(() => window.scrollY)).toBe(before)
+  // The horizontal scroller must not have dragged the pane with it.
+  expect(await pane.evaluate((el) => el.scrollTop)).toBe(before)
 })
 
 test('tapping a History row opens that day on Today', async ({ page }) => {
