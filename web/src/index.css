@@ -206,8 +206,9 @@ body {
   overflow-anchor: auto;
 }
 
-/* The notch inset, paid back by the shell's top spacer. There is no matching
-   .safe-bottom: the tab bar goes full-bleed to the bottom edge on purpose. */
+/* Pays back the top inset when there is one. With an opaque status bar iOS
+   reports 0 here and the spacer collapses, which is the intended case; the rule
+   stays because a browser tab under viewport-fit=cover still reports an inset. */
 .safe-top {
   padding-top: env(safe-area-inset-top, 0px);
 }

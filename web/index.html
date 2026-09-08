@@ -20,7 +20,17 @@
          does not remove Safari's chrome when launched from the home screen. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- Not black-translucent. With it, iOS starts the webview at the physical
+         top of the screen but still sizes it as if the status bar were opaque
+         (912 - 68 on the device this was measured on), so the bottom 68pt of the
+         screen fall outside the window entirely — a band nothing can paint into,
+         which is what left the tab bar short of the edge. Raising the shell's
+         height only got it clipped at the window boundary.
+
+         Opaque puts the window below the status bar and lets it run to the
+         bottom, so the bar reaches the edge. The status bar itself looks the
+         same either way: the app's background is black. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="CalTracker" />
   </head>
   <body>
