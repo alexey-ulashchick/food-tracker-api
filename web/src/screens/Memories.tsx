@@ -62,7 +62,7 @@ export function Memories() {
     >
       <ScreenHeader title="Память" trailing={query.isFetching ? <Spinner /> : null} />
 
-      <p style={{ font: '400 13px inherit', color: label.secondary, margin: 0 }}>
+      <p style={{ fontWeight: 400, fontSize: 13, color: label.secondary, margin: 0 }}>
         Долгоживущие факты, которые ассистент учитывает в каждом ответе. Он добавляет их сам, когда
         ты говоришь «запомни», — но список можно править руками.
       </p>
@@ -82,7 +82,8 @@ export function Memories() {
             display: 'inline-flex',
             alignItems: 'center',
             gap: 5,
-            font: '600 11.5px inherit',
+            fontWeight: 600,
+            fontSize: 11.5,
             color: '#BF5AF2',
             letterSpacing: 0.3,
             textTransform: 'uppercase',
@@ -116,7 +117,8 @@ export function Memories() {
               display: 'flex',
               alignItems: 'center',
               gap: 10,
-              font: '400 13px inherit',
+              fontWeight: 400,
+              fontSize: 13,
               color: label.secondary,
             }}
           >
@@ -131,7 +133,8 @@ export function Memories() {
               display: 'flex',
               alignItems: 'center',
               gap: 10,
-              font: '400 13px inherit',
+              fontWeight: 400,
+              fontSize: 13,
               color: label.secondary,
             }}
           >
@@ -223,7 +226,9 @@ function MemoryRow({
         </>
       ) : (
         <>
-          <span style={{ flex: 1, minWidth: 0, font: '400 14px inherit' }}>{memory.content}</span>
+          <span style={{ flex: 1, minWidth: 0, fontWeight: 400, fontSize: 14 }}>
+            {memory.content}
+          </span>
           <button type="button" onClick={onBeginEdit} aria-label="Изменить" style={iconButtonStyle}>
             <PencilCircleIcon size={16} />
           </button>
@@ -258,7 +263,8 @@ const fieldStyle: React.CSSProperties = {
   border: 0,
   borderRadius: radius.field,
   color: label.primary,
-  font: '400 14px inherit',
+  fontWeight: 400,
+  fontSize: 14,
   padding: '10px 12px',
   lineHeight: 1.35,
 }
@@ -278,7 +284,8 @@ const ghostButtonStyle: React.CSSProperties = {
   borderRadius: radius.field,
   background: surface.control,
   color: label.primary,
-  font: '600 13px inherit',
+  fontWeight: 600,
+  fontSize: 13,
   padding: '8px 12px',
   cursor: 'pointer',
 }
@@ -289,7 +296,8 @@ function primaryButtonStyle(enabled: boolean): React.CSSProperties {
     borderRadius: radius.field,
     background: enabled ? accent : withAlpha('#8E8E93', 0.18),
     color: enabled ? '#000' : label.secondary,
-    font: '600 13px inherit',
+    fontWeight: 600,
+    fontSize: 13,
     padding: '8px 12px',
     cursor: enabled ? 'pointer' : 'default',
   }

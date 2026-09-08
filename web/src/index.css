@@ -70,16 +70,27 @@ body {
   overflow: hidden;
 }
 
-/* The frame. --app-height is published from visualViewport by trackViewport();
-   100dvh covers the first paint and anything without that API.
+/* The frame.
 
-   Deliberately NOT position:fixed. The document cannot scroll, so a plain block
-   already fills the visible area, and a fixed frame only adds a compositing
-   layer — which on iOS is how the card backgrounds and every glyph stopped being
-   repainted while the canvas rings kept drawing. */
+   Height is the layout viewport by default, which under viewport-fit=cover
+   includes the safe areas — so the tab bar reaches the physical bottom edge and
+   its own inset padding is what lifts the icons off the home indicator.
+
+   --app-height (the visual viewport, published by trackViewport) is used ONLY
+   while the keyboard is up. iOS reports a visual viewport that excludes the safe
+   areas, so applying it all the time cut the shell short and left the bar
+   hanging some 60px above the bottom with its inset padding counted twice.
+
+   Deliberately not position:fixed: the document cannot scroll, so a plain block
+   already fills the visible area, and the extra compositing layer is what made
+   iOS stop repainting card backgrounds and text while canvas kept drawing. */
 #root {
-  height: var(--app-height, 100dvh);
+  height: 100%;
   overflow: hidden;
+}
+
+html[data-keyboard="open"] #root {
+  height: var(--app-height, 100%);
 }
 
 /* The keyboard covers the tab bar in the SwiftUI original. Match that rather

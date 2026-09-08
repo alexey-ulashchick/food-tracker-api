@@ -107,7 +107,7 @@ export function CalorieChart({ days }: { days: ChartDay[] }) {
               textAnchor="end"
               dominantBaseline="middle"
               fill={label.secondary}
-              style={{ font: '400 9px inherit' }}
+              style={{ fontWeight: 400, fontSize: 9 }}
             >
               {Math.round(v)}
             </text>
@@ -175,7 +175,7 @@ export function CalorieChart({ days }: { days: ChartDay[] }) {
               y={HEIGHT - 6}
               textAnchor="middle"
               fill={label.secondary}
-              style={{ font: '400 9px inherit' }}
+              style={{ fontWeight: 400, fontSize: 9 }}
             >
               {dayMonth(d.date)}
             </text>
@@ -210,11 +210,13 @@ function Tooltip({ day, x, width }: { day: ChartDay; x: number; width: number })
         pointerEvents: 'none',
       }}
     >
-      <span style={{ font: '600 10px inherit', color: label.secondary }}>{dayMonth(day.date)}</span>
-      <span className="tnum" style={{ font: '700 13px inherit', color: palette.calories[1] }}>
+      <span style={{ fontWeight: 600, fontSize: 10, color: label.secondary }}>
+        {dayMonth(day.date)}
+      </span>
+      <span className="tnum" style={{ fontWeight: 700, fontSize: 13, color: palette.calories[1] }}>
         {day.eaten == null ? '—' : `${Math.round(day.eaten)} ккал`}
       </span>
-      <span className="tnum" style={{ font: '400 10px inherit', color: label.secondary }}>
+      <span className="tnum" style={{ fontWeight: 400, fontSize: 10, color: label.secondary }}>
         цель {day.goal == null ? '—' : Math.round(day.goal)}
       </span>
     </div>

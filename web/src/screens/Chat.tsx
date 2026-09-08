@@ -115,14 +115,21 @@ export function Chat() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <div style={{ padding: `${layout.screenTop}px ${layout.screenX}px 6px` }}>
+    // Chat owns its scrolling rather than riding the shell's pane: the header
+    // and the macro strip are pinned and only the transcript moves, which is how
+    // ChatView.swift is built — ScreenHeader sits outside the ScrollView, unlike
+    // History and You where it scrolls away with the content.
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ flexShrink: 0, padding: `${layout.screenTop}px ${layout.screenX}px 6px` }}>
         <ScreenHeader title="Чат" trailing={historyQuery.isFetching ? <Spinner /> : null} />
       </div>
 
       <MacroStrip goal={goalQuery.data ?? null} meals={mealsQuery.data ?? []} />
 
-      <div style={{ flex: 1, padding: '10px 12px 12px' }}>
+      <div
+        className="chat-scroll"
+        style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 12px 12px' }}
+      >
         {historyQuery.isLoading ? (
           <div
             style={{
@@ -131,7 +138,8 @@ export function Chat() {
               alignItems: 'center',
               gap: 10,
               paddingTop: 40,
-              font: '400 13px inherit',
+              fontWeight: 400,
+              fontSize: 13,
               color: label.secondary,
             }}
           >
@@ -171,7 +179,7 @@ function CostLabel({ text }: { text: string | null }) {
   return (
     <span
       className="tnum"
-      style={{ font: '500 10px inherit', color: label.secondary, paddingLeft: 6 }}
+      style={{ fontWeight: 500, fontSize: 10, color: label.secondary, paddingLeft: 6 }}
     >
       {text}
     </span>
@@ -274,7 +282,8 @@ function ToolStatus({ name, status }: { name: string; status: 'start' | 'ok' | '
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
-        font: '500 11.5px inherit',
+        fontWeight: 500,
+        fontSize: 11.5,
         color: label.secondary,
         paddingLeft: 6,
       }}
@@ -309,8 +318,9 @@ function MacroStrip({ goal, meals }: { goal: ServerGoal | null; meals: ServerMea
     <div
       className="material-thin"
       style={{
-        position: 'sticky',
-        top: 0,
+        // A row of the chat column, not a sticky overlay: the transcript below
+        // is the scroller now, so there is nothing for this to stick to.
+        flexShrink: 0,
         zIndex: 5,
         padding: '10px 16px',
         borderBottom: `0.5px solid ${surface.hairline}`,
@@ -345,7 +355,8 @@ function MacroStrip({ goal, meals }: { goal: ServerGoal | null; meals: ServerMea
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                font: '700 9.5px inherit',
+                fontWeight: 700,
+                fontSize: 9.5,
                 color: label.secondary,
                 pointerEvents: 'none',
               }}
@@ -399,8 +410,7 @@ function Composer({
     <div
       className="material-thin"
       style={{
-        position: 'sticky',
-        bottom: 0,
+        flexShrink: 0,
         padding: '8px 12px',
         borderTop: `0.5px solid ${surface.hairline}`,
         display: 'flex',
@@ -520,7 +530,8 @@ function Composer({
             border: 0,
             borderRadius: 18,
             color: label.primary,
-            font: '400 16px inherit',
+            fontWeight: 400,
+            fontSize: 16,
             padding: '9px 14px',
             lineHeight: 1.3,
           }}
@@ -585,7 +596,8 @@ function MenuItem({ label: text, onClick }: { label: string; onClick: () => void
         border: 0,
         background: 'transparent',
         color: label.primary,
-        font: '400 14px inherit',
+        fontWeight: 400,
+        fontSize: 14,
         textAlign: 'left',
         padding: '10px 14px',
         cursor: 'pointer',

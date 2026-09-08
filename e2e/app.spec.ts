@@ -80,15 +80,15 @@ test('swiping the recommend deck does not move the page scroll', async ({ page }
     return
   }
 
-  // The document never scrolls — the shell is a fixed frame and <main> is the
-  // one scroll pane — so window.scrollY would be a vacuous 0 either way.
-  const pane = page.locator('main')
+  // Chat scrolls its own transcript, not the shell's pane, so that is what a
+  // stray horizontal drag would move.
+  const pane = page.locator('.chat-scroll')
   const before = await pane.evaluate((el) => el.scrollTop)
   await deck.first().evaluate((el) => {
     el.scrollBy({ left: 200 })
   })
   await page.waitForTimeout(300)
-  // The horizontal scroller must not have dragged the pane with it.
+  // The horizontal scroller must not have dragged the transcript with it.
   expect(await pane.evaluate((el) => el.scrollTop)).toBe(before)
 })
 

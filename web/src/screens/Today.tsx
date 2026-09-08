@@ -123,7 +123,8 @@ export function Today() {
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                font: '600 12.5px inherit',
+                fontWeight: 600,
+                fontSize: 12.5,
                 color: dayTypeTint[dayType],
                 background: withAlpha(dayTypeTint[dayType], CHIP_BG_ALPHA),
                 borderRadius: 999,
@@ -216,10 +217,10 @@ function DayHeader({
   return (
     <header style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <h1 style={{ font: '700 32px inherit', margin: 0, whiteSpace: 'nowrap' }}>
+        <h1 style={{ fontWeight: 700, fontSize: 32, margin: 0, whiteSpace: 'nowrap' }}>
           {relativeDayTitle(date, today)}
         </h1>
-        <span className="tnum" style={{ font: '500 13px inherit', color: label.secondary }}>
+        <span className="tnum" style={{ fontWeight: 500, fontSize: 13, color: label.secondary }}>
           {weekdayShortDate(date)}
         </span>
       </div>
@@ -240,7 +241,8 @@ function DayHeader({
               borderRadius: 999,
               background: withAlpha(accent, CHIP_BG_ALPHA),
               color: accent,
-              font: '600 12.5px inherit',
+              fontWeight: 600,
+              fontSize: 12.5,
               cursor: 'pointer',
               whiteSpace: 'nowrap',
             }}
@@ -297,11 +299,13 @@ function Verdict({ verdict }: { verdict: ServerDaySummary }) {
             flexShrink: 0,
           }}
         />
-        <span style={{ font: '600 14px inherit' }}>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>
           {verdict.title || DIET_DAY_TITLES[verdict.color]}
         </span>
       </div>
-      <span style={{ font: '400 12.5px inherit', color: label.secondary }}>{verdict.reason}</span>
+      <span style={{ fontWeight: 400, fontSize: 12.5, color: label.secondary }}>
+        {verdict.reason}
+      </span>
     </div>
   )
 }
@@ -340,7 +344,8 @@ function RingCentre({ rows }: { rows: MacroRow[] }) {
         </span>
         <span
           style={{
-            font: '600 10.5px inherit',
+            fontWeight: 600,
+            fontSize: 10.5,
             color: label.secondary,
             letterSpacing: 0.4,
             textTransform: 'uppercase',
@@ -370,12 +375,12 @@ function RingCentre({ rows }: { rows: MacroRow[] }) {
           color: palette[lowest.key][1],
         }}
       >
-        <span className="tnum" style={{ font: '700 22px inherit' }}>
+        <span className="tnum" style={{ fontWeight: 700, fontSize: 22 }}>
           +{remaining}
         </span>
-        <span style={{ font: '600 12px inherit' }}>{lowest.unit}</span>
+        <span style={{ fontWeight: 600, fontSize: 12 }}>{lowest.unit}</span>
       </span>
-      <span style={{ font: '500 10.5px inherit', color: label.secondary }}>
+      <span style={{ fontWeight: 500, fontSize: 10.5, color: label.secondary }}>
         {lowest.name.toLowerCase()}
       </span>
     </div>
@@ -393,12 +398,13 @@ function MacroStatRow({ row }: { row: MacroRow }) {
       <span style={{ width: 8, height: 8, borderRadius: 999, background: tint, flexShrink: 0 }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ font: '600 14px inherit' }}>{row.name}</span>
+          <span style={{ fontWeight: 600, fontSize: 14 }}>{row.name}</span>
           {over ? (
             <span
               className="tnum"
               style={{
-                font: '700 10px inherit',
+                fontWeight: 700,
+                fontSize: 10,
                 color: '#FF3B30',
                 background: withAlpha('#FF3B30', 0.16),
                 borderRadius: 999,
@@ -410,7 +416,7 @@ function MacroStatRow({ row }: { row: MacroRow }) {
             </span>
           ) : null}
         </span>
-        <span className="tnum" style={{ font: '400 12px inherit', color: label.secondary }}>
+        <span className="tnum" style={{ fontWeight: 400, fontSize: 12, color: label.secondary }}>
           {Math.round(row.current)} / {Math.round(row.goal)}
           {row.unit}
         </span>
@@ -419,7 +425,8 @@ function MacroStatRow({ row }: { row: MacroRow }) {
         className="tnum"
         style={{
           marginLeft: 'auto',
-          font: '600 14px inherit',
+          fontWeight: 600,
+          fontSize: 14,
           color: over ? '#FF3B30' : tint,
         }}
       >
@@ -449,7 +456,8 @@ function MealsLog({ meals, loading }: { meals: ServerMeal[]; loading: boolean })
       >
         <span
           style={{
-            font: '600 13px inherit',
+            fontWeight: 600,
+            fontSize: 13,
             color: label.secondary,
             letterSpacing: 0.4,
             textTransform: 'uppercase',
@@ -460,7 +468,7 @@ function MealsLog({ meals, loading }: { meals: ServerMeal[]; loading: boolean })
         {meals.length > 0 ? (
           <span
             className="tnum"
-            style={{ marginLeft: 'auto', font: '600 12px inherit', color: label.secondary }}
+            style={{ marginLeft: 'auto', fontWeight: 600, fontSize: 12, color: label.secondary }}
           >
             {meals.length}
           </span>
@@ -474,7 +482,8 @@ function MealsLog({ meals, loading }: { meals: ServerMeal[]; loading: boolean })
             alignItems: 'center',
             gap: 10,
             padding: '12px 16px',
-            font: '400 13px inherit',
+            fontWeight: 400,
+            fontSize: 13,
             color: label.secondary,
           }}
         >
@@ -526,7 +535,8 @@ function MealRow({ meal }: { meal: ServerMeal }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <span
           style={{
-            font: '600 14.5px inherit',
+            fontWeight: 600,
+            fontSize: 14.5,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -539,18 +549,24 @@ function MealRow({ meal }: { meal: ServerMeal }) {
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            font: '400 11px inherit',
+            fontWeight: 400,
+            fontSize: 11,
             color: label.secondary,
           }}
         >
           <span
-            style={{ font: '600 11px inherit', letterSpacing: 0.3, textTransform: 'uppercase' }}
+            style={{
+              fontWeight: 600,
+              fontSize: 11,
+              letterSpacing: 0.3,
+              textTransform: 'uppercase',
+            }}
           >
             {MEAL_RU[meal.meal] ?? meal.meal}
           </span>
           <span>·</span>
           {/* Rendered in the timezone where the meal was eaten. */}
-          <span className="tnum" style={{ font: '500 11px inherit' }}>
+          <span className="tnum" style={{ fontWeight: 500, fontSize: 11 }}>
             {formatLocalTime(meal.timestamp, meal.tzOffsetMin)}
           </span>
           <span>·</span>
@@ -573,7 +589,8 @@ function MealRow({ meal }: { meal: ServerMeal }) {
         <span
           className="tnum"
           style={{
-            font: '700 15px inherit',
+            fontWeight: 700,
+            fontSize: 15,
             color: palette.calories[1],
             width: 48,
             textAlign: 'right',
@@ -597,7 +614,7 @@ function MealMacro({
 }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 2 }}>
-      <span style={{ font: '700 11px inherit', color }}>{letter}</span>
+      <span style={{ fontWeight: 700, fontSize: 11, color }}>{letter}</span>
       <span className="tnum">{Math.round(value)}</span>
     </span>
   )

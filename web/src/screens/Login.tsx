@@ -61,8 +61,8 @@ export function Login() {
         gap: layout.cardGap,
       }}
     >
-      <h1 style={{ font: '700 32px inherit', margin: '8px 0 0' }}>Cal Tracker</h1>
-      <p style={{ font: '400 13.5px inherit', color: label.secondary, margin: 0 }}>
+      <h1 style={{ fontWeight: 700, fontSize: 32, margin: '8px 0 0' }}>Cal Tracker</h1>
+      <p style={{ fontWeight: 400, fontSize: 13.5, color: label.secondary, margin: 0 }}>
         Вставь токен доступа. Его выдаёт скрипт{' '}
         <code style={{ fontFamily: 'ui-monospace, monospace' }}>issue-token</code> на сервере.
       </p>
@@ -124,7 +124,9 @@ export function Login() {
         </div>
 
         {status.kind === 'error' ? (
-          <span style={{ font: '400 12.5px inherit', color: '#FF453A' }}>{status.message}</span>
+          <span style={{ fontWeight: 400, fontSize: 12.5, color: '#FF453A' }}>
+            {status.message}
+          </span>
         ) : null}
 
         <button
@@ -136,7 +138,8 @@ export function Login() {
             border: 0,
             borderRadius: radius.field,
             color: canSubmit ? '#000' : label.secondary,
-            font: '600 15px inherit',
+            fontWeight: 600,
+            fontSize: 15,
             padding: '11px 12px',
             cursor: canSubmit ? 'pointer' : 'default',
           }}

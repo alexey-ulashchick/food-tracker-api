@@ -57,10 +57,10 @@ export function Weight() {
         {latest ? (
           <>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-              <span className="tnum" style={{ font: '700 44px inherit' }}>
+              <span className="tnum" style={{ fontWeight: 700, fontSize: 44 }}>
                 {formatKg(latest.kg)}
               </span>
-              <span style={{ font: '600 16px inherit', color: label.secondary }}>кг</span>
+              <span style={{ fontWeight: 600, fontSize: 16, color: label.secondary }}>кг</span>
               {delta != null ? <DeltaPill delta={delta} /> : null}
               {slope != null ? <TrendPill slope={slope} /> : null}
             </div>
@@ -72,7 +72,8 @@ export function Weight() {
               display: 'flex',
               alignItems: 'center',
               gap: 10,
-              font: '400 13px inherit',
+              fontWeight: 400,
+              fontSize: 13,
               color: label.secondary,
               minHeight: 60,
             }}
@@ -105,7 +106,8 @@ function DeltaPill({ delta }: { delta: number }) {
         display: 'inline-flex',
         alignItems: 'center',
         gap: 3,
-        font: '600 11px inherit',
+        fontWeight: 600,
+        fontSize: 11,
         color,
         background: withAlpha(color, 0.15),
         borderRadius: 999,
@@ -129,7 +131,8 @@ function TrendPill({ slope }: { slope: number }) {
         display: 'inline-flex',
         alignItems: 'center',
         gap: 3,
-        font: '600 11px inherit',
+        fontWeight: 600,
+        fontSize: 11,
         color,
         background: withAlpha(color, 0.15),
         borderRadius: 999,
@@ -150,7 +153,8 @@ function WeightChart({ weeks }: { weeks: Array<{ weekStart: string; avgKg: numbe
           height: CHART_HEIGHT,
           display: 'flex',
           alignItems: 'center',
-          font: '400 12px inherit',
+          fontWeight: 400,
+          fontSize: 12,
           color: label.secondary,
         }}
       >

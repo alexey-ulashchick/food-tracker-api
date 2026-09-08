@@ -34,7 +34,8 @@ export function CalorieMeter({ current, goal, stops, size = 'large', accessory }
       <div style={{ display: 'flex', alignItems: 'flex-start' }}>
         <span
           style={{
-            font: '600 11px inherit',
+            fontWeight: 600,
+            fontSize: 11,
             letterSpacing: 0.5,
             textTransform: 'uppercase',
             color: tint,
@@ -55,14 +56,15 @@ export function CalorieMeter({ current, goal, stops, size = 'large', accessory }
           <span className="tnum" style={{ font: `700 ${NUM_FONT[size]}px inherit` }}>
             {Math.round(current)}
           </span>
-          <span className="tnum" style={{ font: '500 14px inherit', color: label.secondary }}>
+          <span className="tnum" style={{ fontWeight: 500, fontSize: 14, color: label.secondary }}>
             / {Math.round(goal)}
           </span>
         </span>
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 6 }}>
           <span
             style={{
-              font: '600 11px inherit',
+              fontWeight: 600,
+              fontSize: 11,
               letterSpacing: 0.5,
               color: label.secondary,
             }}

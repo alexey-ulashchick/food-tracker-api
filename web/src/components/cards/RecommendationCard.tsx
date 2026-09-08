@@ -27,10 +27,10 @@ export function RecommendationCard({ item, fill }: Props) {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ width: 9, height: 9, borderRadius: 999, background: tint, flexShrink: 0 }} />
-        <span style={{ font: '600 11.5px inherit', color: tint }}>
+        <span style={{ fontWeight: 600, fontSize: 11.5, color: tint }}>
           {DIET_DAY_TITLES[item.color]}
         </span>
-        <span style={{ marginLeft: 'auto', font: '500 11px inherit', color: label.secondary }}>
+        <span style={{ marginLeft: 'auto', fontWeight: 500, fontSize: 11, color: label.secondary }}>
           {/* An empty combo reads as a status, not a suggestion to eat. */}
           {noFood ? 'день уже сложился' : `+${Math.round(item.addedMacros.calories)} ккал`}
         </span>
@@ -41,7 +41,7 @@ export function RecommendationCard({ item, fill }: Props) {
           <span style={{ color: tint, display: 'flex' }}>
             <SealCheckIcon size={14} />
           </span>
-          <span style={{ font: '400 13px inherit', color: label.secondary }}>
+          <span style={{ fontWeight: 400, fontSize: 13, color: label.secondary }}>
             Можно ничего не есть — день уже сложился.
           </span>
         </div>
@@ -53,7 +53,8 @@ export function RecommendationCard({ item, fill }: Props) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                 <span
                   style={{
-                    font: '600 14px inherit',
+                    fontWeight: 600,
+                    fontSize: 14,
                     display: '-webkit-box',
                     WebkitLineClamp: 2,
                     WebkitBoxOrient: 'vertical',
@@ -82,7 +83,8 @@ export function RecommendationCard({ item, fill }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span
             style={{
-              font: '600 10.5px inherit',
+              fontWeight: 600,
+              fontSize: 10.5,
               color: label.secondary,
               textTransform: 'uppercase',
               letterSpacing: 0.4,
@@ -116,7 +118,7 @@ export function RecommendationErrorCard({ message }: { message: string }) {
         <span style={{ color: '#FF9500', display: 'flex', paddingTop: 1 }}>
           <WarnCircleIcon size={16} />
         </span>
-        <span style={{ font: '400 13.5px inherit' }}>{message}</span>
+        <span style={{ fontWeight: 400, fontSize: 13.5 }}>{message}</span>
       </div>
     </ActionCard>
   )
@@ -165,7 +167,8 @@ export function RecommendationStack({ variants }: { variants: RecommendationMeta
             // than the (wider) scroll track.
             left: 300 - 12,
             transform: 'translateX(-100%)',
-            font: '700 10.5px inherit',
+            fontWeight: 700,
+            fontSize: 10.5,
             color: '#fff',
             background: withAlpha(tint, 0.85),
             borderRadius: 999,

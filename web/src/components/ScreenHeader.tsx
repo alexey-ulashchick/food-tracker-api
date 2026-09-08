@@ -18,7 +18,9 @@ export function ScreenHeader({ title, subtitle, trailing }: Props) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <h1
           style={{
-            font: '700 32px/1.1 inherit',
+            fontWeight: 700,
+            fontSize: 32,
+            lineHeight: 1.1,
             margin: 0,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
@@ -28,7 +30,7 @@ export function ScreenHeader({ title, subtitle, trailing }: Props) {
           {title}
         </h1>
         {subtitle ? (
-          <span className="tnum" style={{ font: '500 13px inherit', color: label.secondary }}>
+          <span className="tnum" style={{ fontWeight: 500, fontSize: 13, color: label.secondary }}>
             {subtitle}
           </span>
         ) : null}

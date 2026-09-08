@@ -127,7 +127,8 @@ export function You() {
               borderRadius: radius.field,
               background: withAlpha('#FF453A', 0.16),
               color: '#FF453A',
-              font: '600 13px inherit',
+              fontWeight: 600,
+              fontSize: 13,
               padding: '9px 12px',
               cursor: 'pointer',
             }}
@@ -159,7 +160,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <span
       style={{
-        font: '600 12.5px inherit',
+        fontWeight: 600,
+        fontSize: 12.5,
         color: label.secondary,
         letterSpacing: 0.4,
         textTransform: 'uppercase',
@@ -206,11 +208,12 @@ function Row({
         {icon}
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-        <span style={{ font: '400 16px inherit' }}>{title}</span>
+        <span style={{ fontWeight: 400, fontSize: 16 }}>{title}</span>
         <span
           className="tnum"
           style={{
-            font: '400 12.5px inherit',
+            fontWeight: 400,
+            fontSize: 12.5,
             color: label.secondary,
             whiteSpace: 'nowrap',
             overflow: 'hidden',

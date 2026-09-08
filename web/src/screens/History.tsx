@@ -119,7 +119,8 @@ export function History() {
               display: 'flex',
               alignItems: 'center',
               gap: 10,
-              font: '400 12px inherit',
+              fontWeight: 400,
+              fontSize: 12,
               color: label.secondary,
             }}
           >
@@ -171,7 +172,8 @@ function ChartHeader({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <span
           style={{
-            font: '600 11px inherit',
+            fontWeight: 600,
+            fontSize: 11,
             color: label.secondary,
             letterSpacing: 0.3,
             textTransform: 'uppercase',
@@ -179,7 +181,7 @@ function ChartHeader({
         >
           Калории
         </span>
-        <span className="tnum" style={{ font: '600 13px inherit' }}>
+        <span className="tnum" style={{ fontWeight: 600, fontSize: 13 }}>
           {dayMonth(from)} – {dayMonth(to)}
         </span>
       </div>
@@ -194,7 +196,8 @@ function ChartHeader({
               borderRadius: 999,
               background: surface.subtle,
               color: label.primary,
-              font: '600 11px inherit',
+              fontWeight: 600,
+              fontSize: 11,
               padding: '5px 10px',
               cursor: 'pointer',
             }}
@@ -268,8 +271,8 @@ function MetricsRow({
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-        <span style={{ font: '600 16px inherit' }}>{title}</span>
-        <span style={{ font: '400 12.5px inherit', color: label.secondary }}>{subtitle}</span>
+        <span style={{ fontWeight: 600, fontSize: 16 }}>{title}</span>
+        <span style={{ fontWeight: 400, fontSize: 12.5, color: label.secondary }}>{subtitle}</span>
       </div>
 
       {stat ? (
@@ -283,11 +286,17 @@ function MetricsRow({
             textAlign: 'right',
           }}
         >
-          <span className="tnum" style={{ font: '600 16px inherit', color: palette.carbs[1] }}>
+          <span className="tnum" style={{ fontWeight: 600, fontSize: 16, color: palette.carbs[1] }}>
             {stat.onTargetDays} / {stat.totalDays} в цели
           </span>
           <span
-            style={{ display: 'flex', alignItems: 'baseline', gap: 6, font: '400 13px inherit' }}
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: 6,
+              fontWeight: 400,
+              fontSize: 13,
+            }}
           >
             <span className="tnum" style={{ color: toneColor }}>
               {formatBalance(balance)}
@@ -303,7 +312,8 @@ function MetricsRow({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 4,
-                font: '400 12px inherit',
+                fontWeight: 400,
+                fontSize: 12,
                 color: label.secondary,
               }}
             >
@@ -327,7 +337,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <span
       style={{
-        font: '600 12.5px inherit',
+        fontWeight: 600,
+        fontSize: 12.5,
         color: label.secondary,
         letterSpacing: 0.4,
         textTransform: 'uppercase',
@@ -406,7 +417,7 @@ function PastDays({ goals, today }: { goals: ServerGoal[]; today: string }) {
           gap: 8,
         }}
       >
-        <span style={{ font: '400 13px inherit', color: label.secondary }}>
+        <span style={{ fontWeight: 400, fontSize: 13, color: label.secondary }}>
           Не удалось загрузить историю.
         </span>
         <button
@@ -418,7 +429,8 @@ function PastDays({ goals, today }: { goals: ServerGoal[]; today: string }) {
             borderRadius: radius.field,
             background: surface.subtle,
             color: label.primary,
-            font: '600 13px inherit',
+            fontWeight: 600,
+            fontSize: 13,
             padding: '8px 12px',
             cursor: 'pointer',
           }}
@@ -439,7 +451,8 @@ function PastDays({ goals, today }: { goals: ServerGoal[]; today: string }) {
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          font: '400 13px inherit',
+          fontWeight: 400,
+          fontSize: 13,
           color: label.secondary,
         }}
       >
@@ -477,7 +490,8 @@ function PastDays({ goals, today }: { goals: ServerGoal[]; today: string }) {
           alignItems: 'center',
           justifyContent: 'center',
           gap: 8,
-          font: '400 11px inherit',
+          fontWeight: 400,
+          fontSize: 11,
           color: label.secondary,
           letterSpacing: 0.3,
           textTransform: 'uppercase',
@@ -597,7 +611,8 @@ function PastDayRow({ row, onOpen }: { row: DaySummaryRow; onOpen: () => void })
       >
         <span
           style={{
-            font: '600 11px inherit',
+            fontWeight: 600,
+            fontSize: 11,
             color: label.secondary,
             letterSpacing: 0.3,
             textTransform: 'uppercase',
@@ -605,7 +620,7 @@ function PastDayRow({ row, onOpen }: { row: DaySummaryRow; onOpen: () => void })
         >
           {monthShort(row.date)}
         </span>
-        <span className="tnum" style={{ font: '700 20px inherit' }}>
+        <span className="tnum" style={{ fontWeight: 700, fontSize: 20 }}>
           {dayOfMonth(row.date)}
         </span>
       </span>
@@ -626,14 +641,15 @@ function PastDayRow({ row, onOpen }: { row: DaySummaryRow; onOpen: () => void })
       </span>
 
       <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-        <span style={{ font: '600 14px inherit' }}>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>
           {capitalise(weekdayLong(row.date))}
           {row.goal ? ` · ${DAY_TYPE_RU[row.goal.dayType] ?? row.goal.dayType}` : ''}
         </span>
         {note ? (
           <span
             style={{
-              font: '400 11.5px inherit',
+              fontWeight: 400,
+              fontSize: 11.5,
               color: label.secondary,
               whiteSpace: 'nowrap',
               overflow: 'hidden',
@@ -673,10 +689,12 @@ function PastDayRow({ row, onOpen }: { row: DaySummaryRow; onOpen: () => void })
             gap: 1,
           }}
         >
-          <span className="tnum" style={{ font: '600 15px inherit' }}>
+          <span className="tnum" style={{ fontWeight: 600, fontSize: 15 }}>
             {Math.round(row.kcal)}
           </span>
-          <span style={{ font: '400 10.5px inherit', color: label.secondary, letterSpacing: 0.3 }}>
+          <span
+            style={{ fontWeight: 400, fontSize: 10.5, color: label.secondary, letterSpacing: 0.3 }}
+          >
             ККАЛ
           </span>
         </span>

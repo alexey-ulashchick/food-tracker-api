@@ -102,7 +102,7 @@ function TabBar() {
             })}
           >
             <Icon size={24} />
-            <span style={{ font: '500 10px inherit' }}>{text}</span>
+            <span style={{ fontWeight: 500, fontSize: 10 }}>{text}</span>
           </NavLink>
         ))}
       </div>
@@ -124,7 +124,8 @@ function ErrorBanner() {
         gap: 8,
         padding: '10px 16px',
         background: withAlpha(accent, 0.18),
-        font: '400 13px inherit',
+        fontWeight: 400,
+        fontSize: 13,
       }}
     >
       <span style={{ color: accent, display: 'flex', paddingTop: 1 }}>
@@ -151,7 +152,8 @@ function ErrorBanner() {
           background: 'none',
           border: 0,
           color: accent,
-          font: '600 13px inherit',
+          fontWeight: 600,
+          fontSize: 13,
           padding: 0,
           cursor: 'pointer',
         }}

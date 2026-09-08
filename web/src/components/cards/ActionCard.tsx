@@ -70,7 +70,8 @@ export function StatusBadge({
         display: 'inline-flex',
         alignItems: 'center',
         gap: 4,
-        font: '600 11.5px inherit',
+        fontWeight: 600,
+        fontSize: 11.5,
         color,
       }}
     >
@@ -99,10 +100,10 @@ export function MacroChip({
 }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 3 }}>
-      <span style={{ font: '700 11.5px inherit', color: palette[kind][1] }}>
+      <span style={{ fontWeight: 700, fontSize: 11.5, color: palette[kind][1] }}>
         {MACRO_LETTER[kind]}
       </span>
-      <span className="tnum" style={{ font: '400 11.5px inherit', color: label.secondary }}>
+      <span className="tnum" style={{ fontWeight: 400, fontSize: 11.5, color: label.secondary }}>
         {Math.round(value)}
         {unit ?? ''}
       </span>
