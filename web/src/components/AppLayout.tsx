@@ -22,8 +22,17 @@ const TABS = [
   { to: '/you', label: 'Профиль', Icon: YouTabIcon },
 ] as const
 
-/** Tall enough for icon + caption; the home indicator is paid for separately. */
-const TAB_BAR_HEIGHT = 52
+/**
+ * Icon plus caption need about 52; the rest is clearance from the bottom edge.
+ *
+ * One height with the row centred inside it, rather than 52 plus bottom padding:
+ * padding pushed the row to the top of the bar, leaving it visibly off-centre.
+ * Not the full env(safe-area-inset-bottom) either — reserving all 34pt of the
+ * home-indicator area read as a gap below the app, because the bar's material is
+ * nearly black over a black background and the reserve did not look like part of
+ * the bar.
+ */
+const TAB_BAR_HEIGHT = 68
 
 export function AppLayout() {
   return (
@@ -74,12 +83,6 @@ function TabBar() {
       style={{
         flexShrink: 0,
         borderTop: `0.5px solid ${surface.hairline}`,
-        // Not the full env(safe-area-inset-bottom). Reserving all 34pt of the
-        // home-indicator area read as a gap below the app — the bar's material is
-        // nearly black over a black background, so the reserve did not look like
-        // part of the bar. Roughly half lifts the captions off the edge without
-        // reopening that.
-        paddingBottom: 16,
       }}
     >
       <div
