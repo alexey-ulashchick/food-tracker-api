@@ -74,13 +74,12 @@ function TabBar() {
       style={{
         flexShrink: 0,
         borderTop: `0.5px solid ${surface.hairline}`,
-        // No env(safe-area-inset-bottom) reserve. A native tab bar keeps that
-        // 34pt clear of the home indicator, and the app did too — but over a
-        // black background the bar's material is nearly black, so the reserve
-        // read as a gap below the app rather than as part of the bar. Requested
-        // to go full-bleed, like the sites this is measured against. The few
-        // pixels below are only so the captions do not touch the very edge.
-        paddingBottom: 6,
+        // Not the full env(safe-area-inset-bottom). Reserving all 34pt of the
+        // home-indicator area read as a gap below the app — the bar's material is
+        // nearly black over a black background, so the reserve did not look like
+        // part of the bar. Roughly half lifts the captions off the edge without
+        // reopening that.
+        paddingBottom: 16,
       }}
     >
       <div
