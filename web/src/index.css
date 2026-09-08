@@ -79,25 +79,18 @@ body {
 
 /* The frame.
 
-   100dvh rather than height:100%: the percentage chain resolves against the
-   initial containing block, and on iOS that has not reliably been the full
-   screen under viewport-fit=cover. dvh names the viewport directly.
-
-   --app-height (the visual viewport, published by trackViewport) applies ONLY
-   while the keyboard is up. iOS reports a visual viewport that excludes the safe
-   areas, so using it at rest cut the shell short and left the tab bar hanging
-   above the bottom edge.
+   Height comes entirely from --app-height, which trackViewport() measures: at
+   rest the layout viewport, and while the keyboard is up the visual one, so the
+   chat composer clears the keys. Both `height: 100%` and `100dvh` were tried
+   first and both left the bar short of the bottom edge on iOS — 100dvh is the
+   fallback only for the frames before the first measurement lands.
 
    Deliberately not position:fixed: the document cannot scroll, so a plain block
    already fills the visible area, and the extra compositing layer is what made
    iOS stop repainting card backgrounds and text while canvas kept drawing. */
 #root {
-  height: 100dvh;
-  overflow: hidden;
-}
-
-html[data-keyboard="open"] #root {
   height: var(--app-height, 100dvh);
+  overflow: hidden;
 }
 
 /* The keyboard covers the tab bar in the SwiftUI original. Match that rather

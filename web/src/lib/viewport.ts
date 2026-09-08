@@ -44,13 +44,32 @@ export function viewportMetrics(): Record<string, string> {
 /** Less height lost than this is browser chrome collapsing, not a keyboard. */
 const KEYBOARD_MIN_PX = 120
 
+/**
+ * The layout viewport — the whole screen under viewport-fit=cover, and notably
+ * NOT affected by the keyboard, which only shrinks the visual viewport.
+ *
+ * Measured rather than expressed in CSS. Both `height: 100%` and `100dvh` have
+ * now been tried and both left the tab bar short of the bottom edge on iOS, so
+ * whatever those resolve against here is not the screen. Two sources are read
+ * because iOS has been known to under-report either one depending on version and
+ * display mode; the larger is the one that spans the screen.
+ */
+function layoutHeight(): number {
+  return Math.max(window.innerHeight, document.documentElement.clientHeight)
+}
+
 export function trackViewport(): () => void {
   const vv = window.visualViewport
   const root = document.documentElement
   let published = -1
 
   const apply = () => {
-    const height = Math.round(vv?.height ?? window.innerHeight)
+    const layout = layoutHeight()
+    const visual = Math.round(window.visualViewport?.height ?? layout)
+    // The keyboard shrinks only the visual viewport, so the gap between the two
+    // is what reveals it.
+    const keyboardOpen = layout - visual > KEYBOARD_MIN_PX
+    const height = keyboardOpen ? visual : layout
 
     // Only on a real change. visualViewport's scroll event fires continuously
     // during a drag, and setting a custom property on <html> invalidates style
@@ -59,7 +78,7 @@ export function trackViewport(): () => void {
       published = height
       root.style.setProperty('--app-height', `${height}px`)
 
-      if (window.innerHeight - height > KEYBOARD_MIN_PX) root.dataset.keyboard = 'open'
+      if (keyboardOpen) root.dataset.keyboard = 'open'
       else delete root.dataset.keyboard
     }
 

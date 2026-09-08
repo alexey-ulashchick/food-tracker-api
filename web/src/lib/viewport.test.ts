@@ -44,12 +44,32 @@ afterEach(() => {
 })
 
 describe('trackViewport', () => {
-  test('publishes the visual viewport height as --app-height', () => {
+  test('publishes the layout viewport height as --app-height at rest', () => {
     stubVisualViewport(LAYOUT_HEIGHT)
     const stop = trackViewport()
 
     expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('844px')
     stop()
+  })
+
+  test('takes the larger of innerHeight and clientHeight', () => {
+    // iOS has under-reported one or the other depending on version and display
+    // mode, and the one that spans the screen is the larger.
+    vi.stubGlobal('innerHeight', 700)
+    Object.defineProperty(document.documentElement, 'clientHeight', {
+      value: 844,
+      configurable: true,
+    })
+    stubVisualViewport(844)
+
+    const stop = trackViewport()
+    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('844px')
+
+    stop()
+    Object.defineProperty(document.documentElement, 'clientHeight', {
+      value: 0,
+      configurable: true,
+    })
   })
 
   test('flags the keyboard once the viewport loses more than browser chrome', () => {
@@ -70,7 +90,7 @@ describe('trackViewport', () => {
     stop()
   })
 
-  test('a collapsing browser toolbar is not a keyboard', () => {
+  test('a collapsing browser toolbar is not a keyboard, and does not shorten the shell', () => {
     const vv = stubVisualViewport(LAYOUT_HEIGHT)
     const stop = trackViewport()
 
@@ -78,7 +98,9 @@ describe('trackViewport', () => {
     vv.emit('resize')
 
     expect(document.documentElement.dataset.keyboard).toBeUndefined()
-    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('744px')
+    // At rest the shell spans the layout viewport, not the visual one. Following
+    // the visual viewport here is what left the tab bar short of the bottom edge.
+    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('844px')
     stop()
   })
 
