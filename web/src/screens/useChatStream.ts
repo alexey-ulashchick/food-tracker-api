@@ -52,12 +52,9 @@ export function useChatStream({ onError }: Options) {
       const touched = new Set<string>()
       // Text accumulating per streamed block, so a delta can append.
       const blocks = new Map<string, string>()
-      const typingId = `${LOCAL}typing-${crypto.randomUUID()}`
 
       setStatus({ kind: 'busy' })
-      setLive([...optimistic, { kind: 'typing', id: typingId }])
-
-      const dropTyping = (items: ChatItem[]) => items.filter((i) => i.id !== typingId)
+      setLive(optimistic)
 
       const handle = (event: SseEvent) => {
         const data = safeParse(event.data)
@@ -67,7 +64,7 @@ export function useChatStream({ onError }: Options) {
             // The persisted row replaces the optimistic bubble, so a reload
             // shows the same id the server assigned.
             const row = data as ServerChatMessage
-            setLive((items) => [toChatItem(row), ...dropOptimisticUser(dropTyping(items))])
+            setLive((items) => [toChatItem(row), ...dropOptimisticUser(items)])
             break
           }
 
@@ -77,7 +74,7 @@ export function useChatStream({ onError }: Options) {
             const id = streamingId(blockId)
             const accumulated = blocks.get(blockId) ?? ''
             setLive((items) => {
-              const without = dropTyping(items)
+              const without = items
               const existing = without.findIndex((i) => i.id === id)
               const next: ChatItem = { kind: 'streaming', id, text: accumulated }
               if (existing === -1) return [...without, next]
@@ -95,7 +92,7 @@ export function useChatStream({ onError }: Options) {
             }
             const id = `${LOCAL}tool-${name}`
             setLive((items) => {
-              const without = dropTyping(items)
+              const without = items
               const existing = without.findIndex((i) => i.id === id)
               const next: ChatItem = { kind: 'toolStatus', id, name, status: toolStatus }
               if (existing === -1) return [...without, next]
@@ -120,7 +117,7 @@ export function useChatStream({ onError }: Options) {
             const { blockId, row } = data as { blockId: string | null; row: ServerChatMessage }
             const provisional = blockId ? streamingId(blockId) : null
             setLive((items) => {
-              const without = dropTyping(items).filter((i) => i.id !== provisional)
+              const without = items.filter((i) => i.id !== provisional)
               return [...without, toChatItem(row)]
             })
             break
@@ -129,7 +126,7 @@ export function useChatStream({ onError }: Options) {
           case 'card': {
             const row = data as ServerChatMessage
             touched.add(row.kind)
-            setLive((items) => [...dropTyping(items), toChatItem(row)])
+            setLive((items) => [...items, toChatItem(row)])
             break
           }
 
@@ -144,14 +141,14 @@ export function useChatStream({ onError }: Options) {
           case 'recommend':
           case 'text': {
             const row = data as ServerChatMessage
-            setLive((items) => [...dropTyping(items), toChatItem(row)])
+            setLive((items) => [...items, toChatItem(row)])
             break
           }
 
           case 'error': {
             const { message, code } = data as { message: string; code?: string }
             setLive((items) => {
-              const without = dropTyping(items)
+              const without = items
               // A missing goal is actionable, so it gets its own card rather
               // than the generic banner.
               if (code === 'no_goal') {
@@ -171,7 +168,6 @@ export function useChatStream({ onError }: Options) {
           }
 
           case 'done':
-            setLive((items) => dropTyping(items))
             break
         }
       }
@@ -179,7 +175,6 @@ export function useChatStream({ onError }: Options) {
       try {
         await open(handle)
       } catch (err) {
-        setLive((items) => dropTyping(items))
         onError(err instanceof Error ? err.message : String(err))
       } finally {
         setStatus({ kind: 'idle' })

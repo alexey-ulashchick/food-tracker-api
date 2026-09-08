@@ -34,7 +34,6 @@ export type ChatItem =
   | { kind: 'recommendation'; id: string; payload: RecommendationMeta }
   // Local-only, never persisted.
   | { kind: 'recommendationError'; id: string; message: string }
-  | { kind: 'typing'; id: string }
   | { kind: 'streaming'; id: string; text: string }
   | { kind: 'toolStatus'; id: string; name: string; status: 'start' | 'ok' | 'error' }
 

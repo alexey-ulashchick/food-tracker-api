@@ -13,14 +13,7 @@ import { renderCost } from '@/lib/costDisplay'
 import { todayIso } from '@/lib/dates'
 import { makeThumb } from '@/lib/thumbnail'
 import { useUi } from '@/store/ui'
-import {
-  ArrowUpIcon,
-  CloseCircleIcon,
-  CopyIcon,
-  PlusIcon,
-  SparklesIcon,
-  Spinner,
-} from '@/theme/icons'
+import { ArrowUpIcon, CloseCircleIcon, PlusIcon, SparklesIcon, Spinner } from '@/theme/icons'
 import { accent, label, layout, palette, radius, singleRingSpec, surface } from '@/theme/tokens'
 import type { ServerGoal, ServerMeal } from '@shared/types.ts'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -73,17 +66,29 @@ export function Chat() {
   const usage: Record<string, TurnUsage> = { ...collectUsage(history), ...stream.usage }
   const renderItems = toRenderItems(items)
 
+  // The dots are derived, not a list entry. As an entry they were removed by
+  // whichever event came next — and the first one is `user`, emitted the moment
+  // the server persists the message, long before the model has produced
+  // anything. So they vanished immediately and never came back between tool
+  // iterations. Derived, they simply mean "the turn is running and no text is
+  // arriving right now", which is exactly when they should show.
+  const showTyping =
+    stream.status.kind === 'busy' && !stream.live.some((i) => i.kind === 'streaming')
+
   const bottomRef = useRef<HTMLDivElement>(null)
   const lastCount = useRef(0)
 
   // Anchor to the newest message. useLayoutEffect so the move happens before
   // paint and the user never sees the jump. The count is tracked in a ref
   // rather than in the dependency list because `items` is rebuilt every render.
+  // The dots count as a row: they appear below everything else, and the view has
+  // to follow them down.
   useLayoutEffect(() => {
-    if (items.length === lastCount.current) return
-    lastCount.current = items.length
+    const count = items.length + (showTyping ? 1 : 0)
+    if (count === lastCount.current) return
+    lastCount.current = count
     bottomRef.current?.scrollIntoView({ block: 'end' })
-  }, [items])
+  }, [items, showTyping])
 
   async function submit(text: string, attachment: { file: File; thumb: string } | null) {
     const trimmed = text.trim()
@@ -161,6 +166,7 @@ export function Chat() {
               )}
             </div>
           ))}
+          {showTyping ? <TypingBubble /> : null}
         </div>
         <div ref={bottomRef} />
       </div>
@@ -187,78 +193,45 @@ function CostLabel({ text }: { text: string | null }) {
 }
 
 function Row({ item }: { item: ChatItem }) {
-  const copy = copyText(item)
-
-  const content = (() => {
-    switch (item.kind) {
-      case 'user':
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-            {item.thumb ? (
-              <img
-                src={item.thumb}
-                alt=""
-                style={{ maxWidth: 180, borderRadius: radius.field, display: 'block' }}
-              />
-            ) : null}
-            <ChatBubble text={item.text} isUser />
-          </div>
-        )
-      case 'ai':
-        return <ChatBubble text={item.text} isUser={false} />
-      case 'streaming':
-        return <ChatBubble text={item.text} isUser={false} />
-      case 'typing':
-        return <TypingBubble />
-      case 'toolStatus':
-        return <ToolStatus name={item.name} status={item.status} />
-      case 'mealAdded':
-        return <FoodCard item={item.item} action="added" />
-      case 'mealRemoved':
-        return <FoodCard item={item.item} action="removed" />
-      case 'mealUpdated':
-        return <MealUpdateCard before={item.before} after={item.after} />
-      case 'goalSet':
-        return <GoalCard item={item.item} />
-      case 'memoryAdded':
-        return <MemoryCard content={item.content} action={{ kind: 'added' }} />
-      case 'memoryUpdated':
-        return <MemoryCard content={item.after} action={{ kind: 'updated', before: item.before }} />
-      case 'memoryRemoved':
-        return <MemoryCard content={item.content} action={{ kind: 'removed' }} />
-      case 'recommendationError':
-        return <RecommendationErrorCard message={item.message} />
-      default:
-        return null
-    }
-  })()
-
-  if (!copy) return content
-  return (
-    <div style={{ position: 'relative' }} className="chat-row">
-      {content}
-      <button
-        type="button"
-        className="chat-copy"
-        onClick={() => void navigator.clipboard?.writeText(copy)}
-        aria-label="Копировать"
-        style={{
-          position: 'absolute',
-          top: 2,
-          right: 2,
-          border: 0,
-          background: surface.elevated,
-          color: label.secondary,
-          borderRadius: 999,
-          padding: 5,
-          cursor: 'pointer',
-          display: 'flex',
-        }}
-      >
-        <CopyIcon />
-      </button>
-    </div>
-  )
+  switch (item.kind) {
+    case 'user':
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+          {item.thumb ? (
+            <img
+              src={item.thumb}
+              alt=""
+              style={{ maxWidth: 180, borderRadius: radius.field, display: 'block' }}
+            />
+          ) : null}
+          <ChatBubble text={item.text} isUser />
+        </div>
+      )
+    case 'ai':
+      return <ChatBubble text={item.text} isUser={false} />
+    case 'streaming':
+      return <ChatBubble text={item.text} isUser={false} />
+    case 'toolStatus':
+      return <ToolStatus name={item.name} status={item.status} />
+    case 'mealAdded':
+      return <FoodCard item={item.item} action="added" />
+    case 'mealRemoved':
+      return <FoodCard item={item.item} action="removed" />
+    case 'mealUpdated':
+      return <MealUpdateCard before={item.before} after={item.after} />
+    case 'goalSet':
+      return <GoalCard item={item.item} />
+    case 'memoryAdded':
+      return <MemoryCard content={item.content} action={{ kind: 'added' }} />
+    case 'memoryUpdated':
+      return <MemoryCard content={item.after} action={{ kind: 'updated', before: item.before }} />
+    case 'memoryRemoved':
+      return <MemoryCard content={item.content} action={{ kind: 'removed' }} />
+    case 'recommendationError':
+      return <RecommendationErrorCard message={item.message} />
+    default:
+      return null
+  }
 }
 
 const TOOL_RU: Record<string, string> = {
@@ -606,27 +579,4 @@ function MenuItem({ label: text, onClick }: { label: string; onClick: () => void
       {text}
     </button>
   )
-}
-
-/** Clipboard text per row kind, mirroring the Swift context menu. */
-function copyText(item: ChatItem): string | null {
-  switch (item.kind) {
-    case 'user':
-    case 'ai':
-      return item.text
-    case 'mealAdded':
-    case 'mealRemoved':
-      return `${item.item.emoji} ${item.item.name} — ${item.item.kcal} ккал`
-    case 'mealUpdated':
-      return `${item.after.emoji} ${item.after.name}: ${item.before.kcal} → ${item.after.kcal} ккал`
-    case 'goalSet':
-      return `${item.item.date}: ${item.item.kcal} ккал · Б ${item.item.protein} У ${item.item.carbs} Ж ${item.item.fat}`
-    case 'memoryAdded':
-    case 'memoryRemoved':
-      return item.content
-    case 'memoryUpdated':
-      return item.after
-    default:
-      return null
-  }
 }

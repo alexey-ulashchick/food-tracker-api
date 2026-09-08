@@ -135,3 +135,79 @@ describe('reset after a turn', () => {
     expect(result.current.live).toHaveLength(1)
   })
 })
+
+describe('the turn-in-progress indicator', () => {
+  // The dots used to be a list entry, and every event began by removing it. The
+  // first event of a turn is `user`, emitted as soon as the row is persisted and
+  // well before the model has produced anything — so they were erased instantly
+  // and never returned while tools ran. They are derived from status now; this
+  // pins the two facts a caller needs to render them.
+  test('status stays busy from the user event until the stream closes', async () => {
+    const seen: string[] = []
+    let resolveStream: (() => void) | undefined
+
+    streamChat.mockImplementation(
+      (
+        _content: string,
+        _attachment: unknown,
+        onEvent: (e: { event: string; data: string }) => void,
+      ) => {
+        onEvent({ event: 'user', data: JSON.stringify(aiRow('u-1', 'привет')) })
+        return new Promise<void>((resolve) => {
+          resolveStream = () => {
+            onEvent({
+              event: 'message',
+              data: JSON.stringify({ blockId: null, row: aiRow('a-1', 'Готово.') }),
+            })
+            onEvent({ event: 'done', data: JSON.stringify({ count: 1 }) })
+            resolve()
+          }
+        })
+      },
+    )
+
+    const { result } = renderHook(() => useChatStream({ onError: vi.fn() }))
+
+    let pending: Promise<unknown> | undefined
+    await act(async () => {
+      pending = result.current.send('привет', null)
+      await Promise.resolve()
+    })
+
+    // The user row has landed and the model has not answered: this is exactly
+    // the window the dots exist for.
+    seen.push(result.current.status.kind)
+    expect(result.current.live.some((i) => i.kind === 'streaming')).toBe(false)
+
+    await act(async () => {
+      resolveStream?.()
+      await pending
+    })
+    seen.push(result.current.status.kind)
+
+    expect(seen).toEqual(['busy', 'idle'])
+  })
+
+  test('a streamed delta is what silences them, not the user event', async () => {
+    streamChat.mockImplementation(
+      (
+        _content: string,
+        _attachment: unknown,
+        onEvent: (e: { event: string; data: string }) => void,
+      ) => {
+        onEvent({ event: 'user', data: JSON.stringify(aiRow('u-2', 'привет')) })
+        onEvent({ event: 'delta', data: JSON.stringify({ blockId: '0-0', text: 'Счи' }) })
+        return Promise.resolve()
+      },
+    )
+
+    const { result } = renderHook(() => useChatStream({ onError: vi.fn() }))
+    await act(async () => {
+      await result.current.send('привет', null)
+    })
+
+    // With text on screen the caller hides the dots; the streaming item is the
+    // signal it reads.
+    expect(result.current.live.some((i) => i.kind === 'streaming')).toBe(true)
+  })
+})
