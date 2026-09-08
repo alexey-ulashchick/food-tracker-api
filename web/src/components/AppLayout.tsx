@@ -53,7 +53,10 @@ export function AppLayout() {
           minHeight: 0,
           overflowY: 'auto',
           overflowX: 'hidden',
-          WebkitOverflowScrolling: 'touch',
+          // No -webkit-overflow-scrolling: touch. It is redundant since iOS 13
+          // and it promotes the pane to its own compositing layer, where WebKit
+          // stops repainting text and backgrounds — canvas keeps drawing, so the
+          // rings survive on an otherwise blank screen.
         }}
       >
         <Outlet />

@@ -71,12 +71,13 @@ body {
 }
 
 /* The frame. --app-height is published from visualViewport by trackViewport();
-   100dvh covers the first paint and anything without that API. */
+   100dvh covers the first paint and anything without that API.
+
+   Deliberately NOT position:fixed. The document cannot scroll, so a plain block
+   already fills the visible area, and a fixed frame only adds a compositing
+   layer — which on iOS is how the card backgrounds and every glyph stopped being
+   repainted while the canvas rings kept drawing. */
 #root {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
   height: var(--app-height, 100dvh);
   overflow: hidden;
 }

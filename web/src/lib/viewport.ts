@@ -6,8 +6,10 @@
 // scroll-to-focus that follows strands it in the middle of the screen. That is
 // what the tab bar and the chat composer were both doing.
 //
-// Sizing the shell from visualViewport instead lets both be ordinary elements in
-// a flex column rather than fixed overlays guessing where the bottom is.
+// Publishing the visual viewport height instead lets the shell be a plain block
+// of exactly the visible height, with the bar as an ordinary flex child. Nothing
+// is position:fixed: extra compositing layers are what made iOS stop repainting
+// the card backgrounds and the text.
 //
 // `data-keyboard` on <html> follows SwiftUI, where the keyboard simply covers the
 // tab bar: it hides while typing instead of stealing 52px above the keys.
@@ -18,17 +20,25 @@ const KEYBOARD_MIN_PX = 120
 export function trackViewport(): () => void {
   const vv = window.visualViewport
   const root = document.documentElement
+  let published = -1
 
   const apply = () => {
-    const height = vv?.height ?? window.innerHeight
-    root.style.setProperty('--app-height', `${height}px`)
+    const height = Math.round(vv?.height ?? window.innerHeight)
 
-    if (window.innerHeight - height > KEYBOARD_MIN_PX) root.dataset.keyboard = 'open'
-    else delete root.dataset.keyboard
+    // Only on a real change. visualViewport's scroll event fires continuously
+    // during a drag, and setting a custom property on <html> invalidates style
+    // for the entire tree — cheap to skip, expensive to repeat.
+    if (height !== published) {
+      published = height
+      root.style.setProperty('--app-height', `${height}px`)
+
+      if (window.innerHeight - height > KEYBOARD_MIN_PX) root.dataset.keyboard = 'open'
+      else delete root.dataset.keyboard
+    }
 
     // The document is overflow:hidden and has nothing to scroll, but iOS scrolls
     // it anyway when it decides a focused field needs revealing — which drags the
-    // fixed shell out of alignment with the screen. Put it back.
+    // shell out of alignment with the screen. Put it back.
     if (window.scrollY !== 0) window.scrollTo(0, 0)
   }
 

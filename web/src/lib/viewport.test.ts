@@ -95,6 +95,24 @@ describe('trackViewport', () => {
     stop()
   })
 
+  test('rewrites nothing while the height holds steady', () => {
+    const vv = stubVisualViewport(LAYOUT_HEIGHT)
+    const stop = trackViewport()
+
+    // visualViewport fires scroll continuously during a drag, and a custom
+    // property on <html> invalidates style for the whole tree on every write.
+    const setProperty = vi.spyOn(document.documentElement.style, 'setProperty')
+    for (const _ of [1, 2, 3, 4, 5]) vv.emit('scroll')
+    expect(setProperty).not.toHaveBeenCalled()
+
+    vv.height = 508
+    vv.emit('resize')
+    expect(setProperty).toHaveBeenCalledTimes(1)
+
+    setProperty.mockRestore()
+    stop()
+  })
+
   test('detaches every listener it attached', () => {
     const vv = stubVisualViewport(LAYOUT_HEIGHT)
     const stop = trackViewport()
