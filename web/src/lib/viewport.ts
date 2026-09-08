@@ -14,33 +14,6 @@
 // `data-keyboard` on <html> follows SwiftUI, where the keyboard simply covers the
 // tab bar: it hides while typing instead of stealing 52px above the keys.
 
-/**
- * What the browser reports about the viewport, for the Профиль footer.
- *
- * The tab bar sat above the physical bottom edge through two rounds of fixes
- * aimed at the wrong cause, because the same symptom has two incompatible
- * explanations that need opposite corrections: either the shell is shorter than
- * the screen, or viewport-fit=cover is not in effect and the safe-area insets
- * read as zero. These numbers tell the two apart at a glance instead of by
- * inference from a photo.
- */
-export function viewportMetrics(): Record<string, string> {
-  const style = getComputedStyle(document.documentElement)
-  const inset = (name: string) => style.getPropertyValue(name).trim() || '—'
-  const root = document.getElementById('root')
-
-  return {
-    inner: String(window.innerHeight),
-    client: String(document.documentElement.clientHeight),
-    visual: String(Math.round(window.visualViewport?.height ?? 0)),
-    screen: String(window.screen?.height ?? 0),
-    root: String(root?.getBoundingClientRect().height ?? 0),
-    'inset-t': inset('--sat'),
-    'inset-b': inset('--sab'),
-    standalone: window.matchMedia('(display-mode: standalone)').matches ? 'да' : 'нет',
-  }
-}
-
 /** Less height lost than this is browser chrome collapsing, not a keyboard. */
 const KEYBOARD_MIN_PX = 120
 
@@ -48,18 +21,14 @@ const KEYBOARD_MIN_PX = 120
  * The height the shell fills: what the browser reports, uncorrected.
  *
  * A previous attempt added the top safe area back, on the theory that iOS was
- * understating the viewport. The readout looked conclusive —
+ * understating the viewport. The readout from the device looked conclusive —
  *
  *   inner 844   client 844   visual 844   screen 912   inset-t 68   inset-b 34
  *
  * with 912 − 844 exactly the top inset. It was wrong: at 912 the tab bar was
- * clipped off the bottom of the screen, so 844 is the real height and
- * screen.height is the value that cannot be trusted here. It is still reported
- * in the Профиль readout, but nothing is computed from it.
- *
- * Which also settles the band under the tab bar: it is not missing screen, it is
- * the bar's own env(safe-area-inset-bottom), keeping the labels clear of the home
- * indicator exactly as a native tab bar does.
+ * clipped off the bottom of the screen. So 844 is the real height, the app was
+ * filling the screen all along, and screen.height is the value that cannot be
+ * trusted here. Nothing is computed from it.
  */
 function reportedHeight(): number {
   return Math.max(window.innerHeight, document.documentElement.clientHeight)

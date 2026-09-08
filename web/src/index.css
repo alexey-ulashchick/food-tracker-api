@@ -70,13 +70,6 @@ body {
   overflow: hidden;
 }
 
-/* Mirrored into custom properties so viewportMetrics() can read them back —
-   env() is not visible to getComputedStyle on its own. */
-:root {
-  --sat: env(safe-area-inset-top, 0px);
-  --sab: env(safe-area-inset-bottom, 0px);
-}
-
 /* The frame.
 
    Height comes entirely from --app-height, which trackViewport() measures: at
@@ -229,13 +222,10 @@ body {
   overflow-anchor: auto;
 }
 
-/* Safe areas. The layout reaches under the notch and the home indicator
-   (viewport-fit=cover), so every fixed edge has to pay the inset back. */
+/* The notch inset, paid back by the shell's top spacer. There is no matching
+   .safe-bottom: the tab bar goes full-bleed to the bottom edge on purpose. */
 .safe-top {
   padding-top: env(safe-area-inset-top, 0px);
-}
-.safe-bottom {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Inputs must stay at 16px or iOS Safari zooms the page when they focus. */
