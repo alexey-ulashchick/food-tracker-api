@@ -1050,3 +1050,103 @@ describe('POST /chat/stream', () => {
     expect(String(error?.data.message)).toContain('upstream exploded')
   })
 })
+
+describe('empty thinking blocks from the pinned SDK', () => {
+  // @anthropic-ai/sdk 0.30.1 has no `thinking_delta` case in its stream
+  // accumulator, so a streamed thinking block reaches finalMessage() with
+  // `thinking: ''`. Handing that back to the next iteration fails the whole
+  // request with "each thinking block must contain thinking", which strands a
+  // bulk turn after its earlier writes have already committed.
+  test('an empty one is not fed back into the next iteration', async () => {
+    const { userId, token } = await seedUser()
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          { type: 'thinking', thinking: '', signature: '' },
+          {
+            type: 'tool_use',
+            id: 'toolu_goal',
+            name: 'set_goal',
+            input: {
+              date: '2026-09-09',
+              dayType: 'rest',
+              calorieGoal: 1450,
+              proteinGGoal: 140,
+              carbsGGoal: 88,
+              fatGGoal: 60,
+            },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Цель на 9 сентября выставил.' }],
+        stop_reason: 'end_turn',
+      }),
+    )
+
+    const res = await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'цель на среду 1450' }),
+      }),
+    )
+    expect(res.status).toBe(201)
+
+    const secondCall = messagesCreate.mock.calls[1]?.[0] as {
+      messages: Array<{ role: string; content: unknown }>
+    }
+    const assistantTurn = secondCall.messages.find((m) => m.role === 'assistant')
+    const blocks = assistantTurn?.content as Array<{ type: string }>
+
+    expect(blocks.some((b) => b.type === 'thinking')).toBe(false)
+    // The tool_use it preceded still has to survive, or the tool_result that
+    // follows has nothing to answer.
+    expect(blocks.some((b) => b.type === 'tool_use')).toBe(true)
+
+    const goalRows = await db.select().from(dailyGoals).where(eq(dailyGoals.userId, userId))
+    expect(goalRows).toHaveLength(1)
+  })
+
+  test('a populated one is passed through untouched', async () => {
+    const { token } = await seedUser()
+
+    const thinking = { type: 'thinking', thinking: 'Считаю остаток на день.', signature: 'sig-1' }
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          thinking,
+          {
+            type: 'tool_use',
+            id: 'toolu_read',
+            name: 'get_meals_for_day',
+            input: { date: '2026-09-09' },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({ content: [{ type: 'text', text: 'Пока пусто.' }], stop_reason: 'end_turn' }),
+    )
+
+    await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'что я ел в среду' }),
+      }),
+    )
+
+    const secondCall = messagesCreate.mock.calls[1]?.[0] as {
+      messages: Array<{ role: string; content: unknown }>
+    }
+    const assistantTurn = secondCall.messages.find((m) => m.role === 'assistant')
+    // Signature verification depends on the block surviving byte for byte.
+    expect(assistantTurn?.content).toContainEqual(thinking)
+  })
+})

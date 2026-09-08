@@ -764,7 +764,7 @@ async function runToolLoop(args: {
       // The streaming client already rendered these blocks as they arrived;
       // tell it to drop them, since they are never persisted.
       if (pendingBlockIds.length > 0) await emit?.('retract', { blockIds: pendingBlockIds })
-      messages.push({ role: 'assistant', content: response.content })
+      messages.push({ role: 'assistant', content: stripEmptyThinking(response.content, userTag) })
       messages.push(
         toolResults.length > 0
           ? { role: 'user', content: [...toolResults, { type: 'text', text: nudge }] }
@@ -816,7 +816,7 @@ async function runToolLoop(args: {
       break
     }
 
-    messages.push({ role: 'assistant', content: response.content })
+    messages.push({ role: 'assistant', content: stripEmptyThinking(response.content, userTag) })
     messages.push({ role: 'user', content: toolResults })
 
     // NB: we intentionally do NOT break on stop_reason !== 'tool_use'. A bulk
@@ -959,6 +959,60 @@ function claimsWrite(text: string): boolean {
     'noted',
   ]
   return markers.some((mk) => t.includes(mk))
+}
+
+/**
+ * Drops thinking blocks that arrived empty, on the assistant content's way back
+ * into the next iteration's `messages`.
+ *
+ * This works around the pinned SDK, and the workaround is only needed on the
+ * streaming path. @anthropic-ai/sdk 0.30.1 predates extended thinking: its
+ * stream accumulator (lib/MessageStream.js) handles `text_delta` and
+ * `input_json_delta` and has no case for `thinking_delta` or `signature_delta`.
+ * So when Sonnet 5 — which runs adaptive thinking by default, see DEFAULT_MODEL
+ * — streams a thinking block, `content_block_start` seeds it as
+ * `{thinking: '', signature: ''}`, every delta is silently discarded, and
+ * finalMessage() hands back an empty block. Feeding that to the next request
+ * fails the whole call with
+ *
+ *   messages.N.content.0.thinking: each thinking block must contain thinking
+ *
+ * taking a long bulk turn down with it, several iterations in, after its earlier
+ * writes have already landed. POST /chat is unaffected: messages.create parses
+ * one complete JSON body, so its thinking blocks are intact — which is why iOS
+ * never saw this and the web client sees it constantly.
+ *
+ * Dropping is the only option available: the signature came through empty too,
+ * so the block would fail verification even with its text restored. No reasoning
+ * is lost, because none of it survived the accumulator in the first place.
+ *
+ * The real fix is upgrading the SDK; this stays as a floor under it.
+ *
+ * redacted_thinking is deliberately untouched: it carries its payload in `data`
+ * and has no `thinking` field by design.
+ */
+function stripEmptyThinking(
+  content: Anthropic.ContentBlock[],
+  userTag: string,
+): Anthropic.ContentBlock[] {
+  // Cast because ContentBlock in 0.30.1 is text | tool_use only — the very gap
+  // this function exists to cover. Narrowed by hand instead.
+  const isEmptyThinking = (block: Anthropic.ContentBlock): boolean => {
+    const b = block as unknown as { type: string; thinking?: unknown }
+    if (b.type !== 'thinking') return false
+    return typeof b.thinking !== 'string' || b.thinking.trim().length === 0
+  }
+
+  const kept = content.filter((b) => !isEmptyThinking(b))
+  if (kept.length === content.length) return content
+
+  console.warn(
+    `[chat] dropped ${content.length - kept.length} empty thinking block(s) user=${userTag}`,
+  )
+  // An assistant turn cannot be empty. Nothing observed reaches this — a response
+  // with no text and no tool_use ends the loop before the push — but an empty
+  // content array is a 400 in its own right, so it is not worth the risk.
+  return kept.length > 0 ? kept : content
 }
 
 function summarizeBlocks(blocks: Anthropic.ContentBlock[]): string {
