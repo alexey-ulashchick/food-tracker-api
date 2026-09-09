@@ -225,6 +225,19 @@ body {
   padding-top: env(safe-area-inset-top, 0px);
 }
 
+/* Login and /dev/kitchen render outside AppLayout, as direct children of #root
+   — which is height:100%;overflow:hidden. Neither brought a scroller of its
+   own, so anything taller than the frame was clipped AND unreachable: the
+   sandbox has been silently truncated below the fold, and Login hits the same
+   wall whenever the keyboard shrinks the frame to --app-height.
+
+   A plain block, deliberately: the children centre themselves with the
+   `margin: 0 auto` they already had, and nothing becomes a flex item. */
+.outer-frame {
+  height: 100%;
+  overflow-y: auto;
+}
+
 /* Inputs must stay at 16px or iOS Safari zooms the page when they focus. */
 input,
 textarea,

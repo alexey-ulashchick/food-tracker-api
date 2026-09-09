@@ -51,101 +51,103 @@ export function Login() {
   }
 
   return (
-    <div
-      style={{
-        maxWidth: layout.maxWidth,
-        margin: '0 auto',
-        padding: `${layout.screenTop}px ${layout.screenX}px ${layout.screenBottom}px`,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: layout.cardGap,
-      }}
-    >
-      <h1 style={{ fontWeight: 700, fontSize: 32, margin: '8px 0 0' }}>Cal Tracker</h1>
-      <p style={{ fontWeight: 400, fontSize: 13.5, color: label.secondary, margin: 0 }}>
-        Вставь токен доступа. Его выдаёт скрипт{' '}
-        <code style={{ fontFamily: 'ui-monospace, monospace' }}>issue-token</code> на сервере.
-      </p>
-
+    <div className="outer-frame">
       <div
         style={{
-          background: surface.card,
-          borderRadius: radius.card,
-          padding: layout.cardPadWide,
+          maxWidth: layout.maxWidth,
+          margin: '0 auto',
+          padding: `${layout.screenTop}px ${layout.screenX}px ${layout.screenBottom}px`,
           display: 'flex',
           flexDirection: 'column',
-          gap: 10,
+          gap: layout.cardGap,
         }}
       >
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input
-            value={value}
-            onChange={(e) => {
-              setValue(e.target.value)
-              if (status.kind === 'error') setStatus({ kind: 'idle' })
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void submit()
-            }}
-            type={reveal ? 'text' : 'password'}
-            placeholder="ft_…"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            // A password field would otherwise invite the browser to save it
-            // under the site's login, which this is not.
-            autoComplete="off"
-            style={{
-              flex: 1,
-              minWidth: 0,
-              background: surface.input,
-              border: 0,
-              borderRadius: radius.field,
-              color: label.primary,
-              font: '400 12px ui-monospace, monospace',
-              padding: '10px 12px',
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => setReveal((v) => !v)}
-            aria-label={reveal ? 'Скрыть токен' : 'Показать токен'}
-            style={{
-              background: 'none',
-              border: 0,
-              color: label.secondary,
-              padding: 6,
-              cursor: 'pointer',
-              display: 'flex',
-            }}
-          >
-            <EyeIcon off={reveal} />
-          </button>
-        </div>
+        <h1 style={{ fontWeight: 700, fontSize: 32, margin: '8px 0 0' }}>Cal Tracker</h1>
+        <p style={{ fontWeight: 400, fontSize: 13.5, color: label.secondary, margin: 0 }}>
+          Вставь токен доступа. Его выдаёт скрипт{' '}
+          <code style={{ fontFamily: 'ui-monospace, monospace' }}>issue-token</code> на сервере.
+        </p>
 
-        {status.kind === 'error' ? (
-          <span style={{ fontWeight: 400, fontSize: 12.5, color: '#FF453A' }}>
-            {status.message}
-          </span>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={!canSubmit}
+        <div
           style={{
-            background: canSubmit ? accent : surface.control,
-            border: 0,
-            borderRadius: radius.field,
-            color: canSubmit ? '#000' : label.secondary,
-            fontWeight: 600,
-            fontSize: 15,
-            padding: '11px 12px',
-            cursor: canSubmit ? 'pointer' : 'default',
+            background: surface.card,
+            borderRadius: radius.card,
+            padding: layout.cardPadWide,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
           }}
         >
-          {status.kind === 'checking' ? 'Проверяю…' : 'Войти'}
-        </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              value={value}
+              onChange={(e) => {
+                setValue(e.target.value)
+                if (status.kind === 'error') setStatus({ kind: 'idle' })
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void submit()
+              }}
+              type={reveal ? 'text' : 'password'}
+              placeholder="ft_…"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              // A password field would otherwise invite the browser to save it
+              // under the site's login, which this is not.
+              autoComplete="off"
+              style={{
+                flex: 1,
+                minWidth: 0,
+                background: surface.input,
+                border: 0,
+                borderRadius: radius.field,
+                color: label.primary,
+                font: '400 12px ui-monospace, monospace',
+                padding: '10px 12px',
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setReveal((v) => !v)}
+              aria-label={reveal ? 'Скрыть токен' : 'Показать токен'}
+              style={{
+                background: 'none',
+                border: 0,
+                color: label.secondary,
+                padding: 6,
+                cursor: 'pointer',
+                display: 'flex',
+              }}
+            >
+              <EyeIcon off={reveal} />
+            </button>
+          </div>
+
+          {status.kind === 'error' ? (
+            <span style={{ fontWeight: 400, fontSize: 12.5, color: '#FF453A' }}>
+              {status.message}
+            </span>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={!canSubmit}
+            style={{
+              background: canSubmit ? accent : surface.control,
+              border: 0,
+              borderRadius: radius.field,
+              color: canSubmit ? '#000' : label.secondary,
+              fontWeight: 600,
+              fontSize: 15,
+              padding: '11px 12px',
+              cursor: canSubmit ? 'pointer' : 'default',
+            }}
+          >
+            {status.kind === 'checking' ? 'Проверяю…' : 'Войти'}
+          </button>
+        </div>
       </div>
     </div>
   )

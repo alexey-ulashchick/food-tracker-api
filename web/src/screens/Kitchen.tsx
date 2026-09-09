@@ -174,7 +174,10 @@ export function Kitchen() {
   const [live, setLive] = useState(0.62)
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', padding: '8px 16px 24px' }}>
+    <div
+      className="outer-frame"
+      style={{ maxWidth: 480, margin: '0 auto', padding: '8px 16px 24px' }}
+    >
       <div style={{ marginBottom: 14 }}>
         <ScreenHeader
           title="Песочница"
