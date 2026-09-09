@@ -53,14 +53,14 @@ export function History() {
   // GET /goals?date= per day that had meals — up to 14 per page.
   const goalsQuery = useQuery({ queryKey: qk.goalsAll, queryFn: listGoals })
 
-  const window = chartWindow(today, offset)
+  const chartRange = chartWindow(today, offset)
   const chartMealsQuery = useQuery({
-    queryKey: qk.meals(window.from, window.to),
-    queryFn: () => listMeals(window.from, window.to),
+    queryKey: qk.meals(chartRange.from, chartRange.to),
+    queryFn: () => listMeals(chartRange.from, chartRange.to),
   })
   const chartVerdictQuery = useQuery({
-    queryKey: qk.daySummaries(window.from, window.to),
-    queryFn: () => daySummaries(window.from, window.to),
+    queryKey: qk.daySummaries(chartRange.from, chartRange.to),
+    queryFn: () => daySummaries(chartRange.from, chartRange.to),
     retry: false,
   })
 
@@ -72,7 +72,7 @@ export function History() {
 
   const goals = goalsQuery.data ?? []
   const chartDays = buildChartDays(
-    window,
+    chartRange,
     chartMealsQuery.data ?? [],
     goals,
     chartVerdictQuery.data ?? [],
@@ -106,8 +106,8 @@ export function History() {
         }}
       >
         <ChartHeader
-          from={window.from}
-          to={window.to}
+          from={chartRange.from}
+          to={chartRange.to}
           offset={offset}
           onShift={(d) => setOffset((o) => o + d)}
           onReset={() => setOffset(0)}
@@ -143,14 +143,14 @@ export function History() {
 }
 
 function buildChartDays(
-  window: { from: string; to: string },
+  range: { from: string; to: string },
   meals: ServerMeal[],
   goals: ServerGoal[],
   verdicts: ServerDaySummary[],
 ): ChartDay[] {
   const totals = buildDayTotals(meals, goals)
   const colorByDate = new Map(verdicts.map((v) => [v.date, v.color]))
-  return buildCalorieDays(window.from, window.to, totals).map((d) => ({
+  return buildCalorieDays(range.from, range.to, totals).map((d) => ({
     ...d,
     color: colorByDate.get(d.date) ?? null,
   }))
