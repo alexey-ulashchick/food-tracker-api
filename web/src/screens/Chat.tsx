@@ -16,7 +16,7 @@ import { useUi } from '@/store/ui'
 import { ArrowUpIcon, CloseCircleIcon, PlusIcon, SparklesIcon, Spinner } from '@/theme/icons'
 import { accent, label, layout, palette, radius, singleRingSpec, surface } from '@/theme/tokens'
 import type { ServerGoal, ServerMeal } from '@shared/types.ts'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { isRecommendCommand, useChatStream } from './useChatStream'
 
@@ -117,6 +117,13 @@ export function Chat() {
       await queryClient.invalidateQueries({ queryKey: qk.memories })
     }
     stream.reset()
+
+    // A dropped socket does not stop the turn: the server keeps running the tool
+    // loop and persisting rows. The refetch above happens the instant the stream
+    // dies, which is usually too early to see the end of it — that is why the
+    // answer only used to show up after restarting the app. Keep checking for a
+    // while instead. Not awaited: the composer must not stay busy for it.
+    if (result.interrupted) void catchUpAfterDrop(queryClient)
   }
 
   return (
@@ -178,6 +185,29 @@ export function Chat() {
       />
     </div>
   )
+}
+
+/**
+ * Backoff schedule for reconciling after a dropped stream, in ms from the drop.
+ *
+ * A long bulk turn ("обед как вчера") can run twenty tool iterations, so the
+ * last checks are minutes out. Cheap either way: /chat is one indexed query, and
+ * TanStack Query drops a refetch whose result is unchanged.
+ */
+const CATCH_UP_DELAYS_MS = [2_000, 6_000, 15_000, 30_000, 60_000]
+
+/** Pulls the chat history — and anything a turn could have written — repeatedly,
+ *  so a turn that outlived its socket still appears without a manual reload. */
+async function catchUpAfterDrop(queryClient: QueryClient): Promise<void> {
+  for (const delay of CATCH_UP_DELAYS_MS) {
+    await new Promise((resolve) => setTimeout(resolve, delay))
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['chat'] }),
+      queryClient.invalidateQueries({ queryKey: ['meals'] }),
+      queryClient.invalidateQueries({ queryKey: ['goals'] }),
+      queryClient.invalidateQueries({ queryKey: ['day-summary'] }),
+    ])
+  }
 }
 
 function CostLabel({ text }: { text: string | null }) {

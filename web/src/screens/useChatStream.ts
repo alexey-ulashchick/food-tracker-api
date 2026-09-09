@@ -1,3 +1,4 @@
+import { ApiError } from '@/api/client'
 import { type ChatAttachment, streamChat, streamRecommend } from '@/api/endpoints'
 import type { SseEvent } from '@/api/sse'
 import { type ChatItem, type TurnUsage, toChatItem } from '@/lib/chatMapper'
@@ -15,11 +16,21 @@ import { useCallback, useState } from 'react'
 /** Local ids are prefixed so they can never collide with a database uuid. */
 const LOCAL = 'local-'
 
+const STREAM_DROPPED =
+  'Соединение прервалось. Ассистент продолжает на сервере — сейчас подтяну ответ.'
+
 export type ChatStatus = { kind: 'idle' } | { kind: 'busy' }
 
 export type SendResult = {
   /** Kinds the turn persisted, so the caller knows which queries to refresh. */
   touched: Set<string>
+  /**
+   * The stream ended without its closing `done` frame, so the turn's outcome is
+   * unknown to this client. The server does not stop when the socket does — every
+   * row is persisted as it is produced — so the work is most likely still running
+   * and will land in the history shortly.
+   */
+  interrupted: boolean
 }
 
 type Options = {
@@ -52,6 +63,7 @@ export function useChatStream({ onError }: Options) {
       const touched = new Set<string>()
       // Text accumulating per streamed block, so a delta can append.
       const blocks = new Map<string, string>()
+      let sawDone = false
 
       setStatus({ kind: 'busy' })
       setLive(optimistic)
@@ -168,6 +180,7 @@ export function useChatStream({ onError }: Options) {
           }
 
           case 'done':
+            sawDone = true
             break
         }
       }
@@ -175,12 +188,16 @@ export function useChatStream({ onError }: Options) {
       try {
         await open(handle)
       } catch (err) {
-        onError(err instanceof Error ? err.message : String(err))
+        // A dropped socket is not a failed turn. WebKit reports it as the
+        // uninformative "Load failed", and the server carries on regardless — so
+        // say what actually happened instead of forwarding the transport's words.
+        // A real HTTP error arrives as ApiError and keeps its own message.
+        onError(err instanceof ApiError ? err.message : STREAM_DROPPED)
       } finally {
         setStatus({ kind: 'idle' })
       }
 
-      return { touched }
+      return { touched, interrupted: !sawDone }
     },
     [onError],
   )

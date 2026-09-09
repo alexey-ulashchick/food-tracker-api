@@ -1,3 +1,4 @@
+import { ApiError } from '@/api/client'
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { useChatStream } from './useChatStream'
@@ -209,5 +210,81 @@ describe('the turn-in-progress indicator', () => {
     // With text on screen the caller hides the dots; the streaming item is the
     // signal it reads.
     expect(result.current.live.some((i) => i.kind === 'streaming')).toBe(true)
+  })
+})
+
+describe('a stream that dies mid-turn', () => {
+  // The server does not stop when the socket does — rows are persisted as they
+  // are produced — so a drop leaves the turn running and the outcome unknown to
+  // this client. It reports that, rather than forwarding WebKit's "Load failed".
+  test('reports itself interrupted when no done frame arrived', async () => {
+    streamChat.mockImplementation(
+      (
+        _content: string,
+        _attachment: unknown,
+        onEvent: (e: { event: string; data: string }) => void,
+      ) => {
+        onEvent({ event: 'user', data: JSON.stringify(aiRow('u-1', 'обед как вчера')) })
+        return Promise.reject(new TypeError('Load failed'))
+      },
+    )
+
+    const onError = vi.fn()
+    const { result } = renderHook(() => useChatStream({ onError }))
+
+    let outcome: { interrupted: boolean } | undefined
+    await act(async () => {
+      outcome = await result.current.send('обед как вчера', null)
+    })
+
+    expect(outcome?.interrupted).toBe(true)
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(String(onError.mock.calls[0]?.[0])).toContain('Соединение прервалось')
+    // Not the transport's wording, which says nothing a user can act on.
+    expect(String(onError.mock.calls[0]?.[0])).not.toContain('Load failed')
+  })
+
+  test('a completed turn is not interrupted and raises nothing', async () => {
+    streamChat.mockImplementation(
+      (
+        _content: string,
+        _attachment: unknown,
+        onEvent: (e: { event: string; data: string }) => void,
+      ) => {
+        onEvent({
+          event: 'message',
+          data: JSON.stringify({ blockId: null, row: aiRow('a-1', 'Записал.') }),
+        })
+        onEvent({ event: 'done', data: JSON.stringify({ count: 1 }) })
+        return Promise.resolve()
+      },
+    )
+
+    const onError = vi.fn()
+    const { result } = renderHook(() => useChatStream({ onError }))
+
+    let outcome: { interrupted: boolean } | undefined
+    await act(async () => {
+      outcome = await result.current.send('привет', null)
+    })
+
+    expect(outcome?.interrupted).toBe(false)
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  test('a real HTTP error keeps its own message', async () => {
+    streamChat.mockImplementation(() =>
+      Promise.reject(new ApiError(400, '{"error":"invalid or oversized thumb"}')),
+    )
+
+    const onError = vi.fn()
+    const { result } = renderHook(() => useChatStream({ onError }))
+    await act(async () => {
+      await result.current.send('привет', null)
+    })
+
+    // A 400 is the server saying something specific; do not paper over it.
+    expect(String(onError.mock.calls[0]?.[0])).toContain('400')
+    expect(String(onError.mock.calls[0]?.[0])).not.toContain('Соединение прервалось')
   })
 })
