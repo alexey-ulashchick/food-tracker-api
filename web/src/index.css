@@ -78,9 +78,15 @@
   --page-bottom: 24px;
   --card-gap: 14px;
   --shell-max: 480px;
+  /* The login form. Its own variable because --shell-max goes to `none` on a
+     desktop and a token field has no business being 1200px wide. */
+  --form-max: 480px;
   --bubble-max: 280px;
   --bubble-gutter: 40px;
   --action-card-max: 300px;
+  /* The readable measure for chat. 100% on a phone, where the column already
+     is one. */
+  --measure: 100%;
 
   /* Read by useIsDesktop(). The breakpoint literal lives in exactly one place —
      the media query below — and JS asks CSS which side of it we are on rather
@@ -95,6 +101,15 @@
 @media (min-width: 1024px) {
   :root {
     --desktop: 1;
+    --page-x: 28px;
+    --page-top: 20px;
+    --page-bottom: 40px;
+    --card-gap: 18px;
+    --shell-max: none;
+    --measure: 720px;
+    --bubble-max: 560px;
+    --bubble-gutter: 72px;
+    --action-card-max: 420px;
   }
 }
 
@@ -177,6 +192,9 @@ body {
   scroll-snap-type: x mandatory;
   touch-action: pan-x;
   scrollbar-width: none;
+  /* A trackpad flick past the end of a horizontal scroller triggers Safari's
+     back gesture and navigates out of the app. */
+  overscroll-behavior-x: contain;
 }
 .snap-deck::-webkit-scrollbar {
   display: none;
@@ -184,6 +202,17 @@ body {
 .snap-deck > * {
   scroll-snap-align: center;
   flex: 0 0 100%;
+}
+
+@media (min-width: 1024px) {
+  /* The card stops being the whole track, so two or three variants sit side by
+     side and the deck stops being a swipe at all. Only safe because each card
+     now carries its own n/total chip — the deck used to derive a page index
+     from scrollLeft/clientWidth, which needs one card per track width. */
+  .snap-deck > * {
+    flex: 0 0 auto;
+    max-width: var(--action-card-max);
+  }
 }
 
 /* TypingBubble dots: opacity = 0.3 + 0.7 * |sin(phase * pi)| across a 1.2s
@@ -345,6 +374,100 @@ body {
   font-weight: 500;
   font-size: 14px;
   text-decoration: none;
+}
+
+@media (min-width: 1024px) {
+  .shell-body {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    /* minmax(0, 1fr) rather than 1fr: a grid row sized 1fr still floors at the
+       content's min-content height, which would stop <main> shrinking and let
+       a long page push the frame instead of scrolling inside it. */
+    grid-template-rows: minmax(0, 1fr);
+    /* <main> comes first in the DOM for the tab order; the areas put the nav
+       back on the left visually. */
+    grid-template-areas: "nav main";
+  }
+
+  .shell-body > main {
+    grid-area: main;
+  }
+
+  .shell-body > nav {
+    grid-area: nav;
+    overflow-y: auto;
+    border-right: 0.5px solid rgba(255, 255, 255, 0.06);
+  }
+
+  /* The content column. Capped so a 2560px monitor does not stretch a meal row
+     into a horizon, and centred in what is left beside the sidebar. */
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+
+  /* Cards two-up. auto-fit is the whole "tablet tier": it collapses to one
+     column by itself when two no longer fit, with no second breakpoint and no
+     JS tier for a component to switch on. */
+  .card-row {
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  }
+
+  /* Today's ring card has a floor of its own. On a phone the macro rows get
+     480 - 32 - 14 - 156 = 278px; a naive 50/50 split at 1024 would leave them
+     less than that, which is a regression dressed as a redesign. */
+  .card-row--today {
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  }
+
+  /* Not ::-webkit-scrollbar with a width: that turns an overlay scrollbar into
+     one that takes layout space, and some iOS WebKit versions honour it — which
+     would silently narrow the phone column. */
+  main,
+  .chat-scroll,
+  .shell-body > nav {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  }
+}
+
+/* One column on a phone; the desktop query above turns it into two. Declared
+   outside the query so the grid exists at every width and only its track list
+   changes. */
+.card-row {
+  display: grid;
+  gap: var(--card-gap);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Chat's readable measure, applied to the INNER row of the macro strip, the
+   transcript and the composer. The .material-thin bars themselves stay
+   full-bleed — centring only the transcript leaves the composer visibly
+   disagreeing with the messages above it. */
+.chat-measure {
+  width: 100%;
+  max-width: var(--measure);
+  margin: 0 auto;
+}
+
+/* Hover only where a pointer really hovers, or a phone keeps the wash after a
+   tap. The colour travels as a variable because the row that needs it most —
+   History's past-day row — sets `background` inline for its pressed state, and
+   an inline declaration cannot be overridden by a class rule. */
+@media (hover: hover) and (pointer: fine) {
+  .row-hover:hover {
+    --row-bg: rgba(255, 255, 255, 0.05);
+  }
+  .nav-item:hover {
+    --nav-bg: rgba(255, 255, 255, 0.06);
+  }
+}
+
+/* Unconditional: :focus-visible does not fire on a WebKit touch tap, so the
+   phone pays nothing, and the app has no visible keyboard focus at all today. */
+:focus-visible {
+  outline: 2px solid rgba(255, 149, 0, 0.9);
+  outline-offset: 2px;
 }
 
 /* Login and /dev/kitchen render outside AppLayout, as direct children of #root

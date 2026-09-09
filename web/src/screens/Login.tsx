@@ -55,7 +55,7 @@ export function Login() {
       <div
         className="page"
         style={{
-          maxWidth: 'var(--shell-max)',
+          maxWidth: 'var(--form-max)',
           margin: '0 auto',
         }}
       >
