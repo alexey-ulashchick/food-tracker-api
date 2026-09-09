@@ -1150,3 +1150,38 @@ describe('empty thinking blocks from the pinned SDK', () => {
     expect(assistantTurn?.content).toContainEqual(thinking)
   })
 })
+
+describe('time to first byte on a cold database', () => {
+  // Six queries used to run before the stream opened: the token lookup in auth,
+  // four in fetchChatContext, and the user-row insert. Neon and this machine both
+  // scale to zero, so on a cold start that was seconds in which the client held a
+  // request that had produced nothing at all — no headers, no body — and the
+  // heartbeat could not help because it only starts once the stream is open.
+  // Those connections were being dropped in transit.
+  test('the first frame precedes the context load', async () => {
+    const { token } = await seedUser()
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({ content: [{ type: 'text', text: 'Привет.' }], stop_reason: 'end_turn' }),
+    )
+
+    const res = await makeApp().fetch(streamRequest(token, 'привет'))
+    expect(res.status).toBe(200)
+
+    const body = await res.text()
+    // A comment frame is the cheapest thing that commits the response headers.
+    expect(body.startsWith(':')).toBe(true)
+    // And it is genuinely first — ahead of the persisted user row.
+    expect(body.indexOf(':')).toBeLessThan(body.indexOf('event: user'))
+  })
+
+  test('/chat/recommend opens the same way', async () => {
+    const { token } = await seedUser()
+
+    const res = await makeApp().fetch(
+      new Request('http://x/chat/recommend', { method: 'POST', headers: authHeaders(token) }),
+    )
+    expect(res.status).toBe(200)
+    expect((await res.text()).startsWith(':')).toBe(true)
+  })
+})

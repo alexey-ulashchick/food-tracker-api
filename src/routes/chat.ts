@@ -162,22 +162,6 @@ export const chatRoute = new Hono<AuthEnv>()
     if (!parsed.ok) return c.json({ error: parsed.error }, 400)
     const { content, image: imagePayload } = parsed.value
 
-    const ctx = await fetchChatContext(c, userId)
-
-    const [userMsg] = await db
-      .insert(chatMessages)
-      .values({
-        userId,
-        role: 'user',
-        content,
-        kind: 'text',
-        meta: userRowMeta(parsed.value),
-      })
-      .returning()
-
-    const messages: Anthropic.MessageParam[] = historyToMessages(ctx.history, ctx.tzOffsetMin)
-    messages.push(buildCurrentUserMessage(content, imagePayload))
-
     const userTag = userId.slice(0, 8)
 
     return streamSSE(c, async (stream) => {
@@ -205,9 +189,33 @@ export const chatRoute = new Hono<AuthEnv>()
       }, HEARTBEAT_MS)
 
       try {
+        // Commit the response headers before touching the database. Both Neon and
+        // this machine scale to zero, and loading the chat context is four queries
+        // plus an insert — on a cold start that is seconds during which the client
+        // holds a request that has produced no bytes at all, which is where the
+        // dropped connections were coming from. A comment frame costs nothing,
+        // establishes the socket, and starts the heartbeat's clock.
+        await enqueue(() => stream.write(': ping\n\n').then(() => undefined))
+
+        const ctx = await fetchChatContext(c, userId)
+
+        const [userMsg] = await db
+          .insert(chatMessages)
+          .values({
+            userId,
+            role: 'user',
+            content,
+            kind: 'text',
+            meta: userRowMeta(parsed.value),
+          })
+          .returning()
+
         if (userMsg) {
           await enqueue(() => stream.writeSSE({ event: 'user', data: JSON.stringify(userMsg) }))
         }
+
+        const messages: Anthropic.MessageParam[] = historyToMessages(ctx.history, ctx.tzOffsetMin)
+        messages.push(buildCurrentUserMessage(content, imagePayload))
 
         const rows = await runToolLoop({
           userId,
@@ -276,6 +284,11 @@ export const chatRoute = new Hono<AuthEnv>()
 
     return streamSSE(c, async (stream) => {
       try {
+        // Headers first, for the same reason as /chat/stream: on a cold Neon the
+        // query below can stall for seconds, and a request that has produced no
+        // bytes is what gets dropped in transit.
+        await stream.write(': ping\n\n')
+
         const [goalRow] = await db
           .select()
           .from(dailyGoals)
