@@ -1,6 +1,6 @@
 import { daySummaries, listGoals, listMeals } from '@/api/endpoints'
 import { qk } from '@/api/keys'
-import { CalorieChart, type ChartDay } from '@/components/CalorieChart'
+import { CHART_HEIGHT, CalorieChart, type ChartDay } from '@/components/CalorieChart'
 import { ScreenHeader } from '@/components/ScreenHeader'
 import { MacroRing } from '@/components/ring/MacroRing'
 import {
@@ -115,7 +115,9 @@ export function History() {
         {chartMealsQuery.isLoading ? (
           <div
             style={{
-              height: 180,
+              // The chart's own height, so the card does not jump when data
+              // lands. This used to be a hand-typed 180 against a 200px chart.
+              height: CHART_HEIGHT,
               display: 'flex',
               alignItems: 'center',
               gap: 10,

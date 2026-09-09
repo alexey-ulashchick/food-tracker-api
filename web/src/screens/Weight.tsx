@@ -1,6 +1,7 @@
 import { listWeights } from '@/api/endpoints'
 import { qk } from '@/api/keys'
 import { ScreenHeader } from '@/components/ScreenHeader'
+import { useElementWidth } from '@/lib/useElementWidth'
 import {
   formatKg,
   formatTrend,
@@ -146,6 +147,9 @@ function TrendPill({ slope }: { slope: number }) {
 }
 
 function WeightChart({ weeks }: { weeks: Array<{ weekStart: string; avgKg: number }> }) {
+  // Before the early return: a hook cannot sit behind a condition.
+  const [frameRef, width] = useElementWidth<HTMLDivElement>()
+
   if (weeks.length < 2) {
     return (
       <div
@@ -163,9 +167,16 @@ function WeightChart({ weeks }: { weeks: Array<{ weekStart: string; avgKg: numbe
     )
   }
 
-  const W = 320
+  // Real pixels, so the curve keeps its aspect. The chart used to draw into a
+  // fixed 320-wide viewBox stretched with preserveAspectRatio="none", which
+  // smeared the curve horizontally at every width but 320 — and needed
+  // vectorEffect to stop the stroke smearing with it.
   const { lo, hi } = weightYDomain(weeks)
-  const x = (i: number) => (i / (weeks.length - 1)) * W
+  // Inset by half the stroke: at x(0) = 0 and x(n-1) = W the 2.4px line lost
+  // half its width off each edge.
+  const INSET = 2
+  const plotW = Math.max(1, width - INSET * 2)
+  const x = (i: number) => INSET + (i / (weeks.length - 1)) * plotW
   const y = (kg: number) => CHART_HEIGHT - ((kg - lo) / Math.max(1e-9, hi - lo)) * CHART_HEIGHT
 
   const points = weeks.map((w, i) => ({ i, kg: w.avgKg }))
@@ -180,31 +191,32 @@ function WeightChart({ weeks }: { weeks: Array<{ weekStart: string; avgKg: numbe
     .curve(curveMonotoneX)
 
   return (
-    <svg
-      width="100%"
-      height={CHART_HEIGHT}
-      viewBox={`0 0 ${W} ${CHART_HEIGHT}`}
-      preserveAspectRatio="none"
-      style={{ display: 'block' }}
-      role="img"
-      aria-label="График веса по неделям"
-    >
-      <defs>
-        <linearGradient id="weight-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={withAlpha(palette.calories[1], 0.32)} />
-          <stop offset="100%" stopColor={withAlpha(palette.calories[1], 0)} />
-        </linearGradient>
-      </defs>
-      <path d={areaPath(points) ?? ''} fill="url(#weight-fill)" />
-      <path
-        d={linePath(points) ?? ''}
-        fill="none"
-        stroke={palette.calories[1]}
-        strokeWidth={2.4}
-        // preserveAspectRatio="none" stretches strokes horizontally; this keeps
-        // the line an even width whatever the container is.
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
+    <div ref={frameRef} style={{ width: '100%', height: CHART_HEIGHT }}>
+      {/* Nothing until measured: at width 0 every point sits on the y axis. */}
+      {width > 0 ? (
+        <svg
+          width="100%"
+          height={CHART_HEIGHT}
+          viewBox={`0 0 ${width} ${CHART_HEIGHT}`}
+          style={{ display: 'block' }}
+          role="img"
+          aria-label="График веса по неделям"
+        >
+          <defs>
+            <linearGradient id="weight-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={withAlpha(palette.calories[1], 0.32)} />
+              <stop offset="100%" stopColor={withAlpha(palette.calories[1], 0)} />
+            </linearGradient>
+          </defs>
+          <path d={areaPath(points) ?? ''} fill="url(#weight-fill)" />
+          <path
+            d={linePath(points) ?? ''}
+            fill="none"
+            stroke={palette.calories[1]}
+            strokeWidth={2.4}
+          />
+        </svg>
+      ) : null}
+    </div>
   )
 }
