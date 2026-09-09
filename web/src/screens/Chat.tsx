@@ -14,7 +14,7 @@ import { todayIso } from '@/lib/dates'
 import { makeThumb } from '@/lib/thumbnail'
 import { useUi } from '@/store/ui'
 import { ArrowUpIcon, CloseCircleIcon, PlusIcon, SparklesIcon, Spinner } from '@/theme/icons'
-import { accent, label, layout, palette, radius, singleRingSpec, surface } from '@/theme/tokens'
+import { accent, label, palette, radius, singleRingSpec, surface } from '@/theme/tokens'
 import type { ServerGoal, ServerMeal } from '@shared/types.ts'
 import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -132,7 +132,7 @@ export function Chat() {
     // ChatView.swift is built — ScreenHeader sits outside the ScrollView, unlike
     // History and You where it scrolls away with the content.
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ flexShrink: 0, padding: `${layout.screenTop}px ${layout.screenX}px 6px` }}>
+      <div style={{ flexShrink: 0, padding: 'var(--page-top) var(--page-x) 6px' }}>
         <ScreenHeader title="Чат" trailing={historyQuery.isFetching ? <Spinner /> : null} />
       </div>
 

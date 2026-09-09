@@ -1,7 +1,7 @@
 import { useUi } from '@/store/ui'
 import { WarnCircleIcon } from '@/theme/icons'
 import { ChatTabIcon, HistoryTabIcon, TodayTabIcon, YouTabIcon } from '@/theme/icons'
-import { accent, label, layout, surface, withAlpha } from '@/theme/tokens'
+import { accent, label, surface, withAlpha } from '@/theme/tokens'
 import { NavLink, Outlet } from 'react-router'
 
 // The app shell: a phone-width column filling the viewport frame, one scroll
@@ -36,16 +36,9 @@ const TAB_BAR_HEIGHT = 68
 
 export function AppLayout() {
   return (
-    <div
-      style={{
-        maxWidth: layout.maxWidth,
-        margin: '0 auto',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'relative',
-      }}
-    >
+    // .app-shell rather than an inline maxWidth: a media query cannot widen an
+    // inline declaration, and widening this frame is the whole desktop story.
+    <div className="app-shell">
       {/* Pays back the notch inset the viewport-fit=cover layout reaches into.
           Part of the frame rather than of the scrolled content, so a screen's
           sticky header stops below the notch instead of sliding under it. */}

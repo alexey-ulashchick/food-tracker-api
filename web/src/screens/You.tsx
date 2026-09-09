@@ -1,12 +1,13 @@
 import { getToken, setToken } from '@/api/client'
 import { listMemories, listWeights } from '@/api/endpoints'
 import { qk } from '@/api/keys'
+import { Page } from '@/components/Page'
 import { ScreenHeader } from '@/components/ScreenHeader'
 import { COST_DISPLAY_LABELS, COST_DISPLAY_MODES } from '@/lib/costDisplay'
 import { formatKg, latestWeight } from '@/lib/weight'
 import { useUi } from '@/store/ui'
 import { BrainIcon, ChevronIcon, DollarIcon, KeyIcon, ScaleIcon, Spinner } from '@/theme/icons'
-import { accent, label, layout, radius, surface, systemBlue, withAlpha } from '@/theme/tokens'
+import { accent, label, radius, surface, systemBlue, withAlpha } from '@/theme/tokens'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
 
@@ -31,14 +32,7 @@ export function You() {
   const token = getToken()
 
   return (
-    <div
-      style={{
-        padding: `${layout.screenTop}px ${layout.screenX}px ${layout.screenBottom}px`,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: layout.cardGap,
-      }}
-    >
+    <Page>
       <ScreenHeader
         title="Профиль"
         trailing={memoriesQuery.isFetching || weightsQuery.isFetching ? <Spinner /> : null}
@@ -138,7 +132,7 @@ export function You() {
           </button>
         </div>
       </Card>
-    </div>
+    </Page>
   )
 }
 

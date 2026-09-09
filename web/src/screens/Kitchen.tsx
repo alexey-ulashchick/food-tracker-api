@@ -176,7 +176,7 @@ export function Kitchen() {
   return (
     <div
       className="outer-frame"
-      style={{ maxWidth: 480, margin: '0 auto', padding: '8px 16px 24px' }}
+      style={{ maxWidth: 'var(--shell-max)', margin: '0 auto', padding: '8px 16px 24px' }}
     >
       <div style={{ marginBottom: 14 }}>
         <ScreenHeader

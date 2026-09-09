@@ -61,6 +61,28 @@
   --text-44: 44px;
 }
 
+/* ── Layout scale ────────────────────────────────────────────────────────────
+   A custom property is the one thing that reaches through an inline style:
+   `style={{ maxWidth: 'var(--bubble-max)' }}` still wins on specificity, but
+   its VALUE tracks a media query. That is what lets the app's ~10k lines of
+   style={{}} stay exactly as they are — the mobile values are the base values,
+   so there is nothing for a phone to regress to.
+
+   Deliberately :root and not @theme: Tailwind v4 prunes theme variables it
+   believes are unused, and these are read by hand rather than by a utility
+   class. The numbers mirror `layout` in theme/tokens.ts, which the remaining
+   JS call sites still read. */
+:root {
+  --page-x: 16px;
+  --page-top: 8px;
+  --page-bottom: 24px;
+  --card-gap: 14px;
+  --shell-max: 480px;
+  --bubble-max: 280px;
+  --bubble-gutter: 40px;
+  --action-card-max: 300px;
+}
+
 html,
 body {
   height: 100%;
@@ -223,6 +245,33 @@ body {
    stays because a browser tab under viewport-fit=cover still reports an inset. */
 .safe-top {
   padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* The shell frame. Was an inline maxWidth on AppLayout's outer div, which no
+   media query can narrow. Everything else about it is unchanged, deliberately:
+   height:100% and the flex column are what five commits of iOS height fixes
+   settled on. */
+.app-shell {
+  height: 100%;
+  max-width: var(--shell-max);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* The one screen root, replacing five identical copies. Padding lives here
+   rather than inline because an inline declaration cannot be widened by a
+   media query — which is the whole point of the exercise.
+
+   Note what does NOT get padding: <main>. Chat opts out of the shell scroller
+   with height:100%, and padding on its parent would make that child
+   100% + padding and overflow the frame. */
+.page {
+  padding: var(--page-top) var(--page-x) var(--page-bottom);
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-gap);
 }
 
 /* Login and /dev/kitchen render outside AppLayout, as direct children of #root

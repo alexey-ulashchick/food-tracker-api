@@ -2,6 +2,7 @@ import { daySummaries, getGoal, listMeals } from '@/api/endpoints'
 import { qk } from '@/api/keys'
 import { CalorieMeter } from '@/components/CalorieMeter'
 import { MacroPie } from '@/components/MacroPie'
+import { Page } from '@/components/Page'
 import { RingStack } from '@/components/ring/RingStack'
 import { addDays, relativeDayTitle, todayIso, weekdayShortDate } from '@/lib/dates'
 import { formatLocalTime } from '@/lib/formatLocalTime'
@@ -88,14 +89,7 @@ export function Today() {
   ]
 
   return (
-    <div
-      style={{
-        padding: `${layout.screenTop}px ${layout.screenX}px ${layout.screenBottom}px`,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: layout.cardGap,
-      }}
-    >
+    <Page>
       <DayHeader
         date={viewingDate}
         today={today}
@@ -174,7 +168,7 @@ export function Today() {
       </section>
 
       <MealsLog meals={meals} loading={mealsQuery.isLoading} />
-    </div>
+    </Page>
   )
 }
 

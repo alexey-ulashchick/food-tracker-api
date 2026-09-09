@@ -56,10 +56,10 @@ export function ChatBubble({ text, isUser }: { text: string; isUser: boolean }) 
     <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
       <div
         style={{
-          maxWidth: 280,
+          maxWidth: 'var(--bubble-max)',
           // Swift reserves a 40pt gutter on the opposite side.
-          marginLeft: isUser ? 40 : 0,
-          marginRight: isUser ? 0 : 40,
+          marginLeft: isUser ? 'var(--bubble-gutter)' : 0,
+          marginRight: isUser ? 0 : 'var(--bubble-gutter)',
           padding: '9px 14px',
           fontSize: 16,
           lineHeight: 1.35,

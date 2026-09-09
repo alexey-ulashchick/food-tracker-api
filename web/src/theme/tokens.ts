@@ -79,6 +79,17 @@ export const radius = {
   bar: 3,
 } as const
 
+/**
+ * Spacing still read from JS.
+ *
+ * The page-level values — screenX/screenTop/screenBottom/cardGap/maxWidth —
+ * also exist as custom properties in index.css (`--page-x`, `--page-top`,
+ * `--page-bottom`, `--card-gap`, `--shell-max`), and CSS is the source of
+ * truth for them: only a stylesheet can widen them at a breakpoint. The copies
+ * here are what remains for the few call sites still computing in JS. Change
+ * one, change the other — same deliberate duplication as the colour block at
+ * the top of index.css.
+ */
 export const layout = {
   screenX: 16,
   screenTop: 8,
@@ -86,7 +97,6 @@ export const layout = {
   cardGap: 14,
   cardPad: 14,
   cardPadWide: 16,
-  /** Mobile-first; on wider screens the app stays a centred phone-width column. */
   maxWidth: 480,
 } as const
 

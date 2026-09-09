@@ -1,5 +1,6 @@
 import { createMemory, deleteMemory, listMemories, updateMemory } from '@/api/endpoints'
 import { qk } from '@/api/keys'
+import { Page } from '@/components/Page'
 import { ScreenHeader } from '@/components/ScreenHeader'
 import { useUi } from '@/store/ui'
 import { BrainIcon, MinusCircleIcon, PencilCircleIcon, Spinner, TrayIcon } from '@/theme/icons'
@@ -52,14 +53,7 @@ export function Memories() {
   const memories = query.data ?? []
 
   return (
-    <div
-      style={{
-        padding: `${layout.screenTop}px ${layout.screenX}px ${layout.screenBottom}px`,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: layout.cardGap,
-      }}
-    >
+    <Page>
       <ScreenHeader title="Память" trailing={query.isFetching ? <Spinner /> : null} />
 
       <p style={{ fontWeight: 400, fontSize: 13, color: label.secondary, margin: 0 }}>
@@ -163,7 +157,7 @@ export function Memories() {
           ))}
         </section>
       )}
-    </div>
+    </Page>
   )
 }
 

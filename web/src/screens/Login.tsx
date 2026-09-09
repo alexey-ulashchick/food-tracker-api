@@ -53,13 +53,10 @@ export function Login() {
   return (
     <div className="outer-frame">
       <div
+        className="page"
         style={{
-          maxWidth: layout.maxWidth,
+          maxWidth: 'var(--shell-max)',
           margin: '0 auto',
-          padding: `${layout.screenTop}px ${layout.screenX}px ${layout.screenBottom}px`,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: layout.cardGap,
         }}
       >
         <h1 style={{ fontWeight: 700, fontSize: 32, margin: '8px 0 0' }}>Cal Tracker</h1>

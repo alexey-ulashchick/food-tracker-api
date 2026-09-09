@@ -33,7 +33,10 @@ export function ActionCard({
         // too — so text alone cannot address a card unambiguously.
         data-testid="action-card"
         style={{
-          maxWidth: 300,
+          // A variable, not a literal: the cap is 300 on a phone and wider on
+          // a desktop, and an inline declaration is the only way to keep the
+          // rest of this style block while still tracking a media query.
+          maxWidth: 'var(--action-card-max)',
           width: '100%',
           minHeight,
           padding,

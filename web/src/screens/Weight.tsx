@@ -1,5 +1,6 @@
 import { listWeights } from '@/api/endpoints'
 import { qk } from '@/api/keys'
+import { Page } from '@/components/Page'
 import { ScreenHeader } from '@/components/ScreenHeader'
 import { useElementWidth } from '@/lib/useElementWidth'
 import {
@@ -35,14 +36,7 @@ export function Weight() {
   const slope = trendKgPerWeek(points)
 
   return (
-    <div
-      style={{
-        padding: `${layout.screenTop}px ${layout.screenX}px ${layout.screenBottom}px`,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: layout.cardGap,
-      }}
-    >
+    <Page>
       <ScreenHeader title="Вес" trailing={query.isFetching ? <Spinner /> : null} />
 
       <section
@@ -93,7 +87,7 @@ export function Weight() {
           </div>
         )}
       </section>
-    </div>
+    </Page>
   )
 }
 

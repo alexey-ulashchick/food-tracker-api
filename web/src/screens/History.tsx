@@ -1,6 +1,7 @@
 import { daySummaries, listGoals, listMeals } from '@/api/endpoints'
 import { qk } from '@/api/keys'
 import { CHART_HEIGHT, CalorieChart, type ChartDay } from '@/components/CalorieChart'
+import { Page } from '@/components/Page'
 import { ScreenHeader } from '@/components/ScreenHeader'
 import { MacroRing } from '@/components/ring/MacroRing'
 import {
@@ -85,14 +86,7 @@ export function History() {
   const loading = chartMealsQuery.isFetching || goalsQuery.isFetching
 
   return (
-    <div
-      style={{
-        padding: `${layout.screenTop}px ${layout.screenX}px ${layout.screenBottom}px`,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: layout.cardGap,
-      }}
-    >
+    <Page>
       <ScreenHeader title="История" trailing={loading ? <Spinner /> : null} />
 
       <section
@@ -138,7 +132,7 @@ export function History() {
 
       <SectionLabel>Прошедшие дни</SectionLabel>
       <PastDays goals={goals} today={today} />
-    </div>
+    </Page>
   )
 }
 
