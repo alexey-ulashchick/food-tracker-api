@@ -10,9 +10,9 @@ afterEach(() => {
   cleanup()
 })
 
-// jsdom implements neither of these, and both are used by real screens: the
-// chat list anchors to its newest row, and IntersectionObserver drives the
-// History list's infinite scroll.
+// jsdom implements none of these, and all three are used by real screens: the
+// chat list anchors to its newest row, IntersectionObserver drives the History
+// list's infinite scroll, and ResizeObserver sizes the two SVG charts.
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {}
 }
@@ -30,4 +30,15 @@ if (!('IntersectionObserver' in globalThis)) {
   }
   globalThis.IntersectionObserver =
     NoopIntersectionObserver as unknown as typeof IntersectionObserver
+}
+// A hook cannot be conditional, so useElementWidth constructs one of these on
+// every render of Weight and History. Without the stub those screens throw on
+// mount and take the router tests with them.
+if (!('ResizeObserver' in globalThis)) {
+  class NoopResizeObserver implements ResizeObserver {
+    disconnect() {}
+    observe() {}
+    unobserve() {}
+  }
+  globalThis.ResizeObserver = NoopResizeObserver as unknown as typeof ResizeObserver
 }
