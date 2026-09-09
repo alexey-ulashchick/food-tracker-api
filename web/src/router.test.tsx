@@ -115,3 +115,45 @@ describe('routing with a token', () => {
     expect(screen.getByRole('heading', { name: 'Сегодня' })).toBeInTheDocument()
   })
 })
+
+describe('the shell above the desktop breakpoint', () => {
+  beforeEach(() => {
+    setToken(VALID_TOKEN)
+    // Stands in for the media query flipping --desktop to 1. jsdom evaluates no
+    // media queries, so this is the only way to reach the desktop branch.
+    vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '1' }))
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  test('there is still exactly one navigation landmark', () => {
+    renderAt('/')
+    // The decisive constraint: the sidebar REPLACES the tab bar. Mounting both
+    // and hiding one with CSS would duplicate every link in the accessibility
+    // tree — and in jsdom, where CSS is blanked, would not even hide it.
+    expect(screen.getAllByRole('navigation')).toHaveLength(1)
+  })
+
+  test('the sidebar carries every section, not just the four tabs', () => {
+    renderAt('/')
+    const links = screen.getAllByRole('link')
+    expect(links.map((l) => l.textContent)).toEqual([
+      'Сегодня',
+      'Чат',
+      'История',
+      'Вес',
+      'Память',
+      'Профиль',
+    ])
+  })
+
+  test('Профиль does not stay lit while one of its sub-screens is open', () => {
+    // The sidebar lists Вес next to Профиль, so /you needs the strict match the
+    // tab bar deliberately does without.
+    renderAt('/you/weight')
+    const active = screen.getAllByRole('link').filter((l) => l.getAttribute('aria-current'))
+    expect(active.map((l) => l.textContent)).toEqual(['Вес'])
+  })
+})
