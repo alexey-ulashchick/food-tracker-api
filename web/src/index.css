@@ -429,6 +429,36 @@ body {
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
   }
+
+  /* A meal row becomes a table row. On a phone the name sits above a squeezed
+     11px line of "ЗАВТРАК · 08:42 · Б20 У4 Ж8"; here they share one line, and
+     the three trailing groups get fixed tracks so they line up down the list
+     instead of each row wrapping to its own content. */
+  .meal-text {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 16px;
+  }
+  .meal-name {
+    flex: 1;
+    min-width: 0;
+  }
+  .meal-meta {
+    flex: 0 0 auto;
+  }
+  /* The dots separate a run-on line. Columns do that job here. */
+  .meal-sep {
+    display: none;
+  }
+  .meal-type {
+    width: 84px;
+  }
+  .meal-time {
+    width: 44px;
+  }
+  .meal-macros {
+    width: 132px;
+  }
 }
 
 /* One column on a phone; the desktop query above turns it into two. Declared

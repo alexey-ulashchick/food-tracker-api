@@ -98,74 +98,79 @@ export function Today() {
         onReset={resetToToday}
       />
 
-      <section
-        style={{
-          background: surface.card,
-          borderRadius: radius.card,
-          padding: layout.cardPadWide,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12,
-        }}
-      >
-        <CalorieMeter
-          current={eaten.calories}
-          goal={targets.calories}
-          stops={palette.calories}
-          accessory={
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                fontWeight: 600,
-                fontSize: 12.5,
-                color: dayTypeTint[dayType],
-                background: withAlpha(dayTypeTint[dayType], CHIP_BG_ALPHA),
-                borderRadius: 999,
-                padding: '6px 11px',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {DAY_TYPE_LABEL[dayType] ?? dayType}
-            </span>
-          }
-        />
-        <hr style={{ height: 1, background: surface.hairline, border: 0, margin: 0 }} />
-        {verdict ? <Verdict verdict={verdict} /> : null}
-      </section>
-
-      <section
-        style={{
-          background: surface.card,
-          borderRadius: radius.card,
-          padding: layout.cardPad,
-          display: 'flex',
-          alignItems: 'center',
-          gap: layout.cardPad,
-        }}
-      >
-        <div style={{ position: 'relative', width: ringSpec.todayStack.size, flexShrink: 0 }}>
-          <RingStack
-            rings={macroRows.map((m) => ({
-              value: m.goal > 0 ? m.current / m.goal : 0,
-              stops: palette[m.key],
-            }))}
-            {...ringSpec.todayStack}
+      {/* The calorie card and the ring card side by side once both clear 380px.
+          Below that the grid collapses on its own — the ring card's macro rows
+          get 278px on a phone and must never end up with less. */}
+      <div className="card-row card-row--today">
+        <section
+          style={{
+            background: surface.card,
+            borderRadius: radius.card,
+            padding: layout.cardPadWide,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+          }}
+        >
+          <CalorieMeter
+            current={eaten.calories}
+            goal={targets.calories}
+            stops={palette.calories}
+            accessory={
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  fontWeight: 600,
+                  fontSize: 12.5,
+                  color: dayTypeTint[dayType],
+                  background: withAlpha(dayTypeTint[dayType], CHIP_BG_ALPHA),
+                  borderRadius: 999,
+                  padding: '6px 11px',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {DAY_TYPE_LABEL[dayType] ?? dayType}
+              </span>
+            }
           />
-          <RingCentre rows={macroRows} />
-        </div>
+          <hr style={{ height: 1, background: surface.hairline, border: 0, margin: 0 }} />
+          {verdict ? <Verdict verdict={verdict} /> : null}
+        </section>
 
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {macroRows.map((m, i) => (
-            <div key={m.key}>
-              <MacroStatRow row={m} />
-              {i < macroRows.length - 1 ? (
-                <hr style={{ height: 1, background: surface.hairline, border: 0, margin: 0 }} />
-              ) : null}
-            </div>
-          ))}
-        </div>
-      </section>
+        <section
+          style={{
+            background: surface.card,
+            borderRadius: radius.card,
+            padding: layout.cardPad,
+            display: 'flex',
+            alignItems: 'center',
+            gap: layout.cardPad,
+          }}
+        >
+          <div style={{ position: 'relative', width: ringSpec.todayStack.size, flexShrink: 0 }}>
+            <RingStack
+              rings={macroRows.map((m) => ({
+                value: m.goal > 0 ? m.current / m.goal : 0,
+                stops: palette[m.key],
+              }))}
+              {...ringSpec.todayStack}
+            />
+            <RingCentre rows={macroRows} />
+          </div>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {macroRows.map((m, i) => (
+              <div key={m.key}>
+                <MacroStatRow row={m} />
+                {i < macroRows.length - 1 ? (
+                  <hr style={{ height: 1, background: surface.hairline, border: 0, margin: 0 }} />
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
 
       <MealsLog meals={meals} loading={mealsQuery.isLoading} />
     </Page>
@@ -211,7 +216,20 @@ function DayHeader({
   return (
     <header style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <h1 style={{ fontWeight: 700, fontSize: 32, margin: 0, whiteSpace: 'nowrap' }}>
+        {/* Hand-rolled rather than ScreenHeader because of the day chevrons,
+            but the type has to match it exactly — without lineHeight this
+            title sat 1–2px taller than every other tab's. */}
+        <h1
+          style={{
+            fontWeight: 700,
+            fontSize: 32,
+            lineHeight: 1.1,
+            margin: 0,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
           {relativeDayTitle(date, today)}
         </h1>
         <span className="tnum" style={{ fontWeight: 500, fontSize: 13, color: label.secondary }}>
@@ -526,8 +544,12 @@ function MealRow({ meal }: { meal: ServerMeal }) {
         {meal.emoji ?? '🍽'}
       </span>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+      <div
+        className="meal-text"
+        style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}
+      >
         <span
+          className="meal-name"
           style={{
             fontWeight: 600,
             fontSize: 14.5,
@@ -539,6 +561,7 @@ function MealRow({ meal }: { meal: ServerMeal }) {
           {meal.foodName}
         </span>
         <span
+          className="meal-meta"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -549,6 +572,7 @@ function MealRow({ meal }: { meal: ServerMeal }) {
           }}
         >
           <span
+            className="meal-type"
             style={{
               fontWeight: 600,
               fontSize: 11,
@@ -558,15 +582,19 @@ function MealRow({ meal }: { meal: ServerMeal }) {
           >
             {MEAL_RU[meal.meal] ?? meal.meal}
           </span>
-          <span>·</span>
+          <span className="meal-sep">·</span>
           {/* Rendered in the timezone where the meal was eaten. */}
-          <span className="tnum" style={{ fontWeight: 500, fontSize: 11 }}>
+          <span className="tnum meal-time" style={{ fontWeight: 500, fontSize: 11 }}>
             {formatLocalTime(meal.timestamp, meal.tzOffsetMin)}
           </span>
-          <span>·</span>
-          <MealMacro letter="Б" value={meal.protein} color={palette.protein[1]} />
-          <MealMacro letter="У" value={meal.carbs} color={palette.carbs[1]} />
-          <MealMacro letter="Ж" value={meal.fats} color={palette.fat[1]} />
+          <span className="meal-sep">·</span>
+          {/* Grouped so the desktop layout can give the three a single track and
+              line them up down the list. */}
+          <span className="meal-macros" style={{ display: 'inline-flex', gap: 8 }}>
+            <MealMacro letter="Б" value={meal.protein} color={palette.protein[1]} />
+            <MealMacro letter="У" value={meal.carbs} color={palette.carbs[1]} />
+            <MealMacro letter="Ж" value={meal.fats} color={palette.fat[1]} />
+          </span>
         </span>
       </div>
 
