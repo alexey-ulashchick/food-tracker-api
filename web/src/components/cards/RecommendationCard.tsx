@@ -1,8 +1,7 @@
 import { SealCheckIcon, WarnCircleIcon } from '@/theme/icons'
 import { dietDayColor, label, radius, withAlpha } from '@/theme/tokens'
 import { DIET_DAY_TITLES } from '@shared/dietDayTitles.ts'
-import type { DietDayColor, RecommendationMeta } from '@shared/types.ts'
-import { useState } from 'react'
+import type { RecommendationMeta } from '@shared/types.ts'
 import { ActionCard, Kcal, MacroChip, cardDivider } from './ActionCard'
 
 // Ports of CalTracker/RecommendationCard.swift. One card per achievable diet-day
@@ -13,9 +12,11 @@ type Props = {
   item: RecommendationMeta
   /** Set inside the deck so short cards match the tallest one. */
   fill?: boolean
+  /** Position in the deck, rendered as a `n / total` chip. Omitted when alone. */
+  page?: { index: number; total: number }
 }
 
-export function RecommendationCard({ item, fill }: Props) {
+export function RecommendationCard({ item, fill, page }: Props) {
   const tint = dietDayColor[item.color]
   const noFood = item.foods.length === 0
 
@@ -34,6 +35,22 @@ export function RecommendationCard({ item, fill }: Props) {
           {/* An empty combo reads as a status, not a suggestion to eat. */}
           {noFood ? 'день уже сложился' : `+${Math.round(item.addedMacros.calories)} ккал`}
         </span>
+        {page && page.total > 1 ? (
+          <span
+            className="tnum"
+            style={{
+              flexShrink: 0,
+              fontWeight: 700,
+              fontSize: 10.5,
+              color: '#fff',
+              background: withAlpha(tint, 0.85),
+              borderRadius: 999,
+              padding: '3px 8px',
+            }}
+          >
+            {page.index + 1} / {page.total}
+          </span>
+        ) : null}
       </div>
 
       {noFood ? (
@@ -133,52 +150,21 @@ export function RecommendationErrorCard({ message }: { message: string }) {
  * scroll-snap needs neither: the browser hands vertical drags to the parent
  * scroller itself, and flex stretch equalises card heights to the tallest in
  * the set with no magic number and no clipping.
+ *
+ * Each card carries its own `n / total` chip. It used to be one badge owned by
+ * the deck, absolutely positioned at `left: 300 - 12` — the card's cap, spelled
+ * out a second time — with the page index derived from `scrollLeft /
+ * clientWidth`. Both only held while a card was exactly the width of the track,
+ * and the badge landed on top of the card's own "+N ккал" line.
  */
 export function RecommendationStack({ variants }: { variants: RecommendationMeta[] }) {
-  const [index, setIndex] = useState(0)
-  const current = variants[Math.min(index, variants.length - 1)]
-  const tint = dietDayColor[(current?.color ?? 'gray') as DietDayColor]
-
   return (
-    <div style={{ position: 'relative' }}>
-      <div
-        className="snap-deck"
-        onScroll={(e) => {
-          const el = e.currentTarget
-          // Card width is the full track, so the page index is a plain ratio.
-          const next = Math.round(el.scrollLeft / Math.max(1, el.clientWidth))
-          if (next !== index) setIndex(next)
-        }}
-      >
-        {variants.map((item, i) => (
-          <div key={`${item.color}-${i}`} style={{ display: 'flex', paddingRight: 2 }}>
-            <RecommendationCard item={item} fill />
-          </div>
-        ))}
-      </div>
-
-      {variants.length > 1 ? (
-        <span
-          className="tnum"
-          style={{
-            position: 'absolute',
-            top: 8,
-            // The card is capped at 300px, so pin the chip to that edge rather
-            // than the (wider) scroll track.
-            left: 300 - 12,
-            transform: 'translateX(-100%)',
-            fontWeight: 700,
-            fontSize: 10.5,
-            color: '#fff',
-            background: withAlpha(tint, 0.85),
-            borderRadius: 999,
-            padding: '3px 8px',
-            pointerEvents: 'none',
-          }}
-        >
-          {Math.min(index, variants.length - 1) + 1} / {variants.length}
-        </span>
-      ) : null}
+    <div className="snap-deck">
+      {variants.map((item, i) => (
+        <div key={`${item.color}-${i}`} style={{ display: 'flex', paddingRight: 2 }}>
+          <RecommendationCard item={item} fill page={{ index: i, total: variants.length }} />
+        </div>
+      ))}
     </div>
   )
 }
