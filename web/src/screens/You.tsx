@@ -38,100 +38,112 @@ export function You() {
         trailing={memoriesQuery.isFetching || weightsQuery.isFetching ? <Spinner /> : null}
       />
 
-      <NavCard
-        to="/you/weight"
-        icon={<ScaleIcon size={15} />}
-        tint={accent}
-        title="Вес"
-        subtitle={
-          weightsQuery.isLoading
-            ? 'Загружаю…'
-            : latest
-              ? `${formatKg(latest.kg)} кг`
-              : 'Данных пока нет'
-        }
-      />
+      {/* Grouped into blocks so a section label always travels with its card.
+          Each block is a flex column with the same gap the page uses, so on a
+          phone the run of children is spaced exactly as it was before the grid
+          existed; above 1024px the blocks pair up into two columns. */}
+      <div className="card-row">
+        <div className="card-block">
+          <NavCard
+            to="/you/weight"
+            icon={<ScaleIcon size={15} />}
+            tint={accent}
+            title="Вес"
+            subtitle={
+              weightsQuery.isLoading
+                ? 'Загружаю…'
+                : latest
+                  ? `${formatKg(latest.kg)} кг`
+                  : 'Данных пока нет'
+            }
+          />
+        </div>
 
-      <SectionLabel>Ассистент</SectionLabel>
+        <div className="card-block">
+          <SectionLabel>Ассистент</SectionLabel>
+          <NavCard
+            to="/you/memories"
+            icon={<BrainIcon size={15} />}
+            tint="#BF5AF2"
+            title="Память"
+            subtitle={
+              memoriesQuery.isLoading
+                ? 'Загружаю…'
+                : `${memoriesQuery.data?.length ?? 0} ${plural(memoriesQuery.data?.length ?? 0)}`
+            }
+          />
+        </div>
 
-      <NavCard
-        to="/you/memories"
-        icon={<BrainIcon size={15} />}
-        tint="#BF5AF2"
-        title="Память"
-        subtitle={
-          memoriesQuery.isLoading
-            ? 'Загружаю…'
-            : `${memoriesQuery.data?.length ?? 0} ${plural(memoriesQuery.data?.length ?? 0)}`
-        }
-      />
+        <div className="card-block">
+          <Card>
+            <Row
+              icon={<DollarIcon size={15} />}
+              tint="#30D158"
+              title="Стоимость запросов"
+              subtitle="Показывать над ответами ассистента"
+            />
+            <div style={{ display: 'flex', gap: 4, padding: '0 14px 14px' }}>
+              {COST_DISPLAY_MODES.map((mode) => {
+                const active = mode === costDisplay
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setCostDisplay(mode)}
+                    style={{
+                      flex: 1,
+                      border: 0,
+                      borderRadius: 8,
+                      background: active ? surface.subtle : 'transparent',
+                      color: active ? label.primary : label.secondary,
+                      fontWeight: active ? 600 : 400,
+                      fontSize: 12,
+                      padding: '7px 4px',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {COST_DISPLAY_LABELS[mode]}
+                  </button>
+                )
+              })}
+            </div>
+          </Card>
+        </div>
 
-      <Card>
-        <Row
-          icon={<DollarIcon size={15} />}
-          tint="#30D158"
-          title="Стоимость запросов"
-          subtitle="Показывать над ответами ассистента"
-        />
-        <div style={{ display: 'flex', gap: 4, padding: '0 14px 14px' }}>
-          {COST_DISPLAY_MODES.map((mode) => {
-            const active = mode === costDisplay
-            return (
+        <div className="card-block">
+          <SectionLabel>Доступ</SectionLabel>
+          <Card>
+            <Row
+              icon={<KeyIcon size={15} />}
+              tint={systemBlue}
+              title="Токен"
+              subtitle={maskToken(token)}
+            />
+            <div style={{ padding: '0 14px 14px' }}>
               <button
-                key={mode}
                 type="button"
-                onClick={() => setCostDisplay(mode)}
+                onClick={() => {
+                  setToken('')
+                  navigate('/login', { replace: true })
+                }}
                 style={{
-                  flex: 1,
                   border: 0,
-                  borderRadius: 8,
-                  background: active ? surface.subtle : 'transparent',
-                  color: active ? label.primary : label.secondary,
-                  fontWeight: active ? 600 : 400,
-                  fontSize: 12,
-                  padding: '7px 4px',
+                  borderRadius: radius.field,
+                  background: withAlpha('#FF453A', 0.16),
+                  color: '#FF453A',
+                  fontWeight: 600,
+                  fontSize: 13,
+                  padding: '9px 12px',
                   cursor: 'pointer',
-                  whiteSpace: 'nowrap',
                 }}
               >
-                {COST_DISPLAY_LABELS[mode]}
+                Выйти
               </button>
-            )
-          })}
+            </div>
+          </Card>
         </div>
-      </Card>
-
-      <SectionLabel>Доступ</SectionLabel>
-
-      <Card>
-        <Row
-          icon={<KeyIcon size={15} />}
-          tint={systemBlue}
-          title="Токен"
-          subtitle={maskToken(token)}
-        />
-        <div style={{ padding: '0 14px 14px' }}>
-          <button
-            type="button"
-            onClick={() => {
-              setToken('')
-              navigate('/login', { replace: true })
-            }}
-            style={{
-              border: 0,
-              borderRadius: radius.field,
-              background: withAlpha('#FF453A', 0.16),
-              color: '#FF453A',
-              fontWeight: 600,
-              fontSize: 13,
-              padding: '9px 12px',
-              cursor: 'pointer',
-            }}
-          >
-            Выйти
-          </button>
-        </div>
-      </Card>
+      </div>
     </Page>
   )
 }

@@ -234,7 +234,14 @@ function PaginatorButton({ dir, onClick }: { dir: 'left' | 'right'; onClick: () 
 
 function MetricsCard({ metrics }: { metrics: ReturnType<typeof calorieMetrics> | null }) {
   return (
-    <section style={{ background: surface.card, borderRadius: radius.card }}>
+    // One card at every width. On a desktop `.metrics-split` turns it into two
+    // columns and swaps the horizontal rule for a vertical edge — splitting it
+    // into two <section>s instead would have changed the phone layout from one
+    // card with a divider into two cards with a gap.
+    <section
+      className="metrics-split"
+      style={{ background: surface.card, borderRadius: radius.card }}
+    >
       <MetricsRow title="Эта неделя" subtitle="Пн — сегодня" stat={metrics?.thisWeek ?? null} />
       <hr style={{ height: 1, background: surface.hairline, border: 0, margin: '0 0 0 16px' }} />
       <MetricsRow
@@ -580,11 +587,14 @@ function PastDayRow({ row, onOpen }: { row: DaySummaryRow; onOpen: () => void })
       onPointerDown={() => setPressed(true)}
       onPointerUp={() => setPressed(false)}
       onPointerLeave={() => setPressed(false)}
+      className="row-hover"
       style={{
         width: '100%',
         border: 0,
-        // PastDayRowButtonStyle: a faint white wash while held.
-        background: pressed ? 'rgba(255,255,255,0.04)' : 'transparent',
+        // PastDayRowButtonStyle: a faint white wash while held. The idle value
+        // is a variable so the desktop hover rule can set it — an inline
+        // declaration cannot be overridden by a class.
+        background: pressed ? 'rgba(255,255,255,0.04)' : 'var(--row-bg, transparent)',
         color: label.primary,
         font: 'inherit',
         textAlign: 'left',

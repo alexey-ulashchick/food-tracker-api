@@ -376,6 +376,48 @@ body {
   text-decoration: none;
 }
 
+/* ── Composable layout blocks ────────────────────────────────────────────────
+   Base values first, then the desktop query overrides them. Order matters and
+   is the whole reason these sit here rather than next to their overrides: the
+   selectors have equal specificity, so a base rule written AFTER the media
+   query would win at every width and the desktop layout would silently never
+   apply. */
+
+/* One column on a phone, two above the breakpoint. The grid exists at both
+   widths and only its track list changes. */
+.card-row {
+  display: grid;
+  gap: var(--card-gap);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* A section label and the card it belongs to, kept together when the grid
+   pairs blocks into columns. The gap matches the page's, so on a phone a run
+   of blocks is spaced exactly as the flat run of children was. */
+.card-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-gap);
+  min-width: 0;
+}
+
+/* Chat's readable measure, applied to the INNER row of the macro strip, the
+   transcript and the composer. The .material-thin bars themselves stay
+   full-bleed — centring only the transcript leaves the composer visibly
+   disagreeing with the messages above it. */
+.chat-measure {
+  width: 100%;
+  max-width: var(--measure);
+  margin: 0 auto;
+}
+
+/* The weight reading above its chart; side by side on a desktop. */
+.weight-split {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 @media (min-width: 1024px) {
   .shell-body {
     display: grid;
@@ -459,25 +501,36 @@ body {
   .meal-macros {
     width: 132px;
   }
-}
 
-/* One column on a phone; the desktop query above turns it into two. Declared
-   outside the query so the grid exists at every width and only its track list
-   changes. */
-.card-row {
-  display: grid;
-  gap: var(--card-gap);
-  grid-template-columns: minmax(0, 1fr);
-}
+  /* History's two metric rows, side by side. The horizontal rule between them
+     becomes a vertical edge on the second column. */
+  .metrics-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .metrics-split > hr {
+    display: none;
+  }
+  .metrics-split > :last-child {
+    border-left: 1px solid rgba(255, 255, 255, 0.06);
+  }
 
-/* Chat's readable measure, applied to the INNER row of the macro strip, the
-   transcript and the composer. The .material-thin bars themselves stay
-   full-bleed — centring only the transcript leaves the composer visibly
-   disagreeing with the messages above it. */
-.chat-measure {
-  width: 100%;
-  max-width: var(--measure);
-  margin: 0 auto;
+  /* Saved facts are one line each. auto-fill rather than auto-fit so a single
+     memory stays a card-sized card instead of stretching across the page. */
+  .memory-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    align-items: start;
+  }
+
+  /* The current reading beside its chart. minmax(0, 1fr) on the chart column so
+     the measured SVG can shrink; a bare 1fr floors at min-content. */
+  .weight-split {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 28px;
+  }
 }
 
 /* Hover only where a pointer really hovers, or a phone keeps the wash after a

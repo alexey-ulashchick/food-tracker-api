@@ -50,7 +50,10 @@ export function Weight() {
         }}
       >
         {latest ? (
-          <>
+          // The reading and the chart stack on a phone and sit side by side on
+          // a desktop, where a 140px chart under a 44px number leaves the right
+          // half of the card empty.
+          <div className="weight-split">
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
               <span className="tnum" style={{ fontWeight: 700, fontSize: 44 }}>
                 {formatKg(latest.kg)}
@@ -60,7 +63,7 @@ export function Weight() {
               {slope != null ? <TrendPill slope={slope} /> : null}
             </div>
             <WeightChart weeks={weeks} />
-          </>
+          </div>
         ) : (
           <div
             style={{

@@ -160,7 +160,7 @@ export function Chat() {
           </div>
         ) : null}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="chat-measure" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {renderItems.map((entry) => (
             <div key={entry.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {entry.kind === 'single' ? (
@@ -327,47 +327,48 @@ function MacroStrip({ goal, meals }: { goal: ServerGoal | null; meals: ServerMea
         zIndex: 5,
         padding: '10px 16px',
         borderBottom: `0.5px solid ${surface.hairline}`,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 14,
       }}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <CalorieMeter
-          current={eaten.calories}
-          goal={targets.calories}
-          stops={palette.calories}
-          size="small"
-        />
-      </div>
-      {/* Three independent rings, as in the Swift strip — a nested stack at
+      {/* The bar stays full-bleed; only its contents take the measure, so the
+          strip lines up with the transcript instead of drifting apart. */}
+      <div className="chat-measure" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <CalorieMeter
+            current={eaten.calories}
+            goal={targets.calories}
+            stops={palette.calories}
+            size="small"
+          />
+        </div>
+        {/* Three independent rings, as in the Swift strip — a nested stack at
           36px collapses the innermost ring below its own stroke width. */}
-      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-        {(['protein', 'carbs', 'fat'] as const).map((key) => (
-          <div key={key} style={{ position: 'relative', width: spec.size, height: spec.size }}>
-            <MacroRing
-              value={targets[key] > 0 ? eaten[key] / targets[key] : 0}
-              stops={palette[key]}
-              size={spec.size}
-              strokeWidth={spec.strokeWidth}
-            />
-            <span
-              style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontSize: 9.5,
-                color: label.secondary,
-                pointerEvents: 'none',
-              }}
-            >
-              {MACRO_LETTERS[key]}
-            </span>
-          </div>
-        ))}
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          {(['protein', 'carbs', 'fat'] as const).map((key) => (
+            <div key={key} style={{ position: 'relative', width: spec.size, height: spec.size }}>
+              <MacroRing
+                value={targets[key] > 0 ? eaten[key] / targets[key] : 0}
+                stops={palette[key]}
+                size={spec.size}
+                strokeWidth={spec.strokeWidth}
+              />
+              <span
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: 9.5,
+                  color: label.secondary,
+                  pointerEvents: 'none',
+                }}
+              >
+                {MACRO_LETTERS[key]}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -388,6 +389,28 @@ function Composer({
   const cameraRef = useRef<HTMLInputElement>(null)
   const libraryRef = useRef<HTMLInputElement>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const attachRef = useRef<HTMLDivElement>(null)
+
+  // The attach menu had no way out but tapping the same button again — no
+  // Escape, no click-away — which is wrong on a phone too and unmissable with a
+  // pointer. Bound only while it is open.
+  useEffect(() => {
+    if (!menuOpen) return
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    const onPointerDown = (e: PointerEvent) => {
+      if (!attachRef.current?.contains(e.target as Node)) setMenuOpen(false)
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('pointerdown', onPointerDown)
+    }
+  }, [menuOpen])
 
   const canSend = !busy && (text.trim().length > 0 || attachment !== null)
 
@@ -416,136 +439,139 @@ function Composer({
         flexShrink: 0,
         padding: '8px 12px',
         borderTop: `0.5px solid ${surface.hairline}`,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 8,
       }}
     >
-      {attachment ? (
-        <div style={{ position: 'relative', alignSelf: 'flex-start' }}>
-          <img
-            src={attachment.thumb}
-            alt=""
-            style={{ height: 64, borderRadius: radius.field, display: 'block' }}
-          />
-          <button
-            type="button"
-            onClick={() => setAttachment(null)}
-            aria-label="Убрать фото"
-            style={{
-              position: 'absolute',
-              top: -6,
-              right: -6,
-              border: 0,
-              background: 'transparent',
-              color: label.primary,
-              padding: 0,
-              cursor: 'pointer',
-              display: 'flex',
-            }}
-          >
-            <CloseCircleIcon />
-          </button>
-        </div>
-      ) : null}
-
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-        {/* The browser owns camera permission, so the whole AVCaptureDevice
-            dance and its "open Settings" alert are simply gone. */}
-        <input
-          ref={cameraRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          hidden
-          onChange={(e) => void pick(e.target.files?.[0])}
-        />
-        <input
-          ref={libraryRef}
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={(e) => void pick(e.target.files?.[0])}
-        />
-
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          <RoundButton
-            label="Прикрепить фото"
-            onClick={() => setMenuOpen((v) => !v)}
-            background={surface.control}
-          >
-            {preparing ? <Spinner size={14} /> : <PlusIcon />}
-          </RoundButton>
-          {menuOpen ? (
-            <div
+      {/* The bar is full-bleed, its contents take the same measure as the
+          transcript — otherwise a 1200px composer sits under 720px of messages
+          and the send button ends up a long way from the last reply. */}
+      <div className="chat-measure" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {attachment ? (
+          <div style={{ position: 'relative', alignSelf: 'flex-start' }}>
+            <img
+              src={attachment.thumb}
+              alt=""
+              style={{ height: 64, borderRadius: radius.field, display: 'block' }}
+            />
+            <button
+              type="button"
+              onClick={() => setAttachment(null)}
+              aria-label="Убрать фото"
               style={{
                 position: 'absolute',
-                bottom: 40,
-                left: 0,
-                background: surface.elevated,
-                borderRadius: radius.field,
-                boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
-                overflow: 'hidden',
-                zIndex: 20,
-                minWidth: 150,
+                top: -6,
+                right: -6,
+                border: 0,
+                background: 'transparent',
+                color: label.primary,
+                padding: 0,
+                cursor: 'pointer',
+                display: 'flex',
               }}
             >
-              <MenuItem
-                label="Снять фото"
-                onClick={() => {
-                  setMenuOpen(false)
-                  cameraRef.current?.click()
+              <CloseCircleIcon />
+            </button>
+          </div>
+        ) : null}
+
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+          {/* The browser owns camera permission, so the whole AVCaptureDevice
+            dance and its "open Settings" alert are simply gone. */}
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            hidden
+            onChange={(e) => void pick(e.target.files?.[0])}
+          />
+          <input
+            ref={libraryRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => void pick(e.target.files?.[0])}
+          />
+
+          <div ref={attachRef} style={{ position: 'relative', flexShrink: 0 }}>
+            <RoundButton
+              label="Прикрепить фото"
+              onClick={() => setMenuOpen((v) => !v)}
+              background={surface.control}
+              expanded={menuOpen}
+            >
+              {preparing ? <Spinner size={14} /> : <PlusIcon />}
+            </RoundButton>
+            {menuOpen ? (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 40,
+                  left: 0,
+                  background: surface.elevated,
+                  borderRadius: radius.field,
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+                  overflow: 'hidden',
+                  zIndex: 20,
+                  minWidth: 150,
                 }}
-              />
-              <MenuItem
-                label="Из галереи"
-                onClick={() => {
-                  setMenuOpen(false)
-                  libraryRef.current?.click()
-                }}
-              />
-            </div>
+              >
+                <MenuItem
+                  label="Снять фото"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    cameraRef.current?.click()
+                  }}
+                />
+                <MenuItem
+                  label="Из галереи"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    libraryRef.current?.click()
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <RoundButton label="Рекомендация" onClick={onRecommend} background={surface.control}>
+            <SparklesIcon />
+          </RoundButton>
+
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter sends, Shift+Enter breaks the line.
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                void send()
+              }
+            }}
+            placeholder="Расскажи, что ты съел…"
+            rows={1}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              resize: 'none',
+              maxHeight: 96,
+              background: surface.control,
+              border: 0,
+              borderRadius: 18,
+              color: label.primary,
+              fontWeight: 400,
+              fontSize: 16,
+              padding: '9px 14px',
+              lineHeight: 1.3,
+            }}
+          />
+
+          {/* Swift also drew a mic here, but nothing was wired to it — dropped. */}
+          {canSend ? (
+            <RoundButton label="Отправить" onClick={() => void send()} background={accent} dark>
+              <ArrowUpIcon />
+            </RoundButton>
           ) : null}
         </div>
-
-        <RoundButton label="Рекомендация" onClick={onRecommend} background={surface.control}>
-          <SparklesIcon />
-        </RoundButton>
-
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter sends, Shift+Enter breaks the line.
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              void send()
-            }
-          }}
-          placeholder="Расскажи, что ты съел…"
-          rows={1}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            resize: 'none',
-            maxHeight: 96,
-            background: surface.control,
-            border: 0,
-            borderRadius: 18,
-            color: label.primary,
-            fontWeight: 400,
-            fontSize: 16,
-            padding: '9px 14px',
-            lineHeight: 1.3,
-          }}
-        />
-
-        {/* Swift also drew a mic here, but nothing was wired to it — dropped. */}
-        {canSend ? (
-          <RoundButton label="Отправить" onClick={() => void send()} background={accent} dark>
-            <ArrowUpIcon />
-          </RoundButton>
-        ) : null}
       </div>
     </div>
   )
@@ -556,12 +582,15 @@ function RoundButton({
   onClick,
   background,
   dark,
+  expanded,
   children,
 }: {
   label: string
   onClick: () => void
   background: string
   dark?: boolean
+  /** Set on a button that toggles a menu, so its state is announced. */
+  expanded?: boolean
   children: React.ReactNode
 }) {
   return (
@@ -569,6 +598,7 @@ function RoundButton({
       type="button"
       onClick={onClick}
       aria-label={text}
+      aria-expanded={expanded}
       style={{
         width: 32,
         height: 32,
