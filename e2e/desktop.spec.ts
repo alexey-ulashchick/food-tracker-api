@@ -119,6 +119,31 @@ test('Escape closes the attach menu', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Снять фото' })).toHaveCount(0)
 })
 
+test('the classes that restyle a block actually win over its inline style', async ({ page }) => {
+  await authenticate(page)
+  await page.goto('/')
+
+  // The failure mode this guards is silent and specific to how this app is
+  // built: almost every element carries an inline style={{}}, and an inline
+  // declaration beats any class rule. A layout class whose property is also set
+  // inline simply does nothing, at any width, with nothing thrown. Computed
+  // values are the only way to tell.
+  const mealText = page.locator('.meal-text').first()
+  if ((await mealText.count()) > 0) {
+    await expect(mealText).toHaveCSS('flex-direction', 'row')
+  } else {
+    test.info().annotations.push({ type: 'note', description: 'no meals logged today' })
+  }
+
+  await page.goto('/you/memories')
+  const grid = page.locator('.memory-grid')
+  if ((await grid.count()) > 0) {
+    await expect(grid).toHaveCSS('display', 'grid')
+  } else {
+    test.info().annotations.push({ type: 'note', description: 'no memories saved' })
+  }
+})
+
 /** An SVG whose viewBox width differs from its rendered width is mis-measured. */
 async function expectViewBoxMatchesBox(locator: Locator) {
   const { viewBoxWidth, boxWidth } = await locator.evaluate((el) => ({

@@ -418,6 +418,23 @@ body {
   gap: 12px;
 }
 
+/* A meal row's name over its "ЗАВТРАК · 08:42 · Б20 У4 Ж8" line. Declared here
+   rather than inline at the call site precisely so the desktop rule can turn it
+   into a row: an inline flex-direction would win at every width. */
+.meal-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Saved facts, a column on a phone and a grid on a desktop — same reason. */
+.memory-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 @media (min-width: 1024px) {
   .shell-body {
     display: grid;

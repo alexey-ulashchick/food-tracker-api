@@ -544,10 +544,9 @@ function MealRow({ meal }: { meal: ServerMeal }) {
         {meal.emoji ?? '🍽'}
       </span>
 
-      <div
-        className="meal-text"
-        style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}
-      >
+      {/* No inline display/flex-direction here: the desktop rule turns this
+          into a row, and an inline declaration would beat the class. */}
+      <div className="meal-text">
         <span
           className="meal-name"
           style={{

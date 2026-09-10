@@ -54,6 +54,9 @@ export function Login() {
     <div className="outer-frame">
       <div
         className="page"
+        // Deliberately overriding .page's desktop max-width from inline, which
+        // beats the class: this page wants a form-width column, not the 1180px
+        // content column the app's screens get.
         style={{
           maxWidth: 'var(--form-max)',
           margin: '0 auto',

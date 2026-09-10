@@ -138,11 +138,9 @@ export function Memories() {
         </Card>
       ) : (
         // A flat column of one-line facts is mostly whitespace on a wide
-        // screen; above 1024px they fill it as an auto-fitting grid.
-        <section
-          className="memory-grid"
-          style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
-        >
+        // screen; above 1024px they fill it as an auto-fitting grid. The layout
+        // is entirely in the class — an inline `display` would beat it.
+        <section className="memory-grid">
           {memories.map((memory) => (
             <MemoryRow
               key={memory.id}
