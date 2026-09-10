@@ -98,17 +98,53 @@ test('tapping a History row opens that day on Today', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'История' })).toBeVisible()
 
-  const rows = page.locator('section button')
+  // Addressed by test id, not `section button`: the chart card above is also a
+  // <section> and its paginator buttons come first, so the old selector clicked
+  // "Раньше" and then passed on the reset pill THAT produces — never touching
+  // the navigation this test is named after.
+  const rows = page.getByTestId('past-day')
   await expect.poll(async () => await rows.count(), { timeout: 20_000 }).toBeGreaterThan(0)
 
   // The row's big number is the day of month; keep it to compare after.
   const day = (await rows.first().textContent())?.match(/\d+/)?.[0]
   await rows.first().click()
 
-  await expect(page.getByRole('heading')).toBeVisible()
-  // Today now shows a specific past day, so the reset pill appears.
+  // Today, showing a past day — which is what puts the reset pill on screen.
+  // The title is a weekday name here, so the pill is the assertion that means
+  // something.
   await expect(page.getByRole('button', { name: 'Сегодня' })).toBeVisible()
+  await expect(page.locator('canvas').first()).toBeVisible()
   if (day) {
     await expect(page.locator('body')).toContainText(day)
   }
+})
+
+test('the phone shell keeps its own metrics', async ({ page }) => {
+  await authenticate(page)
+  await page.goto('/')
+
+  // The guard on moving five screen roots into one .page class: if the class
+  // fails to land, every screen goes edge to edge and nothing throws.
+  const shell = page.locator('.page').first()
+  const padding = await shell.evaluate((el) => {
+    const s = getComputedStyle(el)
+    return { left: s.paddingLeft, top: s.paddingTop, bottom: s.paddingBottom, gap: s.rowGap }
+  })
+  expect(padding).toEqual({ left: '16px', top: '8px', bottom: '24px', gap: '14px' })
+
+  // The tab bar is the phone's nav, and it is the only one.
+  await expect(page.getByRole('navigation')).toHaveCount(1)
+  await expect(page.locator('.tab-bar')).toHaveCount(1)
+
+  // Same viewBox check as the desktop spec: a chart must draw at its real
+  // width on a phone too.
+  await page.goto('/history')
+  const chart = page.locator('svg[aria-label="График калорий по дням"]')
+  await expect(chart).toBeVisible({ timeout: 20_000 })
+  const { viewBoxWidth, boxWidth } = await chart.evaluate((el) => ({
+    viewBoxWidth: Number(el.getAttribute('viewBox')?.split(/\s+/)[2] ?? 0),
+    boxWidth: el.getBoundingClientRect().width,
+  }))
+  expect(viewBoxWidth).toBeGreaterThan(0)
+  expect(Math.abs(viewBoxWidth - boxWidth)).toBeLessThan(2)
 })

@@ -19,8 +19,27 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
 
-  // One project: the app is phone-first and the tab shell only exists there.
-  projects: [{ name: 'mobile-safari', use: { ...devices['iPhone 14'] } }],
+  // Two shells, two projects. Both are WebKit — devices['Desktop Safari'] sets
+  // defaultBrowserType: 'webkit' — so CI's `playwright install webkit` already
+  // covers the new one and the workflow needs no change.
+  //
+  // Split by file rather than by running every spec twice: workers is 1, so the
+  // suite's wall clock is the sum of everything in it.
+  projects: [
+    {
+      name: 'mobile-safari',
+      use: { ...devices['iPhone 14'] },
+      testIgnore: /desktop\.spec\.ts/,
+    },
+    {
+      name: 'desktop-safari',
+      // hasTouch is false here, which is what makes (hover: hover) and
+      // (pointer: fine) match — the desktop hover rules are only reachable in
+      // this project.
+      use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 900 } },
+      testMatch: /desktop\.spec\.ts/,
+    },
+  ],
 
   webServer: {
     // The SPA has to be built first — src/static.ts serves web/dist, not Vite.

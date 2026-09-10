@@ -584,6 +584,10 @@ function PastDayRow({ row, onOpen }: { row: DaySummaryRow; onOpen: () => void })
     <button
       type="button"
       onClick={onOpen}
+      // Anchors the end-to-end suite. `section button` used to stand in for a
+      // day row, but the chart card above is also a <section> and its paginator
+      // buttons come first in the document.
+      data-testid="past-day"
       onPointerDown={() => setPressed(true)}
       onPointerUp={() => setPressed(false)}
       onPointerLeave={() => setPressed(false)}
