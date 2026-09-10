@@ -41,10 +41,13 @@ const headShadowBlur = (strokeWidth: number) =>
   strokeWidth * HEAD_SHADOW_SIGMA_RATIO * Math.SQRT2 * HEAD_SHADOW_PASSES
 
 /**
- * Room reserved around the ring so the shadow is not sliced off at the canvas
- * boundary — the head's outer edge lands exactly on size / 2. A Gaussian is
- * spent by ~3 sigma, which is 1.5 * blur; 2 * blur leaves margin, with a floor
- * for the very thin strokes.
+ * Room reserved around the ring so the canvas boundary is never what bounds the
+ * head's shadow — the head's outer edge lands exactly on size / 2.
+ *
+ * The annulus clip is what actually confines the shadow now, and it stops at the
+ * same radius, so this padding no longer changes a pixel. It stays because the
+ * clip and the canvas edge should not be the same line: whichever one is
+ * responsible ought to be the one chosen on purpose.
  */
 const shadowPad = (strokeWidth: number) => Math.max(8, Math.ceil(headShadowBlur(strokeWidth) * 2))
 
@@ -132,9 +135,25 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
         // detail is the entire spiral-depth effect (MacroRing.swift:91-95).
         if (i === segmentCount - 1) {
           ctx.save()
+
+          // Clipped to the ring's own band. Unclipped, the shadow spreads in
+          // every direction — outward onto the card and inward across the gap to
+          // the next ring — which was invisible against black and an obvious
+          // grey smudge once the light theme put a white card behind it. The
+          // band is where the lap below sits, so confining the shadow to it
+          // keeps the depth cue and drops the halo.
+          const outerR = radius + strokeWidth / 2
+          const innerR = radius - strokeWidth / 2
+          ctx.beginPath()
+          ctx.arc(cx, cy, outerR, 0, Math.PI * 2)
+          // Reversed, so the non-zero winding rule punches the middle out. A
+          // degenerate ring (stroke wider than its own radius) has no hole.
+          if (innerR > 0) ctx.arc(cx, cy, innerR, 0, Math.PI * 2, true)
+          ctx.clip()
+
           ctx.fillStyle = rgbToCss(ringColor(rgbStops, endT, warning))
-          // Black in both themes, deliberately: this shadow lands on the
-          // ring's own coloured arc one lap below, never on the card behind it.
+          // Black in both themes: within the band it falls on the track and on
+          // the arc below, never on the card.
           ctx.shadowColor = 'rgba(0,0,0,1)'
           ctx.shadowBlur = headShadowBlur(strokeWidth)
           ctx.beginPath()

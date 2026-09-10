@@ -26,6 +26,7 @@ beforeEach(() => {
       arc: record('arc'),
       stroke: record('stroke'),
       fill: record('fill'),
+      clip: record('clip'),
       save: record('save'),
       restore: record('restore'),
       createConicGradient: () => ({ addColorStop: () => {} }),
@@ -46,19 +47,29 @@ const three = [
 ]
 
 /**
- * The full-circle track arc each ring draws first: [cx, cy, radius].
+ * The track arc each ring draws first: [cx, cy, radius].
  *
- * Head circles are full circles too, so radius alone is not enough to tell
- * them apart — they are drawn at strokeWidth / 2, which is always well under a
- * ring radius, hence the threshold.
+ * Taken as the first arc after each clearRect — one ring, one clear — rather
+ * than by shape or radius. Full circles are no longer distinctive: the head is
+ * one, and so are the two the head's shadow clip is built from, which sit a half
+ * stroke either side of the track and would pass any radius threshold wide
+ * enough to admit the track itself.
  */
-function tracks(strokeWidth: number) {
-  return calls
-    .filter((c) => c.op === 'arc')
-    .map((c) => c.args as number[])
-    .filter(([, , , start, end]) => Math.abs((end ?? 0) - (start ?? 0) - Math.PI * 2) < 1e-9)
-    .filter(([, , radius]) => (radius ?? 0) > strokeWidth)
-    .map(([cx, cy, radius]) => ({ cx: cx!, cy: cy!, radius: radius! }))
+function tracks() {
+  const out: Array<{ cx: number; cy: number; radius: number }> = []
+  let expectTrack = false
+  for (const c of calls) {
+    if (c.op === 'clearRect') {
+      expectTrack = true
+      continue
+    }
+    if (c.op === 'arc' && expectTrack) {
+      const [cx, cy, radius] = c.args as number[]
+      out.push({ cx: cx!, cy: cy!, radius: radius! })
+      expectTrack = false
+    }
+  }
+  return out
 }
 
 describe('RingStack geometry', () => {
@@ -81,7 +92,7 @@ describe('RingStack geometry', () => {
     const wrappers = [...container.querySelectorAll('canvas')].map(
       (c) => c.parentElement?.parentElement as HTMLElement,
     )
-    const t = tracks(13)
+    const t = tracks()
     expect(t).toHaveLength(3)
 
     const centres = t.map((track, i) => ({
@@ -97,7 +108,7 @@ describe('RingStack geometry', () => {
   test('the bands do not overlap and are separated by exactly the gap', () => {
     render(<RingStack rings={three} size={156} strokeWidth={13} gap={3} />)
     const strokeWidth = 13
-    const radii = tracks(strokeWidth).map((t) => t.radius)
+    const radii = tracks().map((t) => t.radius)
     // Outer edge of ring i+1 to inner edge of ring i.
     for (let i = 1; i < radii.length; i++) {
       const innerEdgeOfOuter = radii[i - 1]! - strokeWidth / 2
@@ -115,7 +126,7 @@ describe('RingStack geometry', () => {
       render(
         <RingStack rings={three} size={spec.size} strokeWidth={spec.strokeWidth} gap={spec.gap} />,
       )
-      const radii = tracks(spec.strokeWidth).map((t) => t.radius)
+      const radii = tracks().map((t) => t.radius)
       expect(radii, name).toHaveLength(3)
       for (const r of radii) {
         expect(r, `${name} radius`).toBeGreaterThan(spec.strokeWidth)
@@ -151,7 +162,7 @@ describe('RingStack geometry', () => {
         gap={2}
       />,
     )
-    expect(tracks(6)).toHaveLength(3)
+    expect(tracks()).toHaveLength(3)
     expect(calls.filter((c) => c.op === 'createConicGradient')).toHaveLength(0)
   })
 

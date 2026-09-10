@@ -37,6 +37,7 @@ function fakeContext(): CanvasRenderingContext2D {
     arc: record('arc'),
     stroke: record('stroke'),
     fill: record('fill'),
+    clip: record('clip'),
     save: record('save'),
     restore: record('restore'),
     set fillStyle(v: unknown) {
@@ -314,6 +315,51 @@ describe('MacroRing drawing', () => {
     const firstFill = calls.findIndex((c) => c.op === 'fill')
     // protein's last stop, #0091EA.
     expect(valueBefore('set:fillStyle', firstFill)).toBe('rgb(0, 145, 234)')
+  })
+
+  // Regression: unclipped, the head's shadow spread in every direction — out
+  // onto the card and in across the gap to the next ring. Invisible against
+  // black, an obvious grey smudge on a white card once the light theme landed.
+  test('the head shadow is confined to the ring band', () => {
+    const size = 100
+    const strokeWidth = 10
+    render(<MacroRing value={0.5} stops={palette.protein} size={size} strokeWidth={strokeWidth} />)
+
+    const clipAt = calls.findIndex((c) => c.op === 'clip')
+    const firstFill = calls.findIndex((c) => c.op === 'fill')
+    expect(clipAt).toBeGreaterThan(-1)
+    // The clip has to be in place before the shadow is painted, or it bounds
+    // nothing.
+    expect(clipAt).toBeLessThan(firstFill)
+
+    // Two concentric full circles at the band's edges, the inner one reversed so
+    // the winding rule leaves a hole.
+    const radius = (size - strokeWidth) / 2
+    const shape = calls
+      .slice(0, clipAt)
+      .filter((c) => c.op === 'arc')
+      .slice(-2)
+      .map((c) => c.args as unknown[])
+    expect(shape[0]?.[2]).toBeCloseTo(radius + strokeWidth / 2, 9)
+    expect(shape[1]?.[2]).toBeCloseTo(radius - strokeWidth / 2, 9)
+    expect(shape[1]?.[5]).toBe(true)
+
+    // And released, so the arc that follows is not clipped too.
+    expect(calls.map((c) => c.op).lastIndexOf('restore')).toBeGreaterThan(firstFill)
+  })
+
+  test('a ring too thick for a hole clips to the outer edge alone', () => {
+    // strokeWidth > radius: the inner edge would be negative, and a reversed arc
+    // of negative radius is not a hole, it is a crash waiting to happen.
+    calls = []
+    render(<MacroRing value={0.5} stops={palette.protein} size={20} strokeWidth={12} />)
+    const clipAt = calls.findIndex((c) => c.op === 'clip')
+    // Asserted, or the check below passes for the wrong reason: with no clip at
+    // all there is no reversed arc either.
+    expect(clipAt).toBeGreaterThan(-1)
+    const before = calls.slice(0, clipAt).filter((c) => c.op === 'arc')
+    // Track, then the single outer clip circle — no reversed inner one.
+    expect(before.some((c) => c.args[5] === true)).toBe(false)
   })
 
   test('the head shadow is opaque black and scales with the stroke', () => {
