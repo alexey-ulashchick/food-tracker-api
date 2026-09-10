@@ -246,11 +246,13 @@ web/
 └── src/
     ├── api/              # fetch wrapper, SSE parser, endpoints, query keys
     ├── components/       # rings (Canvas), charts (SVG), cards, chat bubbles
+    │                     # AppLayout (shell), Sidebar (desktop), Page (screen root)
+    ├── nav.ts            # the one place a section is declared; both navs read it
     ├── lib/              # pure logic: dates, metrics, weight, chat mapping
     ├── screens/          # Today, Chat, History, You, Memories, Weight, Login
     ├── theme/            # tokens ported from Theme.swift, hand-drawn icons
     └── store/            # UI-only Zustand state
-e2e/                      # Playwright specs
+e2e/                      # Playwright specs: app.spec.ts (phone), desktop.spec.ts
 
 scripts/
 ├── import-md.ts          # markdown food-diary importer
@@ -276,6 +278,33 @@ app.
 
 There is no in-app entry UI. Weight arrives through `POST /weights`, which the
 user's own sync script drives; the web client only reads it.
+
+## Two shells, one breakpoint
+
+The app is phone-first and stays a 480px column up to **1024px**, above which a
+sidebar replaces the bottom tab bar and cards pair up into two columns. 1024 is
+260 (sidebar) + 24 + a ~716 readable column + 24, and it keeps every iPad
+portrait width on the phone layout.
+
+Three rules make this work in a codebase written almost entirely in inline
+`style={{}}`:
+
+1. **Anything that ends up as a CSS value travels as a custom property.**
+   `style={{ maxWidth: 'var(--action-card-max)' }}` keeps inline specificity but
+   its value follows the media query, so no inline style had to be converted to
+   a class. Mobile values are the base values — there is nothing for a phone to
+   regress to.
+2. **JS only for what ends up in arithmetic** — a canvas pixel size, an SVG
+   `viewBox`, a component tree. `useIsDesktop()` reads `--desktop`, which CSS
+   sets to 0 or 1, so the breakpoint literal exists once in the repository and
+   cannot drift from a JS copy. Its only consumer is the shell choosing a nav.
+3. **A layout class must not name a property that is also set inline on the same
+   element**, or the class is dead at every width with nothing thrown.
+   `web/src/theme/inlineOverride.test.ts` fails the build if that happens.
+
+`e2e/desktop.spec.ts` is the only place the desktop layout is actually proven:
+jsdom evaluates no media queries, and vitest blanks CSS imports, so no unit test
+can assert one.
 
 ```bash
 TOKEN=ft_...
