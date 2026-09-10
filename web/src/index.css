@@ -436,6 +436,22 @@ body {
   gap: 12px;
 }
 
+/* The calorie chart's scrolling strip. touch-action: pan-x hands vertical drags
+   to the page scroller, the same bargain .snap-deck makes; overscroll-behavior
+   stops a trackpad flick past the oldest day triggering Safari's back gesture. */
+.chart-strip {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.chart-strip::-webkit-scrollbar {
+  display: none;
+}
+
 /* A stack of settings cards with their section labels. Stays a column at every
    width — see the desktop rule for why it is not a grid. */
 .settings-column {

@@ -75,21 +75,68 @@ test('both charts draw at the width they are given', async ({ page }) => {
   await authenticate(page)
   await page.goto('/history')
 
-  // The one assertion that pins both measurement bugs at once. A viewBox that
-  // disagrees with the rendered box means either a chart floating at its seed
-  // width with dead space around it (CalorieChart's old useState(320)) or a
-  // curve smeared horizontally (Weight's old preserveAspectRatio="none").
-  const chart = page.locator('svg[aria-label="График калорий по дням"]')
-  await expect(chart).toBeVisible({ timeout: 20_000 })
-  await expectViewBoxMatchesBox(chart)
+  // The calorie chart is a scrolling strip, so viewBox == rendered box is
+  // tautological for it: one measured number feeds both. What is worth pinning
+  // is the density — a fixed day column sized so the visible part still shows
+  // the month the SwiftUI original did, however much history sits behind it.
+  const strip = page.locator('.chart-strip')
+  await expect(strip).toBeVisible({ timeout: 20_000 })
 
+  const density = await strip.evaluate((el) => {
+    const svg = el.querySelector('svg')
+    const bars = el.querySelectorAll('rect').length
+    const contentW = Number.parseFloat(svg?.getAttribute('width') ?? '0')
+    return { visibleDays: (el.clientWidth / contentW) * bars, bars }
+  })
+  expect(density.bars).toBeGreaterThan(29)
+  expect(density.visibleDays).toBeGreaterThan(27)
+  expect(density.visibleDays).toBeLessThan(31)
+
+  // Weight is still a fitted chart, so there the check means something: a
+  // viewBox that disagrees with the box is a curve smeared horizontally.
   await page.goto('/you/weight')
   const weight = page.locator('svg[aria-label="График веса по неделям"]')
   if ((await weight.count()) > 0) {
     await expectViewBoxMatchesBox(weight)
   } else {
-    test.info().annotations.push({ type: 'note', description: 'no weight data — chart not shown' })
+    test.info().annotations.push({ type: 'note', description: 'no weight data' })
   }
+})
+
+test('the chart strip loads older days instead of paging', async ({ page }) => {
+  await authenticate(page)
+  await page.goto('/history')
+
+  const strip = page.locator('.chart-strip')
+  await expect(strip).toBeVisible({ timeout: 20_000 })
+
+  // The two paginator buttons are gone; scrolling is the whole interface.
+  await expect(page.getByRole('button', { name: 'Раньше' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Позже' })).toHaveCount(0)
+
+  // It opens at today, which is the right-hand end.
+  const opened = await strip.evaluate((el) => ({
+    left: el.scrollLeft,
+    max: el.scrollWidth - el.clientWidth,
+    bars: el.querySelectorAll('rect').length,
+  }))
+  expect(opened.max).toBeGreaterThan(0)
+  expect(opened.left).toBeGreaterThan(opened.max - 2)
+
+  // Reaching the left edge asks for the page before it, and the anchor then has
+  // to hold the view still. A jump further back in time on every page is the
+  // thing most likely to go wrong here, so scrollLeft is checked after.
+  await strip.evaluate((el) => el.scrollTo({ left: 0 }))
+  await expect
+    .poll(async () => await strip.evaluate((el) => el.querySelectorAll('rect').length), {
+      timeout: 20_000,
+    })
+    .toBeGreaterThan(opened.bars)
+
+  expect(await strip.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0)
+
+  // And the way home appears once we are away from today.
+  await expect(page.getByRole('button', { name: 'Сегодня' })).toBeVisible()
 })
 
 test('the shell follows the window back down to a phone width', async ({ page }) => {

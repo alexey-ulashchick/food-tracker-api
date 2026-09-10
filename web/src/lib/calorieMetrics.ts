@@ -179,13 +179,33 @@ export type CalorieDay = {
   goal: number | null
 }
 
-/** 29 days centred on today plus the paging offset — HistoryView.swift:208. */
-export const CHART_HALF_WINDOW = 14
-export const CHART_PAGE_DAYS = 14
+/**
+ * The chart is a scrolling strip, not a paged window.
+ *
+ * VISIBLE_DAYS only sets the bar density: the day column is the plot width
+ * divided by it, so every screen still shows the month at a glance the SwiftUI
+ * original did (HistoryView.swift:208) and scrolling reveals more. It is
+ * deliberately NOT the fetch size — the fetch walks backwards in pages, so a
+ * wide desktop and a phone load the same amount and only draw it differently.
+ */
+export const CHART_VISIBLE_DAYS = 29
+/** How far past today the goal line is projected. */
+export const CHART_FORWARD_DAYS = 14
+/** Days fetched per page as the strip scrolls back. */
+export const CHART_PAGE_DAYS = 28
 
-export function chartWindow(today: string, offsetDays: number): { from: string; to: string } {
-  const centre = addDays(today, offsetDays)
-  return { from: addDays(centre, -CHART_HALF_WINDOW), to: addDays(centre, CHART_HALF_WINDOW) }
+/**
+ * The newest page: a backward run reaching CHART_FORWARD_DAYS past today, so
+ * the strip opens with more than one screenful and the projection has room.
+ */
+export function chartFirstPage(today: string): { from: string; to: string } {
+  return { from: addDays(today, -(CHART_PAGE_DAYS - 1)), to: addDays(today, CHART_FORWARD_DAYS) }
+}
+
+/** The page immediately older than one already loaded. */
+export function chartOlderPage(loadedFrom: string): { from: string; to: string } {
+  const to = addDays(loadedFrom, -1)
+  return { from: addDays(to, -(CHART_PAGE_DAYS - 1)), to }
 }
 
 export function buildCalorieDays(from: string, to: string, totals: DayTotals): CalorieDay[] {
@@ -220,9 +240,4 @@ export function goalExtension(days: CalorieDay[]): Array<{ date: string; goal: n
   if (lastIndexWithGoal === -1) return []
   const lastGoal = days[lastIndexWithGoal]!.goal!
   return days.slice(lastIndexWithGoal).map((d) => ({ date: d.date, goal: d.goal ?? lastGoal }))
-}
-
-/** Today's key, for callers that only need the default window. */
-export function defaultChartWindow(now: Date = new Date()) {
-  return chartWindow(toIsoDate(now), 0)
 }

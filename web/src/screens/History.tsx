@@ -1,6 +1,6 @@
 import { daySummaries, listGoals, listMeals } from '@/api/endpoints'
 import { qk } from '@/api/keys'
-import { CHART_HEIGHT, CalorieChart, type ChartDay } from '@/components/CalorieChart'
+import { CHART_HEIGHT, CalorieChart, type ChartApi, type ChartDay } from '@/components/CalorieChart'
 import { Page } from '@/components/Page'
 import { ScreenHeader } from '@/components/ScreenHeader'
 import { MacroRing } from '@/components/ring/MacroRing'
@@ -12,7 +12,8 @@ import {
   buildCalorieDays,
   buildDayTotals,
   calorieMetrics,
-  chartWindow,
+  chartFirstPage,
+  chartOlderPage,
   compliance,
   formatBalance,
   formatFatEquivalent,
@@ -48,21 +49,37 @@ const DAY_TYPE_RU: Record<string, string> = { training: 'Тренировочн�
 
 export function History() {
   const today = todayIso()
-  const [offset, setOffset] = useState(0)
 
   // Every goal in one request. The Swift version fanned out one
   // GET /goals?date= per day that had meals — up to 14 per page.
   const goalsQuery = useQuery({ queryKey: qk.goalsAll, queryFn: listGoals })
 
-  const chartRange = chartWindow(today, offset)
-  const chartMealsQuery = useQuery({
-    queryKey: qk.meals(chartRange.from, chartRange.to),
-    queryFn: () => listMeals(chartRange.from, chartRange.to),
-  })
-  const chartVerdictQuery = useQuery({
-    queryKey: qk.daySummaries(chartRange.from, chartRange.to),
-    queryFn: () => daySummaries(chartRange.from, chartRange.to),
-    retry: false,
+  // The chart walks backwards a page at a time as its strip is scrolled, rather
+  // than jumping a fixed window. Its own query rather than sharing the list's:
+  // the chart needs a bar for every day in range including the empty ones and it
+  // reaches past today for the goal projection, while the list wants only days
+  // that have meals and never looks forward.
+  const chartQuery = useInfiniteQuery({
+    queryKey: ['chart-pages'],
+    initialPageParam: chartFirstPage(today),
+    queryFn: async ({ pageParam }) => {
+      const { from, to } = pageParam
+      const [meals, verdicts] = await Promise.all([
+        listMeals(from, to),
+        daySummaries(from, to).catch(() => [] as ServerDaySummary[]),
+      ])
+      return { from, to, meals, verdicts }
+    },
+    getNextPageParam: (last, allPages) => {
+      // The same two stops the day list uses: give up after a run of pages with
+      // no meals at all, and never walk back further than two years. Without the
+      // empty-page stop, scrolling past the first day ever recorded would keep
+      // asking the server for fortnights of nothing.
+      const emptyRun = countTrailingEmptyPages(allPages)
+      const walked = allPages.length * CHART_PAGE_DAYS
+      if (emptyRun >= MAX_EMPTY_PAGES || walked >= MAX_LOOKBACK_DAYS) return undefined
+      return chartOlderPage(last.from)
+    },
   })
 
   const metricsSpan = metricsRange(today)
@@ -72,18 +89,19 @@ export function History() {
   })
 
   const goals = goalsQuery.data ?? []
-  const chartDays = buildChartDays(
-    chartRange,
-    chartMealsQuery.data ?? [],
-    goals,
-    chartVerdictQuery.data ?? [],
+  // Pages arrive newest first; the strip reads oldest to newest.
+  const chartPages = [...(chartQuery.data?.pages ?? [])].reverse()
+  const chartDays = chartPages.flatMap((page) =>
+    buildChartDays(page, page.meals, goals, page.verdicts),
   )
   const metrics =
     metricsMealsQuery.data && goalsQuery.data
       ? calorieMetrics(buildDayTotals(metricsMealsQuery.data, goals), today)
       : null
 
-  const loading = chartMealsQuery.isFetching || goalsQuery.isFetching
+  const loading = chartQuery.isFetching || goalsQuery.isFetching
+  const [view, setView] = useState<{ from: string; to: string; atEnd: boolean } | null>(null)
+  const chartApi = useRef<ChartApi | null>(null)
 
   return (
     <Page>
@@ -100,13 +118,12 @@ export function History() {
         }}
       >
         <ChartHeader
-          from={chartRange.from}
-          to={chartRange.to}
-          offset={offset}
-          onShift={(d) => setOffset((o) => o + d)}
-          onReset={() => setOffset(0)}
+          from={view?.from ?? null}
+          to={view?.to ?? null}
+          atEnd={view?.atEnd ?? true}
+          onReset={() => chartApi.current?.scrollToEnd()}
         />
-        {chartMealsQuery.isLoading ? (
+        {chartQuery.isLoading ? (
           <div
             style={{
               // The chart's own height, so the card does not jump when data
@@ -124,7 +141,17 @@ export function History() {
             Загружаю…
           </div>
         ) : (
-          <CalorieChart days={chartDays} />
+          <CalorieChart
+            days={chartDays}
+            apiRef={chartApi}
+            onViewChange={setView}
+            loadingOlder={chartQuery.isFetchingNextPage}
+            onLoadOlder={() => {
+              if (chartQuery.hasNextPage && !chartQuery.isFetchingNextPage) {
+                void chartQuery.fetchNextPage()
+              }
+            }}
+          />
         )}
       </section>
 
@@ -153,14 +180,13 @@ function buildChartDays(
 function ChartHeader({
   from,
   to,
-  offset,
-  onShift,
+  atEnd,
   onReset,
 }: {
-  from: string
-  to: string
-  offset: number
-  onShift: (days: number) => void
+  /** The span the strip is showing; null until it has been laid out. */
+  from: string | null
+  to: string | null
+  atEnd: boolean
   onReset: () => void
 }) {
   return (
@@ -178,57 +204,31 @@ function ChartHeader({
           Калории
         </span>
         <span className="tnum" style={{ fontWeight: 600, fontSize: 'calc(13px * var(--type))' }}>
-          {dayMonth(from)} – {dayMonth(to)}
+          {from && to ? `${dayMonth(from)} – ${dayMonth(to)}` : ' '}
         </span>
       </div>
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <PaginatorButton dir="left" onClick={() => onShift(-CHART_PAGE_DAYS)} />
-        {offset !== 0 ? (
-          <button
-            type="button"
-            onClick={onReset}
-            style={{
-              border: 0,
-              borderRadius: 999,
-              background: surface.subtle,
-              color: label.primary,
-              fontWeight: 600,
-              fontSize: 'calc(11px * var(--type))',
-              padding: '5px 10px',
-              cursor: 'pointer',
-            }}
-          >
-            Сегодня
-          </button>
-        ) : null}
-        <PaginatorButton dir="right" onClick={() => onShift(CHART_PAGE_DAYS)} />
-      </div>
+      {/* The paginator is gone: the strip scrolls. This is the way back from a
+          year ago, and it hides itself when there is nowhere to go. */}
+      {atEnd ? null : (
+        <button
+          type="button"
+          onClick={onReset}
+          style={{
+            marginLeft: 'auto',
+            border: 0,
+            borderRadius: 999,
+            background: surface.subtle,
+            color: label.primary,
+            fontWeight: 600,
+            fontSize: 'calc(11px * var(--type))',
+            padding: '5px 10px',
+            cursor: 'pointer',
+          }}
+        >
+          Сегодня
+        </button>
+      )}
     </div>
-  )
-}
-
-function PaginatorButton({ dir, onClick }: { dir: 'left' | 'right'; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={dir === 'left' ? 'Раньше' : 'Позже'}
-      style={{
-        width: 28,
-        height: 28,
-        border: 0,
-        borderRadius: 999,
-        background: surface.subtle,
-        color: label.primary,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
-        flexShrink: 0,
-      }}
-    >
-      <ChevronIcon dir={dir} size={12} />
-    </button>
   )
 }
 

@@ -158,15 +158,18 @@ test('the phone shell keeps its own metrics', async ({ page }) => {
     expect(await name.evaluate((el) => getComputedStyle(el).fontSize)).toBe('14.5px')
   }
 
-  // Same viewBox check as the desktop spec: a chart must draw at its real
-  // width on a phone too.
+  // Same density check as the desktop spec: the strip's day column is the
+  // visible width divided by 29, so a phone still shows the month at a glance it
+  // showed before the chart became scrollable.
   await page.goto('/history')
-  const chart = page.locator('svg[aria-label="График калорий по дням"]')
-  await expect(chart).toBeVisible({ timeout: 20_000 })
-  const { viewBoxWidth, boxWidth } = await chart.evaluate((el) => ({
-    viewBoxWidth: Number(el.getAttribute('viewBox')?.split(/\s+/)[2] ?? 0),
-    boxWidth: el.getBoundingClientRect().width,
-  }))
-  expect(viewBoxWidth).toBeGreaterThan(0)
-  expect(Math.abs(viewBoxWidth - boxWidth)).toBeLessThan(2)
+  const strip = page.locator('.chart-strip')
+  await expect(strip).toBeVisible({ timeout: 20_000 })
+  const density = await strip.evaluate((el) => {
+    const svg = el.querySelector('svg')
+    const bars = el.querySelectorAll('rect').length
+    const contentW = Number.parseFloat(svg?.getAttribute('width') ?? '0')
+    return (el.clientWidth / contentW) * bars
+  })
+  expect(density).toBeGreaterThan(27)
+  expect(density).toBeLessThan(31)
 })

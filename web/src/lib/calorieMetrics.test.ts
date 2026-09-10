@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import {
+  CHART_PAGE_DAYS,
   EMPTY_ROLLUP,
   balanceKcal,
   balanceTone,
@@ -7,7 +8,8 @@ import {
   buildDayTotals,
   calorieMetrics,
   calorieYDomain,
-  chartWindow,
+  chartFirstPage,
+  chartOlderPage,
   compliance,
   effectiveGoal,
   formatBalance,
@@ -229,17 +231,49 @@ describe('formatFatEquivalent', () => {
   })
 })
 
-describe('chart window', () => {
-  test('is 29 days centred on today', () => {
-    const w = chartWindow('2026-09-04', 0)
-    expect(w.from).toBe('2026-08-21')
-    expect(w.to).toBe('2026-09-18')
-    expect(buildCalorieDays(w.from, w.to, totals([]))).toHaveLength(29)
+describe('chart paging', () => {
+  test('the first page reaches two weeks past today, for the goal projection', () => {
+    const p = chartFirstPage('2026-09-04')
+    expect(p.from).toBe('2026-08-08')
+    expect(p.to).toBe('2026-09-18')
+    // 27 days back, today, 14 forward.
+    expect(buildCalorieDays(p.from, p.to, totals([]))).toHaveLength(CHART_PAGE_DAYS + 14)
   })
 
-  test('pages by a fortnight in each direction', () => {
-    expect(chartWindow('2026-09-04', -14).to).toBe('2026-09-04')
-    expect(chartWindow('2026-09-04', 14).from).toBe('2026-09-04')
+  test('an older page abuts the one before it with no gap and no overlap', () => {
+    const first = chartFirstPage('2026-09-04')
+    const older = chartOlderPage(first.from)
+
+    expect(older.to).toBe('2026-08-07')
+    expect(buildCalorieDays(older.from, older.to, totals([]))).toHaveLength(CHART_PAGE_DAYS)
+
+    // A gap would draw a hole in the strip and an overlap a doubled bar, so the
+    // join is asserted directly rather than the endpoints alone.
+    const joined = [
+      ...buildCalorieDays(older.from, older.to, totals([])),
+      ...buildCalorieDays(first.from, first.to, totals([])),
+    ].map((d) => d.date)
+    expect(new Set(joined).size).toBe(joined.length)
+    expect(joined).toEqual([...joined].sort())
+  })
+
+  test('walking back repeatedly stays contiguous', () => {
+    let page = chartFirstPage('2026-09-04')
+    const dates = buildCalorieDays(page.from, page.to, totals([])).map((d) => d.date)
+    for (let i = 0; i < 5; i++) {
+      page = chartOlderPage(page.from)
+      dates.unshift(...buildCalorieDays(page.from, page.to, totals([])).map((d) => d.date))
+    }
+    expect(new Set(dates).size).toBe(dates.length)
+    expect(dates).toEqual([...dates].sort())
+  })
+
+  test('the page is a whole number of weeks, or the x labels shuffle', () => {
+    // The chart labels every seventh day counted back from the newest, so the
+    // rightmost day is always labelled. Prepending a whole number of weeks
+    // leaves every existing day's tick where it was; 30 would move all of them
+    // on every page load.
+    expect(CHART_PAGE_DAYS % 7).toBe(0)
   })
 
   test('a day with neither goal nor meals still yields a row', () => {
