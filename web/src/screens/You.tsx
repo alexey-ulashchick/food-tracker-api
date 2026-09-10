@@ -38,11 +38,12 @@ export function You() {
         trailing={memoriesQuery.isFetching || weightsQuery.isFetching ? <Spinner /> : null}
       />
 
-      {/* Grouped into blocks so a section label always travels with its card.
-          Each block is a flex column with the same gap the page uses, so on a
-          phone the run of children is spaced exactly as it was before the grid
-          existed; above 1024px the blocks pair up into two columns. */}
-      <div className="card-row">
+      {/* A column, not a grid. Two-up scattered the section labels into the
+          right-hand column and left a ragged gap under the shorter block —
+          these cards have no relationship to each other side by side. The
+          blocks keep a label with its card, and the gap matches the page's, so
+          a phone sees exactly the flat run of children it always did. */}
+      <div className="settings-column">
         <div className="card-block">
           <NavCard
             to="/you/weight"

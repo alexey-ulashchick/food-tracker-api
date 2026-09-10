@@ -131,7 +131,12 @@ export function Chat() {
     // and the macro strip are pinned and only the transcript moves, which is how
     // ChatView.swift is built — ScreenHeader sits outside the ScrollView, unlike
     // History and You where it scrolls away with the content.
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    //
+    // .chat-column bounds the whole thing on a desktop, so the header, the two
+    // .material-thin bars and the messages all share one pair of edges. No
+    // inline display/flex-direction/height here — the class owns them, and an
+    // inline declaration would beat it.
+    <div className="chat-column">
       <div style={{ flexShrink: 0, padding: 'var(--page-top) var(--page-x) 6px' }}>
         <ScreenHeader title="Чат" trailing={historyQuery.isFetching ? <Spinner /> : null} />
       </div>
@@ -160,7 +165,7 @@ export function Chat() {
           </div>
         ) : null}
 
-        <div className="chat-measure" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {renderItems.map((entry) => (
             <div key={entry.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {entry.kind === 'single' ? (
@@ -331,7 +336,7 @@ function MacroStrip({ goal, meals }: { goal: ServerGoal | null; meals: ServerMea
     >
       {/* The bar stays full-bleed; only its contents take the measure, so the
           strip lines up with the transcript instead of drifting apart. */}
-      <div className="chat-measure" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <CalorieMeter
             current={eaten.calories}
@@ -444,7 +449,7 @@ function Composer({
       {/* The bar is full-bleed, its contents take the same measure as the
           transcript — otherwise a 1200px composer sits under 720px of messages
           and the send button ends up a long way from the last reply. */}
-      <div className="chat-measure" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {attachment ? (
           <div style={{ position: 'relative', alignSelf: 'flex-start' }}>
             <img

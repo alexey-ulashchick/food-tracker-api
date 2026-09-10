@@ -84,9 +84,9 @@
   --bubble-max: 280px;
   --bubble-gutter: 40px;
   --action-card-max: 300px;
-  /* The readable measure for chat. 100% on a phone, where the column already
-     is one. */
-  --measure: 100%;
+  /* The chat column's width. 100% on a phone, where the shell already is one
+     column and the bars run edge to edge as they should. */
+  --chat-max: 100%;
 
   /* Read by useIsDesktop(). The breakpoint literal lives in exactly one place —
      the media query below — and JS asks CSS which side of it we are on rather
@@ -106,7 +106,7 @@
     --page-bottom: 40px;
     --card-gap: 18px;
     --shell-max: none;
-    --measure: 720px;
+    --chat-max: 860px;
     --bubble-max: 560px;
     --bubble-gutter: 72px;
     --action-card-max: 420px;
@@ -401,14 +401,19 @@ body {
   min-width: 0;
 }
 
-/* Chat's readable measure, applied to the INNER row of the macro strip, the
-   transcript and the composer. The .material-thin bars themselves stay
-   full-bleed — centring only the transcript leaves the composer visibly
-   disagreeing with the messages above it. */
-.chat-measure {
-  width: 100%;
-  max-width: var(--measure);
-  margin: 0 auto;
+/* The chat column: header, macro strip, transcript and composer bounded
+   together.
+
+   The first attempt measured the INSIDE of each band instead, leaving the
+   .material-thin bars full-bleed. That was wrong twice over on a wide screen:
+   the bars became long empty grey fields with a 720px island of content in the
+   middle, and the screen header — which is not inside any band — kept the
+   page's own padding and so hung ~70px to the left of everything else.
+   Bounding the column instead puts all four on one edge. */
+.chat-column {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 /* The weight reading above its chart; side by side on a desktop. */
@@ -416,6 +421,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* A stack of settings cards with their section labels. Stays a column at every
+   width — see the desktop rule for why it is not a grid. */
+.settings-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-gap);
 }
 
 /* A meal row's name over its "ЗАВТРАК · 08:42 · Б20 У4 Ж8" line. Declared here
@@ -547,6 +560,21 @@ body {
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     gap: 28px;
+  }
+
+  /* One bounded column, so the macro strip and the composer end where the
+     messages do instead of running to the window edge. */
+  .chat-column {
+    max-width: var(--chat-max);
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  /* A settings screen is a column, not a dashboard. Two-up put the section
+     labels in the right-hand column and left a ragged gap under the shorter
+     block — side by side, these cards have nothing to do with each other. */
+  .settings-column {
+    max-width: 720px;
   }
 }
 

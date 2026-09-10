@@ -144,6 +144,60 @@ test('the classes that restyle a block actually win over its inline style', asyn
   }
 })
 
+test('the chat column bounds its bars and its header together', async ({ page }) => {
+  await authenticate(page)
+  await page.goto('/chat')
+  await expect(page.getByRole('heading', { name: 'Чат' })).toBeVisible()
+
+  // The first pass measured the inside of each .material-thin band and left the
+  // bands themselves full-bleed, which put a 720px island of content in the
+  // middle of a long empty grey field — and left the screen header, which is in
+  // no band at all, hanging to the left of everything else. All four edges are
+  // asserted together because that is the failure: they disagreed.
+  const column = page.locator('.chat-column')
+  const strip = page.locator('.material-thin').first()
+  const composer = page.locator('.material-thin').last()
+  const header = page.getByRole('heading', { name: 'Чат' })
+
+  const edges = await Promise.all(
+    [column, strip, composer, header].map((l) => l.evaluate((el) => el.getBoundingClientRect().x)),
+  )
+  const [columnLeft, stripLeft, composerLeft, headerLeft] = edges as [
+    number,
+    number,
+    number,
+    number,
+  ]
+
+  expect(stripLeft).toBe(columnLeft)
+  expect(composerLeft).toBe(columnLeft)
+  // The header carries the page padding, so it is inset from the column edge
+  // rather than flush with it — but by a page padding, not by 70px of drift.
+  expect(headerLeft - columnLeft).toBeLessThanOrEqual(32)
+
+  // And the column is narrower than the pane it sits in, or none of the above
+  // would mean anything.
+  const paneWidth = await page.locator('main').evaluate((el) => el.getBoundingClientRect().width)
+  const columnWidth = await column.evaluate((el) => el.getBoundingClientRect().width)
+  expect(columnWidth).toBeLessThan(paneWidth)
+})
+
+test('Профиль stays a single column', async ({ page }) => {
+  await authenticate(page)
+  await page.goto('/you')
+  await expect(page.getByRole('heading', { name: 'Профиль' })).toBeVisible()
+
+  // Two-up scattered the section labels into the right-hand column and left a
+  // ragged gap under the shorter card. Every block shares a left edge now.
+  const blocks = page.locator('.settings-column > .card-block')
+  await expect(blocks).toHaveCount(4)
+
+  const lefts = await blocks.evaluateAll((els) =>
+    els.map((el) => Math.round(el.getBoundingClientRect().left)),
+  )
+  expect(new Set(lefts).size).toBe(1)
+})
+
 /** An SVG whose viewBox width differs from its rendered width is mis-measured. */
 async function expectViewBoxMatchesBox(locator: Locator) {
   const { viewBoxWidth, boxWidth } = await locator.evaluate((el) => ({
