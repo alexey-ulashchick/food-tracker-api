@@ -1,7 +1,7 @@
 import { ApiError, TOKEN_RE, getToken, setToken } from '@/api/client'
 import { listMemories } from '@/api/endpoints'
 import { EyeIcon } from '@/theme/icons'
-import { accent, label, layout, radius, surface } from '@/theme/tokens'
+import { accent, danger, label, layout, onAccent, radius, surface } from '@/theme/tokens'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 
@@ -135,7 +135,7 @@ export function Login() {
 
           {status.kind === 'error' ? (
             <span
-              style={{ fontWeight: 400, fontSize: 'calc(12.5px * var(--type))', color: '#FF453A' }}
+              style={{ fontWeight: 400, fontSize: 'calc(12.5px * var(--type))', color: danger }}
             >
               {status.message}
             </span>
@@ -149,7 +149,7 @@ export function Login() {
               background: canSubmit ? accent : surface.control,
               border: 0,
               borderRadius: radius.field,
-              color: canSubmit ? '#000' : label.secondary,
+              color: canSubmit ? onAccent : label.secondary,
               fontWeight: 600,
               fontSize: 'calc(15px * var(--type))',
               padding: '11px 12px',

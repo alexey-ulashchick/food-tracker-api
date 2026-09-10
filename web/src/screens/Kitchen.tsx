@@ -13,8 +13,10 @@ import { RingStack } from '@/components/ring/RingStack'
 import { OVERAGE_END_T } from '@/components/ring/ringColor'
 import {
   CHIP_BG_ALPHA,
+  accent,
   dayTypeTint,
   dietDayColor,
+  label,
   palette,
   singleRingSpec,
   surface,
@@ -42,7 +44,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
           font: '600 13px system-ui',
           textTransform: 'uppercase',
           letterSpacing: 0.4,
-          color: 'rgba(235,235,245,0.6)',
+          color: label.secondary,
           margin: '0 0 14px',
         }}
       >
@@ -59,12 +61,15 @@ const Row = ({ children }: { children: React.ReactNode }) => (
   </div>
 )
 
-function Labelled({ label, children }: { label: string; children: React.ReactNode }) {
+// The caption prop is deliberately not called `label`: that is the name of the
+// colour token this file imports, and shadowing it silently turned
+// `label.secondary` into undefined.
+function Labelled({ caption, children }: { caption: string; children: React.ReactNode }) {
   return (
     <div style={{ textAlign: 'center' }}>
       {children}
-      <div style={{ font: '500 11px system-ui', color: 'rgba(235,235,245,0.6)', marginTop: 6 }}>
-        {label}
+      <div style={{ font: '500 11px system-ui', color: label.secondary, marginTop: 6 }}>
+        {caption}
       </div>
     </div>
   )
@@ -189,7 +194,7 @@ export function Kitchen() {
       <Card title="Кольцо — заполнение">
         <Row>
           {[0, 0.25, 0.5, 0.75, 1].map((v) => (
-            <Labelled key={v} label={`${Math.round(v * 100)}%`}>
+            <Labelled key={v} caption={`${Math.round(v * 100)}%`}>
               <MacroRing value={v} stops={palette.protein} size={92} strokeWidth={9} />
             </Labelled>
           ))}
@@ -201,7 +206,7 @@ export function Kitchen() {
       <Card title="Кольцо — перебор">
         <Row>
           {[1, 1.03, OVERAGE_END_T, 1.15, 1.6, 2.3].map((v) => (
-            <Labelled key={v} label={`${Math.round(v * 100)}%`}>
+            <Labelled key={v} caption={`${Math.round(v * 100)}%`}>
               <MacroRing value={v} stops={palette.fat} size={92} strokeWidth={9} />
             </Labelled>
           ))}
@@ -211,7 +216,7 @@ export function Kitchen() {
       <Card title="Палитра Aurora">
         <Row>
           {(['calories', 'protein', 'carbs', 'fat'] as const).map((k) => (
-            <Labelled key={k} label={k}>
+            <Labelled key={k} caption={k}>
               <MacroRing value={0.78} stops={palette[k]} size={92} strokeWidth={9} />
             </Labelled>
           ))}
@@ -220,7 +225,7 @@ export function Kitchen() {
 
       <Card title="Стопка колец — размеры с реальных экранов">
         <Row>
-          <Labelled label="Today 156/13/3">
+          <Labelled caption="Today 156/13/3">
             <RingStack
               rings={[
                 { value: 0.78, stops: palette.protein },
@@ -232,13 +237,13 @@ export function Kitchen() {
               gap={3}
             />
           </Labelled>
-          <Labelled label="История 26/3.5 — три отдельных">
+          <Labelled caption="История 26/3.5 — три отдельных">
             <MacroRow spec={singleRingSpec.historyRow} />
           </Labelled>
-          <Labelled label="Чат 36/4.5 — три отдельных">
+          <Labelled caption="Чат 36/4.5 — три отдельных">
             <MacroRow spec={singleRingSpec.chatStrip} />
           </Labelled>
-          <Labelled label="без цели">
+          <Labelled caption="без цели">
             <RingStack
               rings={[
                 { value: 0, stops: palette.protein, dimmed: true },
@@ -264,7 +269,7 @@ export function Kitchen() {
               step={0.01}
               value={live}
               onChange={(e) => setLive(Number(e.target.value))}
-              style={{ width: '100%', accentColor: '#ff9500' }}
+              style={{ width: '100%', accentColor: accent }}
             />
             <div
               className="tnum"
@@ -302,16 +307,16 @@ export function Kitchen() {
 
       <Card title="MacroPie — разбивка по граммам">
         <Row>
-          <Labelled label="20/20/20">
+          <Labelled caption="20/20/20">
             <Pie protein={20} carbs={20} fat={20} />
           </Labelled>
-          <Labelled label="40/10/5">
+          <Labelled caption="40/10/5">
             <Pie protein={40} carbs={10} fat={5} />
           </Labelled>
-          <Labelled label="только белок">
+          <Labelled caption="только белок">
             <Pie protein={30} carbs={0} fat={0} />
           </Labelled>
-          <Labelled label="нет данных">
+          <Labelled caption="нет данных">
             <Pie protein={0} carbs={0} fat={0} />
           </Labelled>
         </Row>
@@ -384,9 +389,7 @@ export function Kitchen() {
                   boxShadow: '0 0 0 0.5px rgba(255,255,255,0.14)',
                 }}
               />
-              <span style={{ font: '500 12px system-ui', color: 'rgba(235,235,245,0.6)' }}>
-                {name}
-              </span>
+              <span style={{ font: '500 12px system-ui', color: label.secondary }}>{name}</span>
             </div>
           ))}
         </div>

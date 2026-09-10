@@ -14,7 +14,7 @@ import { todayIso } from '@/lib/dates'
 import { makeThumb } from '@/lib/thumbnail'
 import { useUi } from '@/store/ui'
 import { ArrowUpIcon, CloseCircleIcon, PlusIcon, SparklesIcon, Spinner } from '@/theme/icons'
-import { accent, label, palette, radius, singleRingSpec, surface } from '@/theme/tokens'
+import { accent, label, onAccent, palette, radius, singleRingSpec, surface } from '@/theme/tokens'
 import type { ServerGoal, ServerMeal } from '@shared/types.ts'
 import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -615,7 +615,7 @@ function RoundButton({
         border: 0,
         borderRadius: 999,
         background,
-        color: dark ? '#000' : label.primary,
+        color: dark ? onAccent : label.primary,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

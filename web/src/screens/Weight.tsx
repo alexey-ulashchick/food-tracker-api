@@ -14,7 +14,7 @@ import {
   weightYDomain,
 } from '@/lib/weight'
 import { ScaleIcon, Spinner, TrendArrowIcon } from '@/theme/icons'
-import { label, layout, palette, radius, surface, withAlpha } from '@/theme/tokens'
+import { dietDayColor, label, layout, palette, radius, surface, withAlpha } from '@/theme/tokens'
 import { useQuery } from '@tanstack/react-query'
 import { area, curveMonotoneX, line } from 'd3-shape'
 
@@ -107,7 +107,7 @@ export function Weight() {
 
 function DeltaPill({ delta }: { delta: number }) {
   const down = delta < 0
-  const color = down ? palette.carbs[1] : '#FF9F0A'
+  const color = down ? palette.carbs[1] : dietDayColor.orange
   return (
     <span
       className="tnum"
@@ -132,7 +132,7 @@ function DeltaPill({ delta }: { delta: number }) {
 
 function TrendPill({ slope }: { slope: number }) {
   const down = trendTone(slope) === 'down'
-  const color = down ? palette.carbs[1] : '#FF9F0A'
+  const color = down ? palette.carbs[1] : dietDayColor.orange
   return (
     <span
       className="tnum"

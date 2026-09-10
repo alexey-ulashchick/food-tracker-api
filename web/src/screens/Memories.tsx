@@ -4,7 +4,17 @@ import { Page } from '@/components/Page'
 import { ScreenHeader } from '@/components/ScreenHeader'
 import { useUi } from '@/store/ui'
 import { BrainIcon, MinusCircleIcon, PencilCircleIcon, Spinner, TrayIcon } from '@/theme/icons'
-import { accent, label, layout, radius, surface, withAlpha } from '@/theme/tokens'
+import {
+  accent,
+  label,
+  layout,
+  memoryTint,
+  onAccent,
+  radius,
+  surface,
+  systemGray,
+  withAlpha,
+} from '@/theme/tokens'
 import type { ServerMemory } from '@shared/types.ts'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -85,7 +95,7 @@ export function Memories() {
             gap: 5,
             fontWeight: 600,
             fontSize: 'calc(11.5px * var(--type))',
-            color: '#BF5AF2',
+            color: memoryTint,
             letterSpacing: 0.3,
             textTransform: 'uppercase',
           }}
@@ -300,8 +310,8 @@ function primaryButtonStyle(enabled: boolean): React.CSSProperties {
   return {
     border: 0,
     borderRadius: radius.field,
-    background: enabled ? accent : withAlpha('#8E8E93', 0.18),
-    color: enabled ? '#000' : label.secondary,
+    background: enabled ? accent : withAlpha(systemGray, 0.18),
+    color: enabled ? onAccent : label.secondary,
     fontWeight: 600,
     fontSize: 'calc(13px * var(--type))',
     padding: '8px 12px',

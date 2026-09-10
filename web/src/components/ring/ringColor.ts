@@ -1,7 +1,10 @@
 // Colour maths for MacroRing, split out from the component so it can be unit
 // tested. Direct port of the private helpers in CalTracker/MacroRing.swift.
-
-import { overage } from '@/theme/tokens'
+//
+// The warning colour arrives as a parameter rather than being imported from the
+// theme. It has to: the theme holds `var(--c-overage)` now, and a custom
+// property means nothing to arithmetic. Passing it in also leaves this module
+// pure — it was reaching into the design system for one constant.
 
 /** The overage ramp completes 25° into lap 2 — MacroRing.swift:231. */
 export const OVERAGE_END_T = 1 + 25 / 360
@@ -54,13 +57,13 @@ export function interpolateColor(stops: Rgb[], t: number): Rgb {
  * and continuous at both knees (t = 1 and t = OVERAGE_END_T), which is what
  * lets adjacent segments meet without a visible seam.
  */
-export function ringColor(stops: Rgb[], t: number): Rgb {
+export function ringColor(stops: Rgb[], t: number, warning: Rgb): Rgb {
   if (t <= 1) return interpolateColor(stops, t)
-  if (t >= OVERAGE_END_T) return hexToRgb(overage)
+  if (t >= OVERAGE_END_T) return warning
 
   const last = stops[stops.length - 1] ?? { r: 255, g: 255, b: 255 }
   const local = (t - 1) / (OVERAGE_END_T - 1)
-  return interpolateColor([last, hexToRgb(overage)], local)
+  return interpolateColor([last, warning], local)
 }
 
 export type GradientStop = { color: Rgb; location: number }
@@ -72,14 +75,22 @@ export type GradientStop = { color: Rgb; location: number }
  * gradient would smear a knee across the segment's whole arc whenever one
  * falls inside it, so an explicit stop is inserted at each interior knee.
  */
-export function gradientStops(stops: Rgb[], startT: number, endT: number): GradientStop[] {
-  const out: GradientStop[] = [{ color: ringColor(stops, startT), location: 0 }]
+export function gradientStops(
+  stops: Rgb[],
+  startT: number,
+  endT: number,
+  warning: Rgb,
+): GradientStop[] {
+  const out: GradientStop[] = [{ color: ringColor(stops, startT, warning), location: 0 }]
   for (const knee of [1, OVERAGE_END_T]) {
     if (knee > startT && knee < endT) {
-      out.push({ color: ringColor(stops, knee), location: (knee - startT) / (endT - startT) })
+      out.push({
+        color: ringColor(stops, knee, warning),
+        location: (knee - startT) / (endT - startT),
+      })
     }
   }
-  out.push({ color: ringColor(stops, endT), location: 1 })
+  out.push({ color: ringColor(stops, endT, warning), location: 1 })
   return out
 }
 

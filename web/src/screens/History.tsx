@@ -268,7 +268,11 @@ function MetricsRow({
   const balance = stat ? balanceKcal(stat) : 0
   const tone = balanceTone(balance)
   const toneColor =
-    tone === 'neutral' ? label.secondary : tone === 'surplus' ? '#FF9F0A' : palette.carbs[1]
+    tone === 'neutral'
+      ? label.secondary
+      : tone === 'surplus'
+        ? dietDayColor.orange
+        : palette.carbs[1]
   const fat = stat && showFatHint ? formatFatEquivalent(balance, 6) : null
 
   return (
@@ -335,7 +339,7 @@ function MetricsRow({
                 color: label.secondary,
               }}
             >
-              <span style={{ color: '#FF9F0A', display: 'flex' }}>
+              <span style={{ color: dietDayColor.orange, display: 'flex' }}>
                 <FlameIcon size={10} />
               </span>
               <span className="tnum">≈ {fat} жира можно было сжечь</span>
@@ -615,7 +619,7 @@ function PastDayRow({ row, onOpen }: { row: DaySummaryRow; onOpen: () => void })
         // PastDayRowButtonStyle: a faint white wash while held. The idle value
         // is a variable so the desktop hover rule can set it — an inline
         // declaration cannot be overridden by a class.
-        background: pressed ? 'rgba(255,255,255,0.04)' : 'var(--row-bg, transparent)',
+        background: pressed ? surface.pressed : 'var(--row-bg, transparent)',
         color: label.primary,
         font: 'inherit',
         textAlign: 'left',
@@ -730,7 +734,7 @@ function PastDayRow({ row, onOpen }: { row: DaySummaryRow; onOpen: () => void })
             ККАЛ
           </span>
         </span>
-        <span style={{ color: withAlpha('#EBEBF5', 0.3), display: 'flex' }}>
+        <span style={{ color: label.tertiary, display: 'flex' }}>
           <ChevronIcon dir="right" size={12} />
         </span>
       </span>

@@ -1,4 +1,4 @@
-import { label, surface, withAlpha } from '@/theme/tokens'
+import { accent, label, overage, surface, withAlpha } from '@/theme/tokens'
 import { motion } from 'motion/react'
 import type { ReactNode } from 'react'
 
@@ -27,7 +27,7 @@ export function CalorieMeter({ current, goal, stops, size = 'large', accessory }
   const pct = goal > 0 ? Math.min(1.2, current / goal) : 0
   const remaining = Math.max(0, goal - current)
   const over = Math.max(0, current - goal)
-  const tint = stops[stops.length - 1] ?? '#FF9500'
+  const tint = stops[stops.length - 1] ?? accent
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -86,7 +86,7 @@ export function CalorieMeter({ current, goal, stops, size = 'large', accessory }
             style={{
               fontWeight: 700,
               fontSize: `calc(${size === 'large' ? 28 : 20}px * var(--type))`,
-              color: over > 0 ? '#FF3B30' : tint,
+              color: over > 0 ? overage : tint,
             }}
           >
             {over > 0 ? Math.round(over) : Math.round(remaining)}

@@ -278,3 +278,59 @@ async function expectViewBoxMatchesBox(locator: Locator) {
   expect(viewBoxWidth).toBeGreaterThan(0)
   expect(Math.abs(viewBoxWidth - boxWidth)).toBeLessThan(2)
 }
+
+test.describe('light mode', () => {
+  // The only place the light theme is proven at all: jsdom evaluates no media
+  // queries and vitest blanks CSS, so every unit test sees the dark base.
+  test.use({ colorScheme: 'light' })
+
+  test('follows the OS and repaints the canvas rings with it', async ({ page }) => {
+    await authenticate(page)
+    await page.goto('/')
+    await expect(page.getByRole('heading', { name: 'Сегодня' })).toBeVisible()
+
+    const card = page.locator('.card-row--today > section').first()
+    await expect(card).toHaveCSS('background-color', 'rgb(255, 255, 255)')
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(242, 242, 247)')
+    // Black text, not the white the dark theme uses.
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCSS('color', 'rgb(0, 0, 0)')
+
+    // The rings are canvas, which keeps its pixels until something redraws them.
+    // A non-blank canvas over a white card is the only evidence available that
+    // the palette was re-resolved rather than left at its dark values.
+    const drawn = await page
+      .locator('canvas')
+      .first()
+      .evaluate((el) => {
+        const canvas = el as HTMLCanvasElement
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return null
+        const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        let painted = 0
+        for (let i = 3; i < data.length; i += 4) if (data[i]! > 0) painted++
+        return painted
+      })
+    expect(drawn).not.toBeNull()
+    expect(drawn!).toBeGreaterThan(0)
+  })
+
+  test("the chat's material bar follows too", async ({ page }) => {
+    await authenticate(page)
+    await page.goto('/chat')
+    await expect(page.getByRole('heading', { name: 'Чат' })).toBeVisible()
+
+    // .material-thin is the one surface with its own token rather than a card
+    // colour, so it is the one most likely to be forgotten. Light is
+    // rgba(250,250,250,0.72); the dark value starts at 37, which is what a
+    // stale token would report here.
+    const composer = page.locator('.material-thin').last()
+    const material = await composer.evaluate((el) => getComputedStyle(el).backgroundColor)
+    expect(material).toMatch(/^rgba\(2[45]\d, 2[45]\d, 2[45]\d/)
+
+    // And the text it holds is black, not the white the dark theme uses — the
+    // clearest single signal that the token layer switched rather than just the
+    // page background.
+    const field = page.getByPlaceholder('Расскажи, что ты съел…')
+    await expect(field).toHaveCSS('color', 'rgb(0, 0, 0)')
+  })
+})

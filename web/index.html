@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru" class="dark">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <!-- viewport-fit=cover lets the layout reach under the notch and the home
@@ -8,8 +8,12 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
     />
-    <meta name="theme-color" content="#000000" />
-    <meta name="color-scheme" content="dark" />
+    <!-- Both schemes, so the UA renders form controls and scrollbars to match
+         and does not force-darken anything itself. The app follows the OS; there
+         is no in-app switch, and no `dark` class on <html> to imply one. -->
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2f7" />
     <title>Cal Tracker</title>
 
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -28,8 +32,13 @@
          height only got it clipped at the window boundary.
 
          Opaque puts the window below the status bar and lets it run to the
-         bottom, so the bar reaches the edge. The status bar itself looks the
-         same either way: the app's background is black. -->
+         bottom, so the bar reaches the edge.
+
+         This one does NOT follow the colour scheme: the meta takes no media
+         attribute and iOS caches it at install time, so an installed app in
+         light mode keeps a black status bar above a light UI. Changing it is
+         exactly what produced the unpaintable band above, so it wants its own
+         pass on a real device rather than a guess here. -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="CalTracker" />
   </head>

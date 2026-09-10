@@ -1,3 +1,5 @@
+import { useColorScheme } from '@/lib/useColorScheme'
+import { resolveColor } from '@/theme/tokens'
 import { useEffect, useRef } from 'react'
 
 // Port of CalTracker/MacroPie.swift: a tiny donut showing the protein/carb/fat
@@ -27,7 +29,10 @@ export function MacroPie({
   strokeWidth = 5.5,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // Redraw when the OS theme flips; the colours arrive as custom properties.
+  const scheme = useColorScheme()
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scheme is an invalidation key, not a value the body reads — canvas keeps its pixels, and the colours it drew with are custom properties that the OS theme changes underneath it.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -53,7 +58,7 @@ export function MacroPie({
       // A meal with no macro data still gets a ring, just a dim one.
       ctx.beginPath()
       ctx.arc(cx, cy, radius, 0, Math.PI * 2)
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)'
+      ctx.strokeStyle = resolveColor('var(--c-pie-empty)')
       ctx.stroke()
       return
     }
@@ -68,11 +73,11 @@ export function MacroPie({
       const end = start + (value / total) * Math.PI * 2
       ctx.beginPath()
       ctx.arc(cx, cy, radius, start, end)
-      ctx.strokeStyle = color
+      ctx.strokeStyle = resolveColor(color)
       ctx.stroke()
       start = end
     }
-  }, [protein, carbs, fat, proteinColor, carbsColor, fatColor, size, strokeWidth])
+  }, [protein, carbs, fat, proteinColor, carbsColor, fatColor, size, strokeWidth, scheme])
 
   return (
     <span aria-hidden="true" style={{ display: 'block', width: size, height: size }}>

@@ -6,7 +6,7 @@ import {
   PencilCircleIcon,
   TargetIcon,
 } from '@/theme/icons'
-import { label, systemBlue } from '@/theme/tokens'
+import { label, palette, systemBlue } from '@/theme/tokens'
 import { ActionCard, Kcal, MacroChip, StatusBadge } from './ActionCard'
 
 // Ports of the four action cards in CalTracker/FoodCard.swift. Labels are
@@ -119,10 +119,10 @@ function DiffRow({
 }) {
   const changed = Math.round(before) !== Math.round(after)
   const tintColor = {
-    calories: '#FF8A65',
-    protein: '#0091EA',
-    carbs: '#64DD17',
-    fat: '#7C4DFF',
+    calories: palette.calories[1],
+    protein: palette.protein[1],
+    carbs: palette.carbs[1],
+    fat: palette.fat[1],
   }[tint]
 
   return (

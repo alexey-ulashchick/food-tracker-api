@@ -1,5 +1,5 @@
 import { normalizeMarkdown, parseInline } from '@/lib/markdown'
-import { label, surface, systemBlue } from '@/theme/tokens'
+import { label, onTint, surface, systemBlue } from '@/theme/tokens'
 import type { ReactNode } from 'react'
 
 // Port of CalTracker/ChatBubble.swift. Note the user bubble is systemBlue, not
@@ -23,7 +23,7 @@ function renderLine(line: string, isUser: boolean): ReactNode[] {
             style={{
               fontFamily: 'ui-monospace, SFMono-Regular, monospace',
               fontSize: '0.92em',
-              background: 'rgba(255,255,255,0.1)',
+              background: 'var(--c-code-bg)',
               borderRadius: 4,
               padding: '0 3px',
             }}
@@ -38,7 +38,7 @@ function renderLine(line: string, isUser: boolean): ReactNode[] {
             href={token.href}
             target="_blank"
             rel="noreferrer"
-            style={{ color: isUser ? '#fff' : systemBlue }}
+            style={{ color: isUser ? onTint : systemBlue }}
           >
             {token.text}
           </a>

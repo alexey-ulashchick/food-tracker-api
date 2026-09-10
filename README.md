@@ -309,6 +309,39 @@ port is pixel-faithful to the SwiftUI original — and 0.85 on a desktop, which
 sits much further from the eye. That one number is what to turn if the text
 feels wrong; `fontShorthand.test.ts` fails the build on a size that opts out.
 
+## Two themes, from the OS
+
+Colour follows `prefers-color-scheme`. There is no in-app switch.
+
+Dark is the base and its values are byte for byte what shipped. Light is not
+invented: each value is the light variant of the same iOS system colour dark
+already uses — `systemGroupedBackground` for the page, white for a card,
+`label`/`secondaryLabel` for text — and the Aurora macro gradients move two or
+three steps down the Material ramps they came from, because a `#CCFF90` arc is
+invisible on white.
+
+Every colour is a `var(--c-…)` custom property, so `theme/tokens.ts` holds
+variable references rather than literals and the ~500 inline `style={{ background:
+surface.card }}` call sites needed no edit at all. Two consequences:
+
+- **`withAlpha` uses `color-mix`.** It can no longer parse a hex, because by the
+  time it runs the value is a `var()`.
+- **Canvas cannot resolve a custom property.** The ring and the pie call
+  `resolveColor()` to read the literal back out, and `useColorScheme()` is in
+  their effect deps purely to force a redraw — canvas keeps its pixels while the
+  tokens change underneath it. That hook has no other job; nothing else needs to
+  know the theme.
+
+`theme/colourLiterals.test.ts` fails the build on a colour spelled out in a
+component, with a reasoned allowlist. That check exists because the failure is
+silent: a hardcoded colour renders perfectly, it just never follows the theme.
+
+One thing that does **not** follow the OS: `apple-mobile-web-app-status-bar-style`
+takes no media attribute and iOS caches it at install time, so an installed
+iPhone app in light mode keeps a black status bar. Changing that meta is what
+produced the unpaintable bottom band documented in `web/index.html`, so it wants
+its own pass on a device.
+
 `e2e/desktop.spec.ts` is the only place the desktop layout is actually proven:
 jsdom evaluates no media queries, and vitest blanks CSS imports, so no unit test
 can assert one.

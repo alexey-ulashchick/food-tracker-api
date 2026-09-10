@@ -5,6 +5,11 @@ import { MacroRing } from './MacroRing'
 import { OVERAGE_END_T } from './ringColor'
 
 // jsdom has no canvas backend, so the 2D context is replaced with a recorder.
+//
+// It also loads no stylesheets, so the colour tokens — which are custom
+// properties now, resolved by the ring because canvas cannot read them — come
+// back empty. The dark literals are stubbed in below; in a browser the same
+// lookup returns them from index.css.
 // These assertions cover the parts of the port most likely to be wrong: the
 // ≤90° segmentation, the head-before-arc draw order that produces the spiral
 // shadow, and the conic-gradient stop scaling (SwiftUI spreads stops across
@@ -76,9 +81,43 @@ function valueBefore(op: string, index: number): unknown {
   return undefined
 }
 
+/** The dark values from index.css, for the tokens these tests exercise. */
+const TOKENS: Record<string, string> = {
+  '--c-track': 'rgba(142,142,147,0.16)',
+  '--c-overage': '#FF3B30',
+  '--c-calories-0': '#FFD180',
+  '--c-calories-1': '#FF8A65',
+  '--c-protein-0': '#80D8FF',
+  '--c-protein-1': '#0091EA',
+  '--c-carbs-0': '#CCFF90',
+  '--c-carbs-1': '#64DD17',
+  '--c-fat-0': '#E1BEE7',
+  '--c-fat-1': '#7C4DFF',
+}
+
+// Captured at module scope, before any spy exists. Taken inside beforeEach it
+// would be the previous test's spy, and the delegation would recurse.
+const realComputedStyle = window.getComputedStyle.bind(window)
+
 beforeEach(() => {
   calls = []
   gradientStops = []
+  // Delegating rather than replacing: anything else that asks for a computed
+  // style still gets jsdom's answer.
+  vi.spyOn(window, 'getComputedStyle').mockImplementation(((
+    el: Element,
+    pseudo?: string | null,
+  ) => {
+    const base = realComputedStyle(el, pseudo ?? undefined)
+    return new Proxy(base, {
+      get(target, prop, receiver) {
+        if (prop === 'getPropertyValue') {
+          return (name: string) => TOKENS[name] ?? target.getPropertyValue(name)
+        }
+        return Reflect.get(target, prop, receiver)
+      },
+    })
+  }) as typeof window.getComputedStyle)
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
     () => fakeContext() as unknown as RenderingContext,
   )
@@ -375,8 +414,16 @@ describe('MacroRing drawing', () => {
     }
   })
 
-  test('the track uses the systemGray token, not a CSS grey', () => {
+  // The token is a custom property now, so what matters is that the ring
+  // RESOLVES it before handing it to the context: canvas would silently paint
+  // nothing for a literal `var(--c-track)`.
+  test('the track is stroked with the resolved token, not the var() text', () => {
     render(<MacroRing value={0.5} stops={palette.protein} size={100} strokeWidth={10} />)
-    expect(surface.track).toBe('rgba(142,142,147,0.16)')
+    expect(surface.track).toBe('var(--c-track)')
+
+    const firstStroke = calls.findIndex((c) => c.op === 'stroke')
+    const painted = valueBefore('set:strokeStyle', firstStroke)
+    expect(painted).toBe('rgba(142,142,147,0.16)')
+    expect(String(painted)).not.toContain('var(')
   })
 })

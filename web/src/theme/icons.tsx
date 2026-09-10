@@ -257,8 +257,8 @@ export function Spinner({ size = 14, color }: IconProps) {
         width: size,
         height: size,
         borderWidth: Math.max(1.5, size / 9),
-        borderColor: color ?? 'rgba(235,235,245,0.35)',
-        borderTopColor: color ?? 'rgba(235,235,245,0.9)',
+        borderColor: color ?? 'var(--c-spinner-track)',
+        borderTopColor: color ?? 'var(--c-spinner-head)',
         flexShrink: 0,
       }}
     />

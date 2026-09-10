@@ -7,7 +7,7 @@ import { COST_DISPLAY_LABELS, COST_DISPLAY_MODES } from '@/lib/costDisplay'
 import { formatKg, latestWeight } from '@/lib/weight'
 import { useUi } from '@/store/ui'
 import { BrainIcon, ChevronIcon, DollarIcon, KeyIcon, ScaleIcon, Spinner } from '@/theme/icons'
-import { accent, label, radius, surface, systemBlue, withAlpha } from '@/theme/tokens'
+import { accent, danger, label, radius, surface, systemBlue, withAlpha } from '@/theme/tokens'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
 
@@ -131,8 +131,8 @@ export function You() {
                 style={{
                   border: 0,
                   borderRadius: radius.field,
-                  background: withAlpha('#FF453A', 0.16),
-                  color: '#FF453A',
+                  background: withAlpha(danger, 0.16),
+                  color: danger,
                   fontWeight: 600,
                   fontSize: 'calc(13px * var(--type))',
                   padding: '9px 12px',
@@ -263,7 +263,7 @@ function NavCard({
       <span style={{ flex: 1, minWidth: 0 }}>
         <Row icon={icon} tint={tint} title={title} subtitle={subtitle} />
       </span>
-      <span style={{ color: withAlpha('#EBEBF5', 0.3), display: 'flex', paddingRight: 14 }}>
+      <span style={{ color: label.tertiary, display: 'flex', paddingRight: 14 }}>
         <ChevronIcon dir="right" size={13} />
       </span>
     </Link>

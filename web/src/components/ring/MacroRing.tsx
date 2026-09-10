@@ -1,4 +1,5 @@
-import { surface } from '@/theme/tokens'
+import { useColorScheme } from '@/lib/useColorScheme'
+import { overage, resolveColor, surface } from '@/theme/tokens'
 import { useEffect, useRef } from 'react'
 import {
   type Rgb,
@@ -64,17 +65,25 @@ type Props = {
 export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pad = shadowPad(strokeWidth)
+  // Not to branch on: canvas keeps its pixels until something redraws them, and
+  // the palette is a custom property that changes underneath it.
+  const scheme = useColorScheme()
   // Joined so the effect re-runs when the palette changes, without making the
   // dependency array depend on array identity.
   const stopKey = stops.join(',')
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scheme is an invalidation key, not a value the body reads — canvas keeps its pixels, and the colours it drew with are custom properties that the OS theme changes underneath it.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const rgbStops: Rgb[] = stopKey.split(',').map(hexToRgb)
+    // Canvas cannot resolve a custom property, so the literals are read back
+    // out here rather than handed straight to the context.
+    const rgbStops: Rgb[] = stopKey.split(',').map((c) => hexToRgb(resolveColor(c)))
+    const trackColor = resolveColor(surface.track)
+    const warning = hexToRgb(resolveColor(overage))
     const dpr = window.devicePixelRatio || 1
     // The head circle's outer edge lands exactly on size/2 — the box edge — so
     // its drop shadow would be clipped by the canvas bounds. SwiftUI's .frame()
@@ -98,7 +107,7 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
       ctx.beginPath()
       ctx.arc(cx, cy, radius, 0, Math.PI * 2)
       ctx.lineWidth = strokeWidth
-      ctx.strokeStyle = surface.track
+      ctx.strokeStyle = trackColor
       ctx.stroke()
 
       if (dimmed) return
@@ -123,7 +132,9 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
         // detail is the entire spiral-depth effect (MacroRing.swift:91-95).
         if (i === segmentCount - 1) {
           ctx.save()
-          ctx.fillStyle = rgbToCss(ringColor(rgbStops, endT))
+          ctx.fillStyle = rgbToCss(ringColor(rgbStops, endT, warning))
+          // Black in both themes, deliberately: this shadow lands on the
+          // ring's own coloured arc one lap below, never on the card behind it.
           ctx.shadowColor = 'rgba(0,0,0,1)'
           ctx.shadowBlur = headShadowBlur(strokeWidth)
           ctx.beginPath()
@@ -144,7 +155,7 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
         // it — without that the gradient completes in the first few degrees.
         const share = (a1 - a0) / (Math.PI * 2)
         const grad = ctx.createConicGradient(a0, cx, cy)
-        for (const stop of gradientStops(rgbStops, startT, endT)) {
+        for (const stop of gradientStops(rgbStops, startT, endT, warning)) {
           grad.addColorStop(clamp01(stop.location * share), rgbToCss(stop.color))
         }
 
@@ -157,10 +168,13 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
         // wrap-around region back to the start colour.
         const capFrac = radius > 0 ? strokeWidth / 2 / radius / (Math.PI * 2) : 0
         const endHold = clamp01(share + capFrac * 1.5)
-        grad.addColorStop(endHold, rgbToCss(ringColor(rgbStops, endT)))
+        grad.addColorStop(endHold, rgbToCss(ringColor(rgbStops, endT, warning)))
         if (endHold < 1) {
-          grad.addColorStop(Math.min(1, endHold + 1e-4), rgbToCss(ringColor(rgbStops, startT)))
-          grad.addColorStop(1, rgbToCss(ringColor(rgbStops, startT)))
+          grad.addColorStop(
+            Math.min(1, endHold + 1e-4),
+            rgbToCss(ringColor(rgbStops, startT, warning)),
+          )
+          grad.addColorStop(1, rgbToCss(ringColor(rgbStops, startT, warning)))
         }
 
         ctx.beginPath()
@@ -194,7 +208,7 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [value, size, strokeWidth, stopKey, dimmed, pad])
+  }, [value, size, strokeWidth, stopKey, dimmed, pad, scheme])
 
   return (
     // Decorative: every ring is accompanied by the same figures as text (the

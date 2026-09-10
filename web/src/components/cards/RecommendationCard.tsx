@@ -1,5 +1,5 @@
 import { SealCheckIcon, WarnCircleIcon } from '@/theme/icons'
-import { dietDayColor, label, radius, withAlpha } from '@/theme/tokens'
+import { accent, dietDayColor, label, onTint, radius, withAlpha } from '@/theme/tokens'
 import { DIET_DAY_TITLES } from '@shared/dietDayTitles.ts'
 import type { RecommendationMeta } from '@shared/types.ts'
 import { ActionCard, Kcal, MacroChip, cardDivider } from './ActionCard'
@@ -49,7 +49,7 @@ export function RecommendationCard({ item, fill, page }: Props) {
               flexShrink: 0,
               fontWeight: 700,
               fontSize: 'calc(10.5px * var(--type))',
-              color: '#fff',
+              color: onTint,
               background: withAlpha(tint, 0.85),
               borderRadius: 999,
               padding: '3px 8px',
@@ -141,11 +141,11 @@ export function RecommendationErrorCard({ message }: { message: string }) {
   return (
     <ActionCard
       cornerRadius={radius.errorCard}
-      background={withAlpha('#FF9500', 0.12)}
-      borderColor={withAlpha('#FF9500', 0.4)}
+      background={withAlpha(accent, 0.12)}
+      borderColor={withAlpha(accent, 0.4)}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        <span style={{ color: '#FF9500', display: 'flex', paddingTop: 1 }}>
+        <span style={{ color: accent, display: 'flex', paddingTop: 1 }}>
           <WarnCircleIcon size={16} />
         </span>
         <span style={{ fontWeight: 400, fontSize: 'calc(13.5px * var(--type))' }}>{message}</span>

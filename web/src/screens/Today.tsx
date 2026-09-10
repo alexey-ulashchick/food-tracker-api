@@ -15,7 +15,9 @@ import {
   dietDayColor,
   label,
   layout,
+  overage,
   palette,
+  positive,
   radius,
   ringSpec,
   surface,
@@ -354,8 +356,8 @@ function RingCentre({ rows }: { rows: MacroRow[] }) {
             width: 32,
             height: 32,
             borderRadius: 999,
-            background: withAlpha('#34C759', 0.18),
-            color: '#34C759',
+            background: withAlpha(positive, 0.18),
+            color: positive,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -428,8 +430,8 @@ function MacroStatRow({ row }: { row: MacroRow }) {
               style={{
                 fontWeight: 700,
                 fontSize: 'calc(10px * var(--type))',
-                color: '#FF3B30',
-                background: withAlpha('#FF3B30', 0.16),
+                color: overage,
+                background: withAlpha(overage, 0.16),
                 borderRadius: 999,
                 padding: '1.5px 5px',
               }}
@@ -453,7 +455,7 @@ function MacroStatRow({ row }: { row: MacroRow }) {
           marginLeft: 'auto',
           fontWeight: 600,
           fontSize: 'calc(14px * var(--type))',
-          color: over ? '#FF3B30' : tint,
+          color: over ? overage : tint,
         }}
       >
         {Math.round(ratio * 100)}%
