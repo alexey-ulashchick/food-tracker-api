@@ -109,13 +109,22 @@ test('tapping a History row opens that day on Today', async ({ page }) => {
   const day = (await rows.first().textContent())?.match(/\d+/)?.[0]
   await rows.first().click()
 
-  // Today, showing a past day — which is what puts the reset pill on screen.
-  // The title is a weekday name here, so the pill is the assertion that means
-  // something.
-  await expect(page.getByRole('button', { name: 'Сегодня' })).toBeVisible()
+  // Today, opened on the row's own date — which is the whole claim. The title is
+  // no help: it reads "Сегодня" or a weekday name, neither of which identifies a
+  // date, so the subtitle is what gets asserted.
+  await expect(page).toHaveURL(/\/$/)
   await expect(page.locator('canvas').first()).toBeVisible()
-  if (day) {
-    await expect(page.locator('body')).toContainText(day)
+  expect(day).toBeTruthy()
+  // Word-bounded: the subtitle is "Ср, 9 сент.", so a bare contains("1") would
+  // also be satisfied by the 11th.
+  await expect(page.getByTestId('day-subtitle')).toContainText(new RegExp(`\\b${day}\\b`))
+
+  // The reset pill only exists off today, and in a fresh CI database the one day
+  // with meals IS today. Assert it only when the row was a past day — this is
+  // what the previous `section button` selector hid: it clicked the chart's
+  // paginator, which produces a pill of its own, and passed on that instead.
+  if (day !== String(new Date().getDate())) {
+    await expect(page.getByRole('button', { name: 'Сегодня' })).toBeVisible()
   }
 })
 

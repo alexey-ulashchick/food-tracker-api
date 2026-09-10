@@ -232,7 +232,14 @@ function DayHeader({
         >
           {relativeDayTitle(date, today)}
         </h1>
-        <span className="tnum" style={{ fontWeight: 500, fontSize: 13, color: label.secondary }}>
+        <span
+          className="tnum"
+          // The date Today is actually showing. Anchors the end-to-end check
+          // that a History row opens its own day: the title says "Сегодня" or a
+          // weekday name, neither of which identifies a date.
+          data-testid="day-subtitle"
+          style={{ fontWeight: 500, fontSize: 13, color: label.secondary }}
+        >
           {weekdayShortDate(date)}
         </span>
       </div>
