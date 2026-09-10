@@ -61,7 +61,7 @@ export function ChatBubble({ text, isUser }: { text: string; isUser: boolean }) 
           marginLeft: isUser ? 'var(--bubble-gutter)' : 0,
           marginRight: isUser ? 0 : 'var(--bubble-gutter)',
           padding: '9px 14px',
-          fontSize: 16,
+          fontSize: 'calc(16px * var(--type))',
           lineHeight: 1.35,
           color: label.primary,
           background: isUser ? systemBlue : surface.bubble,

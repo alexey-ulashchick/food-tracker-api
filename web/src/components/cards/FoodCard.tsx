@@ -46,13 +46,15 @@ export function FoodCard({ item, action }: { item: Food; action: 'added' | 'remo
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 22, opacity: removed ? 0.5 : 1 }}>{item.emoji}</span>
+        <span style={{ fontSize: 'calc(22px * var(--type))', opacity: removed ? 0.5 : 1 }}>
+          {item.emoji}
+        </span>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
           <span
             style={{
               fontWeight: 600,
-              fontSize: 14.5,
+              fontSize: 'calc(14.5px * var(--type))',
               textDecoration: removed ? 'line-through' : undefined,
               textDecorationColor: removed ? label.secondary : undefined,
               display: '-webkit-box',
@@ -88,8 +90,10 @@ export function MealUpdateCard({ before, after }: { before: Food; after: Food })
       <StatusBadge icon={<PencilCircleIcon />} text="Изменено" color={systemBlue} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 22 }}>{after.emoji}</span>
-        <span style={{ fontWeight: 600, fontSize: 14.5 }}>{after.name}</span>
+        <span style={{ fontSize: 'calc(22px * var(--type))' }}>{after.emoji}</span>
+        <span style={{ fontWeight: 600, fontSize: 'calc(14.5px * var(--type))' }}>
+          {after.name}
+        </span>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -123,12 +127,21 @@ function DiffRow({
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{ fontWeight: 700, fontSize: 11.5, color: tintColor, width: 28 }}>{text}</span>
+      <span
+        style={{
+          fontWeight: 700,
+          fontSize: 'calc(11.5px * var(--type))',
+          color: tintColor,
+          width: 28,
+        }}
+      >
+        {text}
+      </span>
       <span
         className="tnum"
         style={{
           fontWeight: 400,
-          fontSize: 11.5,
+          fontSize: 'calc(11.5px * var(--type))',
           color: label.secondary,
           textDecoration: changed ? 'line-through' : undefined,
         }}
@@ -142,7 +155,7 @@ function DiffRow({
         className="tnum"
         style={{
           fontWeight: changed ? 600 : 400,
-          fontSize: 11.5,
+          fontSize: 'calc(11.5px * var(--type))',
           color: changed ? label.primary : label.secondary,
         }}
       >
@@ -161,7 +174,7 @@ export function GoalCard({ item }: { item: Goal }) {
         <span
           style={{
             fontWeight: 600,
-            fontSize: 12,
+            fontSize: 'calc(12px * var(--type))',
             color: label.secondary,
             textTransform: 'uppercase',
             letterSpacing: 0.4,
@@ -169,7 +182,7 @@ export function GoalCard({ item }: { item: Goal }) {
         >
           {item.date}
         </span>
-        <span className="tnum" style={{ fontWeight: 600, fontSize: 14.5 }}>
+        <span className="tnum" style={{ fontWeight: 600, fontSize: 'calc(14.5px * var(--type))' }}>
           {Math.round(item.kcal)} ккал · {DAY_TYPE_RU[item.dayType] ?? item.dayType}
         </span>
       </div>
@@ -205,20 +218,20 @@ export function MemoryCard({ content, action }: { content: string; action: Memor
           <span
             style={{
               fontWeight: 400,
-              fontSize: 13,
+              fontSize: 'calc(13px * var(--type))',
               color: label.secondary,
               textDecoration: 'line-through',
             }}
           >
             {action.before}
           </span>
-          <span style={{ fontWeight: 600, fontSize: 14 }}>{content}</span>
+          <span style={{ fontWeight: 600, fontSize: 'calc(14px * var(--type))' }}>{content}</span>
         </div>
       ) : (
         <span
           style={{
             fontWeight: 600,
-            fontSize: 14,
+            fontSize: 'calc(14px * var(--type))',
             color: removed ? label.secondary : label.primary,
             textDecoration: removed ? 'line-through' : undefined,
           }}

@@ -74,7 +74,7 @@ export function StatusBadge({
         alignItems: 'center',
         gap: 4,
         fontWeight: 600,
-        fontSize: 11.5,
+        fontSize: 'calc(11.5px * var(--type))',
         color,
       }}
     >
@@ -103,10 +103,15 @@ export function MacroChip({
 }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 3 }}>
-      <span style={{ fontWeight: 700, fontSize: 11.5, color: palette[kind][1] }}>
+      <span
+        style={{ fontWeight: 700, fontSize: 'calc(11.5px * var(--type))', color: palette[kind][1] }}
+      >
         {MACRO_LETTER[kind]}
       </span>
-      <span className="tnum" style={{ fontWeight: 400, fontSize: 11.5, color: label.secondary }}>
+      <span
+        className="tnum"
+        style={{ fontWeight: 400, fontSize: 'calc(11.5px * var(--type))', color: label.secondary }}
+      >
         {Math.round(value)}
         {unit ?? ''}
       </span>
@@ -131,7 +136,7 @@ export function Kcal({
       className="tnum"
       style={{
         fontWeight: 700,
-        fontSize: size,
+        fontSize: `calc(${size}px * var(--type))`,
         color: muted ? label.secondary : palette.calories[1],
         whiteSpace: 'nowrap',
       }}

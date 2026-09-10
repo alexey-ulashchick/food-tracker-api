@@ -28,10 +28,17 @@ export function RecommendationCard({ item, fill, page }: Props) {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ width: 9, height: 9, borderRadius: 999, background: tint, flexShrink: 0 }} />
-        <span style={{ fontWeight: 600, fontSize: 11.5, color: tint }}>
+        <span style={{ fontWeight: 600, fontSize: 'calc(11.5px * var(--type))', color: tint }}>
           {DIET_DAY_TITLES[item.color]}
         </span>
-        <span style={{ marginLeft: 'auto', fontWeight: 500, fontSize: 11, color: label.secondary }}>
+        <span
+          style={{
+            marginLeft: 'auto',
+            fontWeight: 500,
+            fontSize: 'calc(11px * var(--type))',
+            color: label.secondary,
+          }}
+        >
           {/* An empty combo reads as a status, not a suggestion to eat. */}
           {noFood ? 'день уже сложился' : `+${Math.round(item.addedMacros.calories)} ккал`}
         </span>
@@ -41,7 +48,7 @@ export function RecommendationCard({ item, fill, page }: Props) {
             style={{
               flexShrink: 0,
               fontWeight: 700,
-              fontSize: 10.5,
+              fontSize: 'calc(10.5px * var(--type))',
               color: '#fff',
               background: withAlpha(tint, 0.85),
               borderRadius: 999,
@@ -58,7 +65,13 @@ export function RecommendationCard({ item, fill, page }: Props) {
           <span style={{ color: tint, display: 'flex' }}>
             <SealCheckIcon size={14} />
           </span>
-          <span style={{ fontWeight: 400, fontSize: 13, color: label.secondary }}>
+          <span
+            style={{
+              fontWeight: 400,
+              fontSize: 'calc(13px * var(--type))',
+              color: label.secondary,
+            }}
+          >
             Можно ничего не есть — день уже сложился.
           </span>
         </div>
@@ -66,12 +79,12 @@ export function RecommendationCard({ item, fill, page }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {item.foods.map((f) => (
             <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 18 }}>{f.emoji ?? '🍽'}</span>
+              <span style={{ fontSize: 'calc(18px * var(--type))' }}>{f.emoji ?? '🍽'}</span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                 <span
                   style={{
                     fontWeight: 600,
-                    fontSize: 14,
+                    fontSize: 'calc(14px * var(--type))',
                     display: '-webkit-box',
                     WebkitLineClamp: 2,
                     WebkitBoxOrient: 'vertical',
@@ -101,7 +114,7 @@ export function RecommendationCard({ item, fill, page }: Props) {
           <span
             style={{
               fontWeight: 600,
-              fontSize: 10.5,
+              fontSize: 'calc(10.5px * var(--type))',
               color: label.secondary,
               textTransform: 'uppercase',
               letterSpacing: 0.4,
@@ -135,7 +148,7 @@ export function RecommendationErrorCard({ message }: { message: string }) {
         <span style={{ color: '#FF9500', display: 'flex', paddingTop: 1 }}>
           <WarnCircleIcon size={16} />
         </span>
-        <span style={{ fontWeight: 400, fontSize: 13.5 }}>{message}</span>
+        <span style={{ fontWeight: 400, fontSize: 'calc(13.5px * var(--type))' }}>{message}</span>
       </div>
     </ActionCard>
   )

@@ -122,7 +122,7 @@ export function Today() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   fontWeight: 600,
-                  fontSize: 12.5,
+                  fontSize: 'calc(12.5px * var(--type))',
                   color: dayTypeTint[dayType],
                   background: withAlpha(dayTypeTint[dayType], CHIP_BG_ALPHA),
                   borderRadius: 999,
@@ -222,7 +222,7 @@ function DayHeader({
         <h1
           style={{
             fontWeight: 700,
-            fontSize: 32,
+            fontSize: 'calc(32px * var(--type))',
             lineHeight: 1.1,
             margin: 0,
             whiteSpace: 'nowrap',
@@ -238,7 +238,7 @@ function DayHeader({
           // that a History row opens its own day: the title says "Сегодня" or a
           // weekday name, neither of which identifies a date.
           data-testid="day-subtitle"
-          style={{ fontWeight: 500, fontSize: 13, color: label.secondary }}
+          style={{ fontWeight: 500, fontSize: 'calc(13px * var(--type))', color: label.secondary }}
         >
           {weekdayShortDate(date)}
         </span>
@@ -261,7 +261,7 @@ function DayHeader({
               background: withAlpha(accent, CHIP_BG_ALPHA),
               color: accent,
               fontWeight: 600,
-              fontSize: 12.5,
+              fontSize: 'calc(12.5px * var(--type))',
               cursor: 'pointer',
               whiteSpace: 'nowrap',
             }}
@@ -318,11 +318,13 @@ function Verdict({ verdict }: { verdict: ServerDaySummary }) {
             flexShrink: 0,
           }}
         />
-        <span style={{ fontWeight: 600, fontSize: 14 }}>
+        <span style={{ fontWeight: 600, fontSize: 'calc(14px * var(--type))' }}>
           {verdict.title || DIET_DAY_TITLES[verdict.color]}
         </span>
       </div>
-      <span style={{ fontWeight: 400, fontSize: 12.5, color: label.secondary }}>
+      <span
+        style={{ fontWeight: 400, fontSize: 'calc(12.5px * var(--type))', color: label.secondary }}
+      >
         {verdict.reason}
       </span>
     </div>
@@ -364,7 +366,7 @@ function RingCentre({ rows }: { rows: MacroRow[] }) {
         <span
           style={{
             fontWeight: 600,
-            fontSize: 10.5,
+            fontSize: 'calc(10.5px * var(--type))',
             color: label.secondary,
             letterSpacing: 0.4,
             textTransform: 'uppercase',
@@ -394,12 +396,14 @@ function RingCentre({ rows }: { rows: MacroRow[] }) {
           color: palette[lowest.key][1],
         }}
       >
-        <span className="tnum" style={{ fontWeight: 700, fontSize: 22 }}>
+        <span className="tnum" style={{ fontWeight: 700, fontSize: 'calc(22px * var(--type))' }}>
           +{remaining}
         </span>
-        <span style={{ fontWeight: 600, fontSize: 12 }}>{lowest.unit}</span>
+        <span style={{ fontWeight: 600, fontSize: 'calc(12px * var(--type))' }}>{lowest.unit}</span>
       </span>
-      <span style={{ fontWeight: 500, fontSize: 10.5, color: label.secondary }}>
+      <span
+        style={{ fontWeight: 500, fontSize: 'calc(10.5px * var(--type))', color: label.secondary }}
+      >
         {lowest.name.toLowerCase()}
       </span>
     </div>
@@ -417,13 +421,13 @@ function MacroStatRow({ row }: { row: MacroRow }) {
       <span style={{ width: 8, height: 8, borderRadius: 999, background: tint, flexShrink: 0 }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontWeight: 600, fontSize: 14 }}>{row.name}</span>
+          <span style={{ fontWeight: 600, fontSize: 'calc(14px * var(--type))' }}>{row.name}</span>
           {over ? (
             <span
               className="tnum"
               style={{
                 fontWeight: 700,
-                fontSize: 10,
+                fontSize: 'calc(10px * var(--type))',
                 color: '#FF3B30',
                 background: withAlpha('#FF3B30', 0.16),
                 borderRadius: 999,
@@ -435,7 +439,10 @@ function MacroStatRow({ row }: { row: MacroRow }) {
             </span>
           ) : null}
         </span>
-        <span className="tnum" style={{ fontWeight: 400, fontSize: 12, color: label.secondary }}>
+        <span
+          className="tnum"
+          style={{ fontWeight: 400, fontSize: 'calc(12px * var(--type))', color: label.secondary }}
+        >
           {Math.round(row.current)} / {Math.round(row.goal)}
           {row.unit}
         </span>
@@ -445,7 +452,7 @@ function MacroStatRow({ row }: { row: MacroRow }) {
         style={{
           marginLeft: 'auto',
           fontWeight: 600,
-          fontSize: 14,
+          fontSize: 'calc(14px * var(--type))',
           color: over ? '#FF3B30' : tint,
         }}
       >
@@ -476,7 +483,7 @@ function MealsLog({ meals, loading }: { meals: ServerMeal[]; loading: boolean })
         <span
           style={{
             fontWeight: 600,
-            fontSize: 13,
+            fontSize: 'calc(13px * var(--type))',
             color: label.secondary,
             letterSpacing: 0.4,
             textTransform: 'uppercase',
@@ -487,7 +494,12 @@ function MealsLog({ meals, loading }: { meals: ServerMeal[]; loading: boolean })
         {meals.length > 0 ? (
           <span
             className="tnum"
-            style={{ marginLeft: 'auto', fontWeight: 600, fontSize: 12, color: label.secondary }}
+            style={{
+              marginLeft: 'auto',
+              fontWeight: 600,
+              fontSize: 'calc(12px * var(--type))',
+              color: label.secondary,
+            }}
           >
             {meals.length}
           </span>
@@ -502,7 +514,7 @@ function MealsLog({ meals, loading }: { meals: ServerMeal[]; loading: boolean })
             gap: 10,
             padding: '12px 16px',
             fontWeight: 400,
-            fontSize: 13,
+            fontSize: 'calc(13px * var(--type))',
             color: label.secondary,
           }}
         >
@@ -547,7 +559,14 @@ function MealRow({ meal }: { meal: ServerMeal }) {
       data-testid="meal-row"
       style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px' }}
     >
-      <span style={{ fontSize: 22, width: 30, flexShrink: 0, textAlign: 'center' }}>
+      <span
+        style={{
+          fontSize: 'calc(22px * var(--type))',
+          width: 30,
+          flexShrink: 0,
+          textAlign: 'center',
+        }}
+      >
         {meal.emoji ?? '🍽'}
       </span>
 
@@ -558,7 +577,7 @@ function MealRow({ meal }: { meal: ServerMeal }) {
           className="meal-name"
           style={{
             fontWeight: 600,
-            fontSize: 14.5,
+            fontSize: 'calc(14.5px * var(--type))',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -573,7 +592,7 @@ function MealRow({ meal }: { meal: ServerMeal }) {
             alignItems: 'center',
             gap: 8,
             fontWeight: 400,
-            fontSize: 11,
+            fontSize: 'calc(11px * var(--type))',
             color: label.secondary,
           }}
         >
@@ -581,7 +600,7 @@ function MealRow({ meal }: { meal: ServerMeal }) {
             className="meal-type"
             style={{
               fontWeight: 600,
-              fontSize: 11,
+              fontSize: 'calc(11px * var(--type))',
               letterSpacing: 0.3,
               textTransform: 'uppercase',
             }}
@@ -590,7 +609,10 @@ function MealRow({ meal }: { meal: ServerMeal }) {
           </span>
           <span className="meal-sep">·</span>
           {/* Rendered in the timezone where the meal was eaten. */}
-          <span className="tnum meal-time" style={{ fontWeight: 500, fontSize: 11 }}>
+          <span
+            className="tnum meal-time"
+            style={{ fontWeight: 500, fontSize: 'calc(11px * var(--type))' }}
+          >
             {formatLocalTime(meal.timestamp, meal.tzOffsetMin)}
           </span>
           <span className="meal-sep">·</span>
@@ -618,7 +640,7 @@ function MealRow({ meal }: { meal: ServerMeal }) {
           className="tnum"
           style={{
             fontWeight: 700,
-            fontSize: 15,
+            fontSize: 'calc(15px * var(--type))',
             color: palette.calories[1],
             width: 48,
             textAlign: 'right',
@@ -642,7 +664,7 @@ function MealMacro({
 }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 2 }}>
-      <span style={{ fontWeight: 700, fontSize: 11, color }}>{letter}</span>
+      <span style={{ fontWeight: 700, fontSize: 'calc(11px * var(--type))', color }}>{letter}</span>
       <span className="tnum">{Math.round(value)}</span>
     </span>
   )

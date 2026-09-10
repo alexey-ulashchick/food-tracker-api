@@ -98,7 +98,7 @@ export function You() {
                       background: active ? surface.subtle : 'transparent',
                       color: active ? label.primary : label.secondary,
                       fontWeight: active ? 600 : 400,
-                      fontSize: 12,
+                      fontSize: 'calc(12px * var(--type))',
                       padding: '7px 4px',
                       cursor: 'pointer',
                       whiteSpace: 'nowrap',
@@ -134,7 +134,7 @@ export function You() {
                   background: withAlpha('#FF453A', 0.16),
                   color: '#FF453A',
                   fontWeight: 600,
-                  fontSize: 13,
+                  fontSize: 'calc(13px * var(--type))',
                   padding: '9px 12px',
                   cursor: 'pointer',
                 }}
@@ -169,7 +169,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <span
       style={{
         fontWeight: 600,
-        fontSize: 12.5,
+        fontSize: 'calc(12.5px * var(--type))',
         color: label.secondary,
         letterSpacing: 0.4,
         textTransform: 'uppercase',
@@ -216,12 +216,12 @@ function Row({
         {icon}
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-        <span style={{ fontWeight: 400, fontSize: 16 }}>{title}</span>
+        <span style={{ fontWeight: 400, fontSize: 'calc(16px * var(--type))' }}>{title}</span>
         <span
           className="tnum"
           style={{
             fontWeight: 400,
-            fontSize: 12.5,
+            fontSize: 'calc(12.5px * var(--type))',
             color: label.secondary,
             whiteSpace: 'nowrap',
             overflow: 'hidden',

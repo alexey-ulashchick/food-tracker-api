@@ -56,7 +56,14 @@ export function Memories() {
     <Page>
       <ScreenHeader title="Память" trailing={query.isFetching ? <Spinner /> : null} />
 
-      <p style={{ fontWeight: 400, fontSize: 13, color: label.secondary, margin: 0 }}>
+      <p
+        style={{
+          fontWeight: 400,
+          fontSize: 'calc(13px * var(--type))',
+          color: label.secondary,
+          margin: 0,
+        }}
+      >
         Долгоживущие факты, которые ассистент учитывает в каждом ответе. Он добавляет их сам, когда
         ты говоришь «запомни», — но список можно править руками.
       </p>
@@ -77,7 +84,7 @@ export function Memories() {
             alignItems: 'center',
             gap: 5,
             fontWeight: 600,
-            fontSize: 11.5,
+            fontSize: 'calc(11.5px * var(--type))',
             color: '#BF5AF2',
             letterSpacing: 0.3,
             textTransform: 'uppercase',
@@ -112,7 +119,7 @@ export function Memories() {
               alignItems: 'center',
               gap: 10,
               fontWeight: 400,
-              fontSize: 13,
+              fontSize: 'calc(13px * var(--type))',
               color: label.secondary,
             }}
           >
@@ -128,7 +135,7 @@ export function Memories() {
               alignItems: 'center',
               gap: 10,
               fontWeight: 400,
-              fontSize: 13,
+              fontSize: 'calc(13px * var(--type))',
               color: label.secondary,
             }}
           >
@@ -223,7 +230,9 @@ function MemoryRow({
         </>
       ) : (
         <>
-          <span style={{ flex: 1, minWidth: 0, fontWeight: 400, fontSize: 14 }}>
+          <span
+            style={{ flex: 1, minWidth: 0, fontWeight: 400, fontSize: 'calc(14px * var(--type))' }}
+          >
             {memory.content}
           </span>
           <button type="button" onClick={onBeginEdit} aria-label="Изменить" style={iconButtonStyle}>
@@ -261,7 +270,7 @@ const fieldStyle: React.CSSProperties = {
   borderRadius: radius.field,
   color: label.primary,
   fontWeight: 400,
-  fontSize: 14,
+  fontSize: 'calc(14px * var(--type))',
   padding: '10px 12px',
   lineHeight: 1.35,
 }
@@ -282,7 +291,7 @@ const ghostButtonStyle: React.CSSProperties = {
   background: surface.control,
   color: label.primary,
   fontWeight: 600,
-  fontSize: 13,
+  fontSize: 'calc(13px * var(--type))',
   padding: '8px 12px',
   cursor: 'pointer',
 }
@@ -294,7 +303,7 @@ function primaryButtonStyle(enabled: boolean): React.CSSProperties {
     background: enabled ? accent : withAlpha('#8E8E93', 0.18),
     color: enabled ? '#000' : label.secondary,
     fontWeight: 600,
-    fontSize: 13,
+    fontSize: 'calc(13px * var(--type))',
     padding: '8px 12px',
     cursor: enabled ? 'pointer' : 'default',
   }

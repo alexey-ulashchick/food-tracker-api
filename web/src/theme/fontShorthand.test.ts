@@ -42,3 +42,33 @@ describe('the font shorthand', () => {
     expect("style={{ font: '600 13px system-ui' }}".match(INVALID)).toBeNull()
   })
 })
+
+// Every inline size is written `calc(Npx * var(--type))` so one variable can
+// rescale the whole app: phone point sizes read as oversized at desktop viewing
+// distance, and there is no other way to reach ~110 inline declarations at once.
+//
+// A bare `fontSize: 14` is therefore a size that silently ignores the scale.
+// It renders fine, so nothing catches it but this.
+
+/** `fontSize: 14` / `fontSize: 14.5` — a raw number, not a calc(). */
+const UNSCALED = /fontSize: \d+(\.\d+)?(?=[,\s}\n])/g
+
+describe('the type scale', () => {
+  test('no inline font size opts out of it', () => {
+    const offenders = Object.entries(sources)
+      // This file names the unscaled form to explain it.
+      .filter(([path]) => !path.endsWith('fontShorthand.test.ts'))
+      .flatMap(([path, text]) => (text.match(UNSCALED) ?? []).map((m) => `${path}: ${m}`))
+
+    expect(offenders).toEqual([])
+  })
+
+  test('the scan tells a raw size from a scaled one', () => {
+    expect('style={{ fontSize: 14.5 }}'.match(UNSCALED)).not.toBeNull()
+    expect('style={{ fontSize: 32, margin: 0 }}'.match(UNSCALED)).not.toBeNull()
+    expect("style={{ fontSize: 'calc(14.5px * var(--type))' }}".match(UNSCALED)).toBeNull()
+    // Relative and computed forms carry the scale from their context.
+    expect("style={{ fontSize: '0.92em' }}".match(UNSCALED)).toBeNull()
+    expect('style={{ fontSize: `calc(${size}px * var(--type))` }}'.match(UNSCALED)).toBeNull()
+  })
+})

@@ -19,7 +19,7 @@ export function ScreenHeader({ title, subtitle, trailing }: Props) {
         <h1
           style={{
             fontWeight: 700,
-            fontSize: 32,
+            fontSize: 'calc(32px * var(--type))',
             lineHeight: 1.1,
             margin: 0,
             whiteSpace: 'nowrap',
@@ -30,7 +30,14 @@ export function ScreenHeader({ title, subtitle, trailing }: Props) {
           {title}
         </h1>
         {subtitle ? (
-          <span className="tnum" style={{ fontWeight: 500, fontSize: 13, color: label.secondary }}>
+          <span
+            className="tnum"
+            style={{
+              fontWeight: 500,
+              fontSize: 'calc(13px * var(--type))',
+              color: label.secondary,
+            }}
+          >
             {subtitle}
           </span>
         ) : null}

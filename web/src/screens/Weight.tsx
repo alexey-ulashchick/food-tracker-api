@@ -55,10 +55,21 @@ export function Weight() {
           // half of the card empty.
           <div className="weight-split">
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-              <span className="tnum" style={{ fontWeight: 700, fontSize: 44 }}>
+              <span
+                className="tnum"
+                style={{ fontWeight: 700, fontSize: 'calc(44px * var(--type))' }}
+              >
                 {formatKg(latest.kg)}
               </span>
-              <span style={{ fontWeight: 600, fontSize: 16, color: label.secondary }}>кг</span>
+              <span
+                style={{
+                  fontWeight: 600,
+                  fontSize: 'calc(16px * var(--type))',
+                  color: label.secondary,
+                }}
+              >
+                кг
+              </span>
               {delta != null ? <DeltaPill delta={delta} /> : null}
               {slope != null ? <TrendPill slope={slope} /> : null}
             </div>
@@ -71,7 +82,7 @@ export function Weight() {
               alignItems: 'center',
               gap: 10,
               fontWeight: 400,
-              fontSize: 13,
+              fontSize: 'calc(13px * var(--type))',
               color: label.secondary,
               minHeight: 60,
             }}
@@ -105,7 +116,7 @@ function DeltaPill({ delta }: { delta: number }) {
         alignItems: 'center',
         gap: 3,
         fontWeight: 600,
-        fontSize: 11,
+        fontSize: 'calc(11px * var(--type))',
         color,
         background: withAlpha(color, 0.15),
         borderRadius: 999,
@@ -130,7 +141,7 @@ function TrendPill({ slope }: { slope: number }) {
         alignItems: 'center',
         gap: 3,
         fontWeight: 600,
-        fontSize: 11,
+        fontSize: 'calc(11px * var(--type))',
         color,
         background: withAlpha(color, 0.15),
         borderRadius: 999,
@@ -155,7 +166,7 @@ function WeightChart({ weeks }: { weeks: Array<{ weekStart: string; avgKg: numbe
           display: 'flex',
           alignItems: 'center',
           fontWeight: 400,
-          fontSize: 12,
+          fontSize: 'calc(12px * var(--type))',
           color: label.secondary,
         }}
       >

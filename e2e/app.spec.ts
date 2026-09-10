@@ -145,6 +145,19 @@ test('the phone shell keeps its own metrics', async ({ page }) => {
   await expect(page.getByRole('navigation')).toHaveCount(1)
   await expect(page.locator('.tab-bar')).toHaveCount(1)
 
+  // The type scale is 1 here. Rewriting ~110 inline sizes as
+  // calc(Npx * var(--type)) must not have moved a single phone value: this is a
+  // pixel-faithful port of the SwiftUI original.
+  const title = await page
+    .getByRole('heading', { level: 1 })
+    .evaluate((el) => getComputedStyle(el).fontSize)
+  expect(title).toBe('32px')
+
+  const name = page.locator('.meal-name').first()
+  if ((await name.count()) > 0) {
+    expect(await name.evaluate((el) => getComputedStyle(el).fontSize)).toBe('14.5px')
+  }
+
   // Same viewBox check as the desktop spec: a chart must draw at its real
   // width on a phone too.
   await page.goto('/history')

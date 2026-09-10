@@ -302,6 +302,13 @@ Three rules make this work in a codebase written almost entirely in inline
    element**, or the class is dead at every width with nothing thrown.
    `web/src/theme/inlineOverride.test.ts` fails the build if that happens.
 
+Type sizes are the exception to rule 1, because there are ~110 of them: every
+inline size is written `calc(Npx * var(--type))`, so `--type` rescales the whole
+app at once and keeps the design's internal ratios. It is 1 on a phone — the
+port is pixel-faithful to the SwiftUI original — and 0.85 on a desktop, which
+sits much further from the eye. That one number is what to turn if the text
+feels wrong; `fontShorthand.test.ts` fails the build on a size that opts out.
+
 `e2e/desktop.spec.ts` is the only place the desktop layout is actually proven:
 jsdom evaluates no media queries, and vitest blanks CSS imports, so no unit test
 can assert one.

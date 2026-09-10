@@ -62,8 +62,17 @@ export function Login() {
           margin: '0 auto',
         }}
       >
-        <h1 style={{ fontWeight: 700, fontSize: 32, margin: '8px 0 0' }}>Cal Tracker</h1>
-        <p style={{ fontWeight: 400, fontSize: 13.5, color: label.secondary, margin: 0 }}>
+        <h1 style={{ fontWeight: 700, fontSize: 'calc(32px * var(--type))', margin: '8px 0 0' }}>
+          Cal Tracker
+        </h1>
+        <p
+          style={{
+            fontWeight: 400,
+            fontSize: 'calc(13.5px * var(--type))',
+            color: label.secondary,
+            margin: 0,
+          }}
+        >
           Вставь токен доступа. Его выдаёт скрипт{' '}
           <code style={{ fontFamily: 'ui-monospace, monospace' }}>issue-token</code> на сервере.
         </p>
@@ -125,7 +134,9 @@ export function Login() {
           </div>
 
           {status.kind === 'error' ? (
-            <span style={{ fontWeight: 400, fontSize: 12.5, color: '#FF453A' }}>
+            <span
+              style={{ fontWeight: 400, fontSize: 'calc(12.5px * var(--type))', color: '#FF453A' }}
+            >
               {status.message}
             </span>
           ) : null}
@@ -140,7 +151,7 @@ export function Login() {
               borderRadius: radius.field,
               color: canSubmit ? '#000' : label.secondary,
               fontWeight: 600,
-              fontSize: 15,
+              fontSize: 'calc(15px * var(--type))',
               padding: '11px 12px',
               cursor: canSubmit ? 'pointer' : 'default',
             }}

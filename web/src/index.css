@@ -88,6 +88,16 @@
      column and the bars run edge to edge as they should. */
   --chat-max: 100%;
 
+  /* Type scale multiplier. Every inline fontSize in the app is written as
+     `calc(Npx * var(--type))`, so this one number moves all of them at once and
+     keeps the design's internal ratios intact.
+
+     1 on a phone: the port is pixel-faithful to the SwiftUI original, and iOS
+     point sizes are what a phone should show. A desktop sits much further from
+     the eye than a phone does, so the same point sizes read as oversized there
+     — this is the one number to turn if the text still feels wrong. */
+  --type: 1;
+
   /* Read by useIsDesktop(). The breakpoint literal lives in exactly one place —
      the media query below — and JS asks CSS which side of it we are on rather
      than restating the number and needing a test to prove the two agree. */
@@ -110,6 +120,9 @@
     --bubble-max: 560px;
     --bubble-gutter: 72px;
     --action-card-max: 420px;
+    /* Phone point sizes read as oversized at desktop viewing distance. 0.85
+       lands the 14.5px body text at ~12.3px, next to a 20px sidebar icon. */
+    --type: 0.85;
   }
 }
 

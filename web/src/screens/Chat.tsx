@@ -156,7 +156,7 @@ export function Chat() {
               gap: 10,
               paddingTop: 40,
               fontWeight: 400,
-              fontSize: 13,
+              fontSize: 'calc(13px * var(--type))',
               color: label.secondary,
             }}
           >
@@ -220,7 +220,12 @@ function CostLabel({ text }: { text: string | null }) {
   return (
     <span
       className="tnum"
-      style={{ fontWeight: 500, fontSize: 10, color: label.secondary, paddingLeft: 6 }}
+      style={{
+        fontWeight: 500,
+        fontSize: 'calc(10px * var(--type))',
+        color: label.secondary,
+        paddingLeft: 6,
+      }}
     >
       {text}
     </span>
@@ -291,7 +296,7 @@ function ToolStatus({ name, status }: { name: string; status: 'start' | 'ok' | '
         alignItems: 'center',
         gap: 6,
         fontWeight: 500,
-        fontSize: 11.5,
+        fontSize: 'calc(11.5px * var(--type))',
         color: label.secondary,
         paddingLeft: 6,
       }}
@@ -364,7 +369,7 @@ function MacroStrip({ goal, meals }: { goal: ServerGoal | null; meals: ServerMea
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontWeight: 700,
-                  fontSize: 9.5,
+                  fontSize: 'calc(9.5px * var(--type))',
                   color: label.secondary,
                   pointerEvents: 'none',
                 }}
@@ -564,7 +569,7 @@ function Composer({
               borderRadius: 18,
               color: label.primary,
               fontWeight: 400,
-              fontSize: 16,
+              fontSize: 'calc(16px * var(--type))',
               padding: '9px 14px',
               lineHeight: 1.3,
             }}
@@ -635,7 +640,7 @@ function MenuItem({ label: text, onClick }: { label: string; onClick: () => void
         background: 'transparent',
         color: label.primary,
         fontWeight: 400,
-        fontSize: 14,
+        fontSize: 'calc(14px * var(--type))',
         textAlign: 'left',
         padding: '10px 14px',
         cursor: 'pointer',

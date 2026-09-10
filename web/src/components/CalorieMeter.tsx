@@ -35,7 +35,7 @@ export function CalorieMeter({ current, goal, stops, size = 'large', accessory }
         <span
           style={{
             fontWeight: 600,
-            fontSize: 11,
+            fontSize: 'calc(11px * var(--type))',
             letterSpacing: 0.5,
             textTransform: 'uppercase',
             color: tint,
@@ -53,10 +53,20 @@ export function CalorieMeter({ current, goal, stops, size = 'large', accessory }
       {/* Both halves share a baseline in Swift (.lastTextBaseline). */}
       <div style={{ display: 'flex', alignItems: 'baseline' }}>
         <span style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-          <span className="tnum" style={{ fontWeight: 700, fontSize: NUM_FONT[size] }}>
+          <span
+            className="tnum"
+            style={{ fontWeight: 700, fontSize: `calc(${NUM_FONT[size]}px * var(--type))` }}
+          >
             {Math.round(current)}
           </span>
-          <span className="tnum" style={{ fontWeight: 500, fontSize: 14, color: label.secondary }}>
+          <span
+            className="tnum"
+            style={{
+              fontWeight: 500,
+              fontSize: 'calc(14px * var(--type))',
+              color: label.secondary,
+            }}
+          >
             / {Math.round(goal)}
           </span>
         </span>
@@ -64,7 +74,7 @@ export function CalorieMeter({ current, goal, stops, size = 'large', accessory }
           <span
             style={{
               fontWeight: 600,
-              fontSize: 11,
+              fontSize: 'calc(11px * var(--type))',
               letterSpacing: 0.5,
               color: label.secondary,
             }}
@@ -75,7 +85,7 @@ export function CalorieMeter({ current, goal, stops, size = 'large', accessory }
             className="tnum"
             style={{
               fontWeight: 700,
-              fontSize: size === 'large' ? 28 : 20,
+              fontSize: `calc(${size === 'large' ? 28 : 20}px * var(--type))`,
               color: over > 0 ? '#FF3B30' : tint,
             }}
           >

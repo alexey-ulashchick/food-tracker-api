@@ -113,7 +113,7 @@ export function CalorieChart({ days }: { days: ChartDay[] }) {
                 textAnchor="end"
                 dominantBaseline="middle"
                 fill={label.secondary}
-                style={{ fontWeight: 400, fontSize: 9 }}
+                style={{ fontWeight: 400, fontSize: 'calc(9px * var(--type))' }}
               >
                 {Math.round(v)}
               </text>
@@ -181,7 +181,7 @@ export function CalorieChart({ days }: { days: ChartDay[] }) {
                 y={CHART_HEIGHT - 6}
                 textAnchor="middle"
                 fill={label.secondary}
-                style={{ fontWeight: 400, fontSize: 9 }}
+                style={{ fontWeight: 400, fontSize: 'calc(9px * var(--type))' }}
               >
                 {dayMonth(d.date)}
               </text>
@@ -217,13 +217,25 @@ function Tooltip({ day, x, width }: { day: ChartDay; x: number; width: number })
         pointerEvents: 'none',
       }}
     >
-      <span style={{ fontWeight: 600, fontSize: 10, color: label.secondary }}>
+      <span
+        style={{ fontWeight: 600, fontSize: 'calc(10px * var(--type))', color: label.secondary }}
+      >
         {dayMonth(day.date)}
       </span>
-      <span className="tnum" style={{ fontWeight: 700, fontSize: 13, color: palette.calories[1] }}>
+      <span
+        className="tnum"
+        style={{
+          fontWeight: 700,
+          fontSize: 'calc(13px * var(--type))',
+          color: palette.calories[1],
+        }}
+      >
         {day.eaten == null ? '—' : `${Math.round(day.eaten)} ккал`}
       </span>
-      <span className="tnum" style={{ fontWeight: 400, fontSize: 10, color: label.secondary }}>
+      <span
+        className="tnum"
+        style={{ fontWeight: 400, fontSize: 'calc(10px * var(--type))', color: label.secondary }}
+      >
         цель {day.goal == null ? '—' : Math.round(day.goal)}
       </span>
     </div>

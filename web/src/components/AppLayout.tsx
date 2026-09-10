@@ -117,7 +117,7 @@ function TabBar() {
             })}
           >
             <Icon size={24} />
-            <span style={{ fontWeight: 500, fontSize: 10 }}>{text}</span>
+            <span style={{ fontWeight: 500, fontSize: 'calc(10px * var(--type))' }}>{text}</span>
           </NavLink>
         ))}
       </div>
@@ -140,7 +140,7 @@ function ErrorBanner() {
         padding: '10px 16px',
         background: withAlpha(accent, 0.18),
         fontWeight: 400,
-        fontSize: 13,
+        fontSize: 'calc(13px * var(--type))',
       }}
     >
       <span style={{ color: accent, display: 'flex', paddingTop: 1 }}>
@@ -168,7 +168,7 @@ function ErrorBanner() {
           border: 0,
           color: accent,
           fontWeight: 600,
-          fontSize: 13,
+          fontSize: 'calc(13px * var(--type))',
           padding: 0,
           cursor: 'pointer',
         }}

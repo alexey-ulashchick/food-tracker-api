@@ -198,6 +198,30 @@ test('Профиль stays a single column', async ({ page }) => {
   expect(new Set(lefts).size).toBe(1)
 })
 
+test('the type scale shrinks the text without touching the phone values', async ({ page }) => {
+  await authenticate(page)
+  await page.goto('/')
+
+  // Every inline size is calc(Npx * var(--type)); this is the only place the
+  // multiplier is proven to arrive. A meal name is 14.5px at --type: 1.
+  const name = page.locator('.meal-name').first()
+  if ((await name.count()) === 0) {
+    test.info().annotations.push({ type: 'note', description: 'no meals logged today' })
+    return
+  }
+
+  const size = await name.evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize))
+  expect(size).toBeGreaterThan(11.5)
+  expect(size).toBeLessThan(13)
+
+  // And the page title moves with it rather than staying at its phone size.
+  const title = await page
+    .getByRole('heading', { level: 1 })
+    .evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize))
+  expect(title).toBeLessThan(32)
+  expect(title).toBeGreaterThan(24)
+})
+
 /** An SVG whose viewBox width differs from its rendered width is mis-measured. */
 async function expectViewBoxMatchesBox(locator: Locator) {
   const { viewBoxWidth, boxWidth } = await locator.evaluate((el) => ({
