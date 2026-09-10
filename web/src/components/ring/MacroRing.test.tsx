@@ -310,11 +310,55 @@ describe('MacroRing drawing', () => {
     expect(valueBefore('set:fillStyle', firstFill)).toBe('rgb(255, 59, 48)')
   })
 
-  test('under the goal the head takes the palette end colour', () => {
+  test('at exactly the goal the arc ends on the palette end colour', () => {
     render(<MacroRing value={1} stops={palette.protein} size={100} strokeWidth={10} />)
-    const firstFill = calls.findIndex((c) => c.op === 'fill')
-    // protein's last stop, #0091EA.
-    expect(valueBefore('set:fillStyle', firstFill)).toBe('rgb(0, 145, 234)')
+    // protein's last stop, #0091EA. Read from the gradient rather than a head
+    // fill: at 100% there is no head, because there is no lap beneath it.
+    expect(gradientStops.some((s) => s.color === 'rgb(0, 145, 234)')).toBe(true)
+  })
+
+  // The head's own fill is invisible — the arc's round cap at the same point
+  // covers it exactly — so it is drawn only to cast a shadow. Below a lap there
+  // is nothing to cast onto but the track, where it read as a dark disc rather
+  // than depth. Against black that was unnoticeable; the light theme showed it.
+  test('no head is drawn while the ring is still on its first lap', () => {
+    for (const value of [0.25, 0.5, 0.99, 1]) {
+      calls = []
+      const { unmount } = render(
+        <MacroRing value={value} stops={palette.protein} size={100} strokeWidth={10} />,
+      )
+      expect(
+        calls.filter((c) => c.op === 'fill'),
+        `value ${value}`,
+      ).toHaveLength(0)
+      expect(
+        calls.filter((c) => c.op === 'clip'),
+        `value ${value}`,
+      ).toHaveLength(0)
+      unmount()
+    }
+  })
+
+  test('the shadow fades in across the same window the colour ramps over', () => {
+    // Nothing at the boundary, full once the head has cleared it — the 25° the
+    // overage ramp already uses, rather than a second constant.
+    const alphaAt = (value: number) => {
+      calls = []
+      const { unmount } = render(
+        <MacroRing value={value} stops={palette.protein} size={100} strokeWidth={10} />,
+      )
+      const firstFill = calls.findIndex((c) => c.op === 'fill')
+      const colour = firstFill === -1 ? null : String(valueBefore('set:shadowColor', firstFill))
+      unmount()
+      return colour === null ? 0 : Number.parseFloat(colour.replace(/^rgba\(0,0,0,|\)$/g, ''))
+    }
+
+    expect(alphaAt(1)).toBe(0)
+    const midway = alphaAt(1 + (OVERAGE_END_T - 1) / 2)
+    expect(midway).toBeGreaterThan(0)
+    expect(midway).toBeLessThan(1)
+    expect(alphaAt(OVERAGE_END_T)).toBeCloseTo(1, 6)
+    expect(alphaAt(2.3)).toBeCloseTo(1, 6)
   })
 
   // Regression: unclipped, the head's shadow spread in every direction — out
@@ -323,7 +367,8 @@ describe('MacroRing drawing', () => {
   test('the head shadow is confined to the ring band', () => {
     const size = 100
     const strokeWidth = 10
-    render(<MacroRing value={0.5} stops={palette.protein} size={size} strokeWidth={strokeWidth} />)
+    // Lapped, or there is no head and nothing to clip.
+    render(<MacroRing value={1.5} stops={palette.protein} size={size} strokeWidth={strokeWidth} />)
 
     const clipAt = calls.findIndex((c) => c.op === 'clip')
     const firstFill = calls.findIndex((c) => c.op === 'fill')
@@ -352,7 +397,7 @@ describe('MacroRing drawing', () => {
     // strokeWidth > radius: the inner edge would be negative, and a reversed arc
     // of negative radius is not a hole, it is a crash waiting to happen.
     calls = []
-    render(<MacroRing value={0.5} stops={palette.protein} size={20} strokeWidth={12} />)
+    render(<MacroRing value={1.5} stops={palette.protein} size={20} strokeWidth={12} />)
     const clipAt = calls.findIndex((c) => c.op === 'clip')
     // Asserted, or the check below passes for the wrong reason: with no clip at
     // all there is no reversed arc either.
@@ -362,8 +407,8 @@ describe('MacroRing drawing', () => {
     expect(before.some((c) => c.args[5] === true)).toBe(false)
   })
 
-  test('the head shadow is opaque black and scales with the stroke', () => {
-    render(<MacroRing value={0.5} stops={palette.protein} size={100} strokeWidth={10} />)
+  test('a fully lapped head casts an opaque black shadow that scales with the stroke', () => {
+    render(<MacroRing value={1.5} stops={palette.protein} size={100} strokeWidth={10} />)
     const firstFill = calls.findIndex((c) => c.op === 'fill')
     expect(valueBefore('set:shadowColor', firstFill)).toBe('rgba(0,0,0,1)')
     // SwiftUI radius is sigma and canvas blur is 2 * sigma; two stacked

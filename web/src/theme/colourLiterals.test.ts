@@ -24,8 +24,6 @@ const LITERAL = /'#[0-9A-Fa-f]{3,8}'|'rgba?\([^')]*\)'/g
  * not vary by theme, or where the literal IS the fixture under test.
  */
 const ALLOWED: Record<string, string> = {
-  'components/ring/MacroRing.tsx':
-    'the head shadow is black in both themes; it is clipped to the ring band, so it\n     falls on the track and the lap below rather than on the card',
   'components/ring/MacroRing.test.tsx': 'stubs the dark literals jsdom has no stylesheet for',
   'components/ring/ringColor.test.ts': 'colour maths fixtures, deliberately not theme tokens',
   'theme/tokens.test.ts': 'asserts on literal inputs and outputs',

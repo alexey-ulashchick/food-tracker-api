@@ -2,6 +2,7 @@ import { useColorScheme } from '@/lib/useColorScheme'
 import { overage, resolveColor, surface } from '@/theme/tokens'
 import { useEffect, useRef } from 'react'
 import {
+  OVERAGE_END_T,
   type Rgb,
   animationDurationMs,
   easeOut,
@@ -130,18 +131,26 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
         const a0 = ((startDeg - 90) * Math.PI) / 180
         const a1 = ((endDeg - 90) * Math.PI) / 180
 
-        // The head is drawn BEFORE its own arc so the round cap covers it and
-        // only its shadow escapes, falling on the lap below. That single
-        // detail is the entire spiral-depth effect (MacroRing.swift:91-95).
-        if (i === segmentCount - 1) {
+        // The head exists only to cast a shadow. Its fill is invisible — the
+        // arc's round cap at the same point covers it exactly — and the shadow
+        // is what lifts the head off the lap running beneath it. That is the
+        // whole spiral-depth effect (MacroRing.swift:91-95).
+        //
+        // So it is drawn only once there IS a lap beneath, and fades in over the
+        // same 25° window the colour ramp uses: at 100% the head sits on the lap
+        // boundary with nothing under it but the track, and a shadow there is a
+        // dark disc over the track rather than depth. Invisible against black,
+        // which is why it went unnoticed until the light theme.
+        const lapDepth = clamp01((endT - 1) / (OVERAGE_END_T - 1))
+        if (i === segmentCount - 1 && lapDepth > 0) {
           ctx.save()
 
           // Clipped to the ring's own band. Unclipped, the shadow spreads in
           // every direction — outward onto the card and inward across the gap to
           // the next ring — which was invisible against black and an obvious
-          // grey smudge once the light theme put a white card behind it. The
-          // band is where the lap below sits, so confining the shadow to it
-          // keeps the depth cue and drops the halo.
+          // grey smudge once the light theme put a white card behind it. The lap
+          // below sits in this band, so confining the shadow to it keeps the
+          // depth cue and drops the halo.
           const outerR = radius + strokeWidth / 2
           const innerR = radius - strokeWidth / 2
           ctx.beginPath()
@@ -154,7 +163,7 @@ export function MacroRing({ value, stops, size = 240, strokeWidth = 18, dimmed }
           ctx.fillStyle = rgbToCss(ringColor(rgbStops, endT, warning))
           // Black in both themes: within the band it falls on the track and on
           // the arc below, never on the card.
-          ctx.shadowColor = 'rgba(0,0,0,1)'
+          ctx.shadowColor = `rgba(0,0,0,${lapDepth})`
           ctx.shadowBlur = headShadowBlur(strokeWidth)
           ctx.beginPath()
           ctx.arc(
