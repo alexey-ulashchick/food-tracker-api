@@ -24,6 +24,7 @@
     "import:md:neon": "env -u DATABASE_URL bun --env-file=.env.neon run import:md",
     "issue-token": "bun scripts/issue-token.ts",
     "issue-token:neon": "env -u DATABASE_URL bun --env-file=.env.neon run issue-token",
+    "intervals:probe": "bun scripts/intervals-probe.ts",
     "test": "bun test",
     "test:e2e": "playwright test",
     "typecheck:e2e": "tsc -p e2e --noEmit"
