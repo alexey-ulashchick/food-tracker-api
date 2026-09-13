@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
+import type { GoalBreakdown } from '../../shared/types.ts'
 
 export const dayTypeEnum = pgEnum('day_type', ['training', 'rest'])
 export const mealTypeEnum = pgEnum('meal_type', ['Breakfast', 'Lunch', 'Dinner', 'Snack'])
@@ -32,10 +33,45 @@ export const chatKindEnum = pgEnum('chat_kind', [
   'recommend',
 ])
 
+// Where a day's goal came from. `manual` is anything a human asked for —
+// set_goal from chat, PATCH /goals, the MCP tool. `auto` is computed by
+// POST /training/sync from the base expenditure plus the planned session.
+//
+// The distinction is not cosmetic: the sync's upsert carries
+// `WHERE source = 'auto'`, so a manual goal is structurally un-overwritable
+// rather than protected by a convention three separate writers must remember.
+export const goalSourceEnum = pgEnum('goal_source', ['manual', 'auto'])
+
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// One row per user. Everything is nullable because "not configured yet" has to
+// be expressible: an unset base expenditure means no automatic goal at all,
+// which is different from a base of zero.
+//
+// user_id is the primary key rather than a surrogate id with a unique index —
+// there is exactly one settings row per user, and a separate id would only
+// make a second one possible.
+export const userSettings = pgTable('user_settings', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  /** Daily expenditure before any training, kcal. */
+  baseCalories: real('base_calories'),
+  /** Fixed protein and fat; carbohydrate is whatever calories are left over. */
+  proteinG: real('protein_g'),
+  fatG: real('fat_g'),
+  intervalsAthleteId: text('intervals_athlete_id'),
+  // Never leaves the server. GET /settings returns the last four characters as
+  // `intervalsKeyHint` instead, enough to tell two keys apart and not enough
+  // to use one. Stored in the clear: encrypting it would need a key in Fly
+  // secrets, which is the same secret one level down.
+  intervalsApiKey: text('intervals_api_key'),
+  intervalsSyncedAt: timestamp('intervals_synced_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
 export const dailyGoals = pgTable(
@@ -51,6 +87,13 @@ export const dailyGoals = pgTable(
     proteinGGoal: real('protein_g_goal').notNull(),
     carbsGGoal: real('carbs_g_goal').notNull(),
     fatGGoal: real('fat_g_goal').notNull(),
+    source: goalSourceEnum('source').notNull().default('manual'),
+    // What an `auto` row was computed from, frozen at the time it was written:
+    // the base, the strength bonus, and one entry per planned ride. Null on
+    // manual rows. A snapshot rather than something recomputed on read, for
+    // the same reason /day-summary ships `eaten` next to its verdict — so the
+    // screen can show the number AND its derivation without a second request.
+    breakdown: jsonb('breakdown').$type<GoalBreakdown>(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

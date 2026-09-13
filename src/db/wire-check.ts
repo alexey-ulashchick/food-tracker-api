@@ -11,9 +11,17 @@ import type {
   ServerGoal,
   ServerMeal,
   ServerMemory,
+  ServerSettings,
   ServerWeight,
 } from '../../shared/types.ts'
-import type { chatMessages, dailyGoals, meals, memories, weights } from './schema.ts'
+import type {
+  chatMessages,
+  dailyGoals,
+  meals,
+  memories,
+  userSettings,
+  weights,
+} from './schema.ts'
 
 /**
  * Hono's c.json() serialises Date to an ISO string; model that here.
@@ -59,6 +67,20 @@ export type WireChecks = [
     Equals<Flatten<Jsonified<typeof meals.$inferSelect> & { localDate: string }>, ServerMeal>
   >,
   Expect<Equals<Flatten<Jsonified<typeof dailyGoals.$inferSelect>>, ServerGoal>>,
+  // Settings are the one row that is NOT projected verbatim: the intervals.icu
+  // key is swapped for a four-character hint. Spelling both halves of that
+  // swap here is the point — an added secret column that someone forgets to
+  // strip fails this check instead of shipping to the browser.
+  Expect<
+    Equals<
+      Flatten<
+        Omit<Jsonified<typeof userSettings.$inferSelect>, 'intervalsApiKey'> & {
+          intervalsKeyHint: string | null
+        }
+      >,
+      ServerSettings
+    >
+  >,
   Expect<Equals<Flatten<Jsonified<typeof memories.$inferSelect>>, ServerMemory>>,
   Expect<Equals<Flatten<Jsonified<typeof weights.$inferSelect>>, ServerWeight>>,
   // chat_messages.meta is jsonb — `unknown` on both sides.

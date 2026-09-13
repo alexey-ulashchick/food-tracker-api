@@ -12,6 +12,12 @@ export type DayTypeName = 'training' | 'rest'
 export type MealTypeName = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snack'
 export type ChatRole = 'user' | 'ai'
 
+/** Who set a day's goal. See goalSourceEnum in src/db/schema.ts. */
+export type GoalSource = 'manual' | 'auto'
+
+/** How a planned ride was classified, which picks its kilojoule coefficient. */
+export type RideKind = 'z2' | 'threshold' | 'vo2max' | 'unknown'
+
 export type ChatKind =
   | 'text'
   | 'meal_added'
@@ -31,6 +37,37 @@ export type Macros = {
 }
 
 // ── Resource rows ─────────────────────────────────────────────────────────
+
+/** One planned ride's contribution to a computed day, as it was scored. */
+export type RideContribution = {
+  name: string
+  /** Planned mechanical work, kilojoules. */
+  kj: number
+  kind: RideKind
+  /** Multiplier applied to `kj`; see COEFFICIENTS in src/lib/trainingLoad.ts. */
+  coeff: number
+  kcal: number
+  /** Minutes of planned moving time — what picks the Z2 band. */
+  minutes: number
+}
+
+/**
+ * The derivation of an automatic goal, frozen when the row was written.
+ *
+ * Present only on rows with `source: 'auto'`. Deliberately a stored snapshot:
+ * recomputing it on read would make yesterday's displayed goal change when a
+ * plan is edited, and a log should not do that.
+ */
+export type GoalBreakdown = {
+  /** Base expenditure from settings, kcal. */
+  base: number
+  /** Sum of the fixed strength bonuses, kcal. */
+  strength: number
+  rides: RideContribution[]
+  /** Set when fixed protein and fat alone exceeded the day's calories, so the
+   *  carbohydrate remainder was floored at zero instead of going negative. */
+  carbsClamped?: true
+}
 
 export type ServerMeal = {
   id: string
@@ -64,6 +101,28 @@ export type ServerGoal = {
   proteinGGoal: number
   carbsGGoal: number
   fatGGoal: number
+  source: GoalSource
+  breakdown: GoalBreakdown | null
+  updatedAt: string
+}
+
+/**
+ * Settings as the client sees them — the row minus the intervals.icu key,
+ * plus a hint derived from it.
+ *
+ * The key goes in through PATCH /settings and never comes back out; the hint
+ * is its last four characters, which distinguishes two saved keys without
+ * being one. Same treatment the profile screen already gives this app's own
+ * bearer token.
+ */
+export type ServerSettings = {
+  userId: string
+  baseCalories: number | null
+  proteinG: number | null
+  fatG: number | null
+  intervalsAthleteId: string | null
+  intervalsKeyHint: string | null
+  intervalsSyncedAt: string | null
   updatedAt: string
 }
 
