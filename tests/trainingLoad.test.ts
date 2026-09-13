@@ -40,10 +40,13 @@ describe('classifyRide', () => {
   })
 
   test('a sweet-spot session is not Z2, even though its easy time is longer', () => {
-    // The case that rules out "the longest step wins": warm-up, recoveries and
-    // cool-down total 40 minutes against 36 minutes of work.
+    // The case that rules out BOTH naive rules. Warm-up, recoveries and
+    // cool-down total 40 minutes against 36 minutes of work, so "the band with
+    // the most total time" picks Z2; and the 20-minute warm-up is the longest
+    // single step, so "the longest step" picks Z2 too. Only "the hardest band
+    // holding at least ten minutes" gets it right.
     const steps = [
-      step(15, 0.55),
+      step(20, 0.55),
       step(12, 0.92),
       step(5, 0.55),
       step(12, 0.92),
