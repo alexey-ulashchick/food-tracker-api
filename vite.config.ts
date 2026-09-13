@@ -16,6 +16,7 @@ const API_PATHS = [
   '/chat',
   '/day-summary',
   '/weights',
+  '/settings',
   '/mcp',
 ]
 

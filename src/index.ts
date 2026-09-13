@@ -9,6 +9,7 @@ import { goalsRoute } from './routes/goals.ts'
 import { healthRoute } from './routes/health.ts'
 import { mealsRoute } from './routes/meals.ts'
 import { memoriesRoute } from './routes/memories.ts'
+import { settingsRoute } from './routes/settings.ts'
 import { weightsRoute } from './routes/weights.ts'
 import { spaNavigation, staticRoute } from './static.ts'
 
@@ -31,6 +32,7 @@ app.route('/memories', memoriesRoute)
 app.route('/chat', chatRoute)
 app.route('/day-summary', daySummaryRoute)
 app.route('/weights', weightsRoute)
+app.route('/settings', settingsRoute)
 app.route('/mcp', mcpRoute)
 
 // SPA — must be last: everything above is API surface, and this ends in a
