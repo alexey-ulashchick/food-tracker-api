@@ -35,10 +35,19 @@ async function configure(userId: string, over: Record<string, unknown> = {}) {
     .onConflictDoNothing()
 }
 
-/** Makes intervals.icu answer with exactly these events. */
-function stubEvents(events: unknown[]): { calls: () => number } {
+/**
+ * Makes intervals.icu answer with exactly these events.
+ *
+ * Only the events endpoint is counted. A sync also asks for the athlete's FTP,
+ * and counting every request would make the cache tests assert how many calls
+ * the implementation happens to make rather than whether it cached.
+ */
+function stubEvents(events: unknown[], ftp = 250): { calls: () => number } {
   let calls = 0
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (input: unknown) => {
+    if (String(input).includes('/sport-settings')) {
+      return new Response(JSON.stringify([{ types: ['Ride'], ftp }]), { status: 200 })
+    }
     calls++
     return new Response(JSON.stringify(events), { status: 200 })
   }) as unknown as typeof fetch

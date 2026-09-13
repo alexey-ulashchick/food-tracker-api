@@ -53,8 +53,8 @@ export const COEFFICIENTS = {
   threshold: 0.9,
   /** The source range was 90–100%; this is the single value picked from it. */
   vo2max: 0.95,
-  /** No structured plan to read, so the most conservative Z2 number. The
-   *  breakdown carries kind: 'unknown' so the screen can say as much. */
+  /** Nothing readable to classify by, so the most conservative Z2 number. The
+   *  breakdown carries the reason so the screen can say which it was. */
   unknown: 0.7,
 } as const
 
@@ -84,6 +84,14 @@ export type PlannedSession = {
   minutes: number
   /** Flattened planned steps; empty when the event has no structure. */
   steps: PlannedStep[]
+  /**
+   * Steps that named a wattage no FTP was available to scale.
+   *
+   * Distinguishes "this event has no plan" from "this event has a plan I could
+   * not read", which look identical from `steps` alone and need different
+   * fixes.
+   */
+  unscaledSteps?: number
 }
 
 export type TargetSettings = {
@@ -158,13 +166,20 @@ export function rideCoefficient(kind: RideKind, minutes: number): number {
     case 'vo2max':
       return COEFFICIENTS.vo2max
     case 'unknown':
+    case 'needs_ftp':
       return COEFFICIENTS.unknown
   }
 }
 
 /** One ride's contribution, ready to store in the breakdown. */
 export function scoreRide(session: PlannedSession): RideContribution {
-  const kind = classifyRide(session.steps)
+  // A plan that could not be scaled is not the same as no plan. Only when
+  // nothing at all was usable does the reason become the classification —
+  // if some steps scaled, they are enough to classify by.
+  const kind =
+    session.steps.length === 0 && (session.unscaledSteps ?? 0) > 0
+      ? 'needs_ftp'
+      : classifyRide(session.steps)
   const coeff = rideCoefficient(kind, session.minutes)
   const kj = session.kj ?? 0
   return {

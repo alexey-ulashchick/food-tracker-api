@@ -184,7 +184,7 @@ describe('the derivation', () => {
     expect(screen.getByText(/3x12 SS · 1678 кДж · SS\/порог · 90%/)).toBeInTheDocument()
   })
 
-  test('says so when a session had no structure to classify', async () => {
+  test('says a session had no structured plan', async () => {
     listGoals.mockResolvedValue([
       goal({
         date: '2026-09-14',
@@ -200,7 +200,29 @@ describe('the derivation', () => {
     ])
     renderGoals()
 
-    expect(await screen.findByText(/тип не определён/)).toBeInTheDocument()
+    expect(await screen.findByText(/без плана/)).toBeInTheDocument()
+  })
+
+  test('distinguishes a plan it could not scale from no plan at all', async () => {
+    // Steps in watts with no FTP to divide by. Different cause, different fix,
+    // so it must not read the same as a session that has no structure.
+    listGoals.mockResolvedValue([
+      goal({
+        date: '2026-09-14',
+        dayType: 'training',
+        breakdown: {
+          base: 1450,
+          strength: 0,
+          rides: [
+            { name: 'VO2Max 3x10', kj: 444, kind: 'needs_ftp', coeff: 0.7, kcal: 311, minutes: 67 },
+          ],
+        },
+      }),
+    ])
+    renderGoals()
+
+    expect(await screen.findByText(/нет FTP/)).toBeInTheDocument()
+    expect(screen.queryByText(/без плана/)).not.toBeInTheDocument()
   })
 
   test('warns when protein and fat left no room for carbohydrate', async () => {

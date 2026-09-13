@@ -6,11 +6,14 @@ import {
   clearIntervalsCache,
   fetchPlannedSessions,
   fetchRawEvents,
+  fetchAthleteFtp,
   normaliseEvent,
   normaliseEvents,
-  stepIntensity,
+  pickCyclingFtp,
+  resolveFtp,
+  stepTarget,
 } from '../src/integrations/intervals.ts'
-import { classifyRide } from '../src/lib/trainingLoad.ts'
+import { classifyRide, scoreRide } from '../src/lib/trainingLoad.ts'
 
 // Two halves. The normaliser is pure and tested against events shaped the way
 // scripts/intervals-probe.ts records them — it is the piece that has to
@@ -47,7 +50,6 @@ const SS_EVENT: RawEvent = {
   moving_time: 4500,
   joules: 1_678_000,
   workout_doc: {
-    ftp: 250,
     steps: [
       { duration: 900, power: { units: '%ftp', value: 55 } },
       {
@@ -62,33 +64,39 @@ const SS_EVENT: RawEvent = {
   },
 }
 
-describe('stepIntensity', () => {
-  test('reads a percentage of FTP', () => {
-    expect(stepIntensity({ units: '%ftp', value: 92 }, 250)).toBe(0.92)
+describe('stepTarget', () => {
+  test('reads a percentage of FTP, and the watts it implies', () => {
+    expect(stepTarget({ units: '%ftp', value: 92 }, 250)).toEqual({ intensity: 0.92, watts: 230 })
   })
 
   test('takes the midpoint of a ramp', () => {
-    expect(stepIntensity({ units: '%ftp', start: 90, end: 94 }, 250)).toBe(0.92)
+    expect(stepTarget({ units: '%ftp', start: 90, end: 94 }, 250).intensity).toBe(0.92)
   })
 
-  test('converts watts using the plan own FTP', () => {
-    expect(stepIntensity({ units: 'w', value: 230 }, 250)).toBe(0.92)
+  test('converts watts using FTP', () => {
+    expect(stepTarget({ units: 'w', value: 230 }, 250)).toEqual({ intensity: 0.92, watts: 230 })
   })
 
-  test('gives up on watts with no FTP rather than guessing', () => {
-    expect(stepIntensity({ units: 'w', value: 230 }, undefined)).toBeUndefined()
+  test('keeps the watts even with no FTP to scale them', () => {
+    // Unscalable for classification, but still countable as work — which is
+    // what lets planned kilojoules be summed when the event omits them.
+    expect(stepTarget({ units: 'w', value: 230 }, undefined)).toEqual({ watts: 230 })
+  })
+
+  test('a percentage with no FTP yields an intensity but no watts', () => {
+    expect(stepTarget({ units: '%ftp', value: 92 }, undefined)).toEqual({ intensity: 0.92 })
   })
 
   test('disambiguates a unitless target by magnitude', () => {
-    expect(stepIntensity({ value: 65 }, 250)).toBe(0.65)
-    expect(stepIntensity({ value: 0.65 }, 250)).toBe(0.65)
+    expect(stepTarget({ value: 65 }, 250).intensity).toBe(0.65)
+    expect(stepTarget({ value: 0.65 }, 250).intensity).toBe(0.65)
   })
 
   test('returns nothing for a step with no power target', () => {
-    // A free-ride or cadence block. Inventing an intensity would be worse
-    // than leaving it out of the classification.
-    expect(stepIntensity(undefined, 250)).toBeUndefined()
-    expect(stepIntensity({ units: '%ftp' }, 250)).toBeUndefined()
+    // A free-ride or cadence block. Inventing a target would be worse than
+    // leaving it out of the classification.
+    expect(stepTarget(undefined, 250)).toEqual({})
+    expect(stepTarget({ units: '%ftp' }, 250)).toEqual({})
   })
 })
 
@@ -161,7 +169,6 @@ describe('normaliseEvent', () => {
     const s = normaliseEvent({
       ...SS_EVENT,
       workout_doc: {
-        ftp: 250,
         steps: [
           { distance: 5000, power: { units: '%ftp', value: 65 } },
           { duration: 0, power: { units: '%ftp', value: 65 } },
@@ -180,6 +187,208 @@ describe('normaliseEvent', () => {
 
   test('normaliseEvents drops the unusable and keeps the rest', () => {
     expect(normaliseEvents([SS_EVENT, { type: 'Ride' }, SS_EVENT])).toHaveLength(2)
+  })
+})
+
+// ── A real response ────────────────────────────────────────────────────────
+// Recorded by scripts/intervals-probe.ts from a live account, trimmed to one
+// event. This is the fixture that matters: the first implementation read
+// `workout_doc.ftp`, which this account does not send, so every watt target
+// was unscalable and every ride came back unclassified.
+
+const REP = {
+  reps: 10,
+  text: '10x',
+  distance: 0,
+  duration: 450,
+  steps: [
+    { power: { units: 'w', value: 275 }, duration: 30 },
+    { power: { units: 'w', value: 115 }, duration: 15 },
+  ],
+}
+
+const REAL_STEPS = [
+  { warmup: true, duration: 600, freeride: true },
+  { power: { end: 162, start: 135, units: 'w' }, duration: 600 },
+  ...[245, 115, 250, 115, 255, 115, 260, 115, 275, 115].map((v) => ({
+    power: { units: 'w', value: v },
+    duration: 30,
+  })),
+  { duration: 180, freeride: true },
+  REP,
+  { duration: 180, freeride: true },
+  REP,
+  { duration: 180, freeride: true },
+  REP,
+  { cooldown: true, duration: 600, freeride: true },
+]
+
+/** Named "VO2Max 3x10 30/15" by the athlete, so the expected class is known. */
+const REAL_EVENT: RawEvent = {
+  start_date_local: '2026-09-14T00:00:00',
+  category: 'WORKOUT',
+  type: 'Ride',
+  name: 'VO2Max 3x10 30/15',
+  moving_time: 3990,
+  joules: 444_150,
+  icu_intensity: 81.15704,
+  workout_doc: { normalized_power: 202.9, duration: 3990, steps: REAL_STEPS },
+}
+
+describe('a watt-based plan, as intervals.icu actually sends one', () => {
+  test('recovers FTP from normalised power and intensity', () => {
+    // No `ftp` in workout_doc and `icu_ftp` null on the event, so the only way
+    // to scale watts is IF = NP / FTP, rearranged.
+    expect(Math.round(resolveFtp(REAL_EVENT, REAL_EVENT.workout_doc as never)!)).toBe(250)
+  })
+
+  test('classifies the session its own name describes', () => {
+    const s = normaliseEvent(REAL_EVENT)
+    expect(classifyRide(s?.steps ?? [])).toBe('vo2max')
+    expect(scoreRide(s!).coeff).toBe(0.95)
+  })
+
+  test('scales every watt step, leaving none unscaled', () => {
+    const s = normaliseEvent(REAL_EVENT)
+    // 1 ramp + 10 alternations + 3 × 10 × 2 inside the repeats. The free-ride
+    // blocks name no target and are correctly absent.
+    expect(s?.steps).toHaveLength(71)
+    expect(s?.unscaledSteps).toBe(0)
+  })
+
+  test('the summed step work reproduces intervals.icu own figure exactly', () => {
+    // The strongest available check that the flattening is complete: expanding
+    // the repeats, taking the ramp's midpoint and skipping free-ride blocks all
+    // have to be right for watts × seconds to land on 444150 J to the joule.
+    const { joules, ...withoutJoules } = REAL_EVENT
+    expect(joules).toBe(444_150)
+    expect(normaliseEvent(withoutJoules)?.kj).toBeCloseTo(444.15, 2)
+  })
+
+  test('falls back to the summed work when joules is missing', () => {
+    // Not hypothetical: one ride in the recorded week had no `joules`, and its
+    // day was computed as the base alone before this.
+    const { joules, ...withoutJoules } = REAL_EVENT
+    expect(joules).toBeDefined()
+    const s = normaliseEvent(withoutJoules)
+    expect(Math.round(s?.kj ?? 0)).toBe(444)
+    expect(scoreRide(s!).kcal).toBeGreaterThan(0)
+  })
+
+  test('prefers the sent figure over the summed one', () => {
+    expect(normaliseEvent(REAL_EVENT)?.kj).toBe(444.15)
+  })
+
+  test('says FTP is missing rather than pretending there was no plan', () => {
+    // Same event with nothing to recover FTP from. The steps are still there,
+    // so "no plan" would be the wrong story and points at the wrong fix.
+    const s = normaliseEvent({
+      ...REAL_EVENT,
+      icu_intensity: undefined,
+      workout_doc: { duration: 3990, steps: REAL_STEPS },
+    })
+    expect(s?.steps).toHaveLength(0)
+    expect(s?.unscaledSteps).toBe(71)
+    expect(scoreRide(s!).kind).toBe('needs_ftp')
+    expect(scoreRide(s!).coeff).toBe(0.7)
+  })
+
+  test('a ride with no plan at all is still a different story', () => {
+    const s = normaliseEvent({
+      start_date_local: '2026-09-14T00:00:00',
+      type: 'Ride',
+      name: 'Freeride',
+      moving_time: 3600,
+    })
+    expect(s?.unscaledSteps).toBe(0)
+    expect(scoreRide(s!).kind).toBe('unknown')
+  })
+})
+
+describe('where FTP comes from', () => {
+  const doc = (over: Record<string, unknown> = {}) => ({ normalized_power: 202.9, ...over })
+  const event = (over: RawEvent = {}) => ({ icu_intensity: 81.15704, ...over }) as RawEvent
+
+  test('the plan own figure wins, being the one its watts were written against', () => {
+    expect(resolveFtp(event(), doc({ ftp: 300 }), 250)).toBe(300)
+  })
+
+  test('then the athlete figure from intervals.icu', () => {
+    expect(resolveFtp(event(), doc(), 260)).toBe(260)
+  })
+
+  test('and failing both, it is recovered from the event itself', () => {
+    // IF = NP / FTP, so FTP = NP / IF. Verified against a real account.
+    expect(Math.round(resolveFtp(event(), doc())!)).toBe(250)
+  })
+
+  test('undefined when there is nothing at all to go on', () => {
+    expect(
+      resolveFtp(event({ icu_intensity: undefined }), doc({ normalized_power: undefined })),
+    ).toBeUndefined()
+  })
+
+  test('a zero is not a figure', () => {
+    expect(resolveFtp(event(), doc({ ftp: 0 }), 0)).toBeCloseTo(250, 0)
+  })
+})
+
+describe('pickCyclingFtp', () => {
+  test('takes the block that names a cycling sport', () => {
+    // Running has its own FTP and must not be used to scale a ride.
+    expect(
+      pickCyclingFtp([
+        { types: ['Run'], ftp: 300 },
+        { types: ['Ride', 'VirtualRide'], ftp: 250 },
+      ]),
+    ).toBe(250)
+  })
+
+  test('accepts a single object as well as a list', () => {
+    expect(pickCyclingFtp({ types: ['Ride'], ftp: 250 })).toBe(250)
+  })
+
+  test('accepts icu_ftp under its other name', () => {
+    expect(pickCyclingFtp([{ types: ['Ride'], icu_ftp: 250 }])).toBe(250)
+  })
+
+  test('takes an unlabelled figure only when it is the only one', () => {
+    expect(pickCyclingFtp({ ftp: 250 })).toBe(250)
+    // Two unlabelled blocks: no way to tell which sport, so neither.
+    expect(pickCyclingFtp([{ ftp: 250 }, { ftp: 300 }])).toBeUndefined()
+  })
+
+  test('shrugs at a shape it does not recognise', () => {
+    expect(pickCyclingFtp(null)).toBeUndefined()
+    expect(pickCyclingFtp([])).toBeUndefined()
+    expect(pickCyclingFtp([{ types: ['Ride'] }])).toBeUndefined()
+    expect(pickCyclingFtp('nope')).toBeUndefined()
+  })
+})
+
+describe('fetchAthleteFtp', () => {
+  test('reads the cycling FTP', async () => {
+    globalThis.fetch = mock(async (input: unknown) => {
+      expect(String(input)).toContain('/sport-settings')
+      return new Response(JSON.stringify([{ types: ['Ride'], ftp: 250 }]), { status: 200 })
+    }) as unknown as typeof fetch
+
+    expect(await fetchAthleteFtp({ athleteId: 'i1', apiKey: 'k' })).toBe(250)
+  })
+
+  test('never throws, whatever happens', async () => {
+    // A sync must not fail because this one extra request did — resolveFtp has
+    // a fallback underneath it that is known to work.
+    for (const stub of [
+      async () => new Response('', { status: 500 }),
+      async () => new Response('not json', { status: 200 }),
+      async () => {
+        throw new Error('offline')
+      },
+    ]) {
+      globalThis.fetch = stub as unknown as typeof fetch
+      expect(await fetchAthleteFtp({ athleteId: 'i1', apiKey: 'k' })).toBeUndefined()
+    }
   })
 })
 
@@ -239,7 +448,14 @@ describe('the cache', () => {
 
   beforeEach(() => {
     calls = 0
-    globalThis.fetch = mock(async () => {
+    // Counted per endpoint, not per request: a sync also asks for the
+    // athlete's FTP, and a bare tally would make this test about how many
+    // requests the implementation happens to make.
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('/sport-settings')) {
+        return new Response(JSON.stringify([{ types: ['Ride'], ftp: 250 }]), { status: 200 })
+      }
       calls++
       return new Response(JSON.stringify([SS_EVENT]), { status: 200 })
     }) as unknown as typeof fetch

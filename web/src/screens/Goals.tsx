@@ -285,8 +285,11 @@ const KIND_LABEL = {
   z2: 'Z2',
   threshold: 'SS/порог',
   vo2max: 'VO₂max',
-  // Not a failure worth an error: the plan simply had no structure to read.
-  unknown: 'тип не определён',
+  // Neither is worth an error banner, but they are different problems: one
+  // means the session has no structured plan, the other that it has one in
+  // watts and intervals.icu sent nothing to scale them against.
+  unknown: 'без плана',
+  needs_ftp: 'нет FTP',
 } as const
 
 function Badge({ tint, children }: { tint: string; children: React.ReactNode }) {

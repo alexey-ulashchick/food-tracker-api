@@ -294,6 +294,10 @@ fat      = the fixed figure from settings
 carbs    = whatever calories are left over, floored at zero
 ```
 
+Planned work is `joules` when the event carries it, and otherwise the sum of
+watts × seconds over the plan's own steps — which reproduces intervals.icu's
+figure to the joule where both exist.
+
 The coefficient comes from the session's **defining block** — the hardest
 intensity band holding at least ten minutes of planned work, or the band with
 the most time if none reaches that:
@@ -305,13 +309,22 @@ the most time if none reaches that:
 | Z2 | > 2.5 h | 0.90 |
 | Sweet spot / threshold | any | 0.90 |
 | VO₂max | any | 0.95 |
-| no structured plan | any | 0.70, flagged in the UI |
+| no structured plan | any | 0.70, shown as «без плана» |
+| watts with no FTP to scale them | any | 0.70, shown as «нет FTP» |
 
 Ten minutes rather than "the longest step" because a 3×12 sweet-spot workout
 spends more time warming up and recovering than working, and longest-wins would
 file it as Z2. The same threshold stops one 2-minute surge from promoting a
 three-hour endurance ride to VO₂max. The numbers live in
 `src/lib/trainingLoad.ts` and nowhere else.
+
+Steps are usually written in watts, so bands need an FTP to divide by. It is
+taken, most specific first, from the plan's own `ftp`, then the athlete's
+cycling FTP from intervals.icu, then recovered from the event itself — intensity
+factor is NP / FTP and both are sent, so it falls out of the response. FTP is
+deliberately not a stored setting: a figure typed into a form goes stale the
+moment it changes in intervals.icu, while the watt targets in the plans move
+with the real one.
 
 **`manual`** is anything a human asked for — `set_goal` from chat, `PATCH
 /goals`, the MCP tool. It always wins, and not by convention: the sync's upsert
@@ -341,12 +354,12 @@ the configuration checks itself against what intervals.icu shows you.
 
 ### When a number looks wrong
 
-The field names were written against intervals.icu's documented shape rather
-than a live account, so there are three ways the parser can misread a plan,
-and all three are visible on the goals screen: a ride showing `0 кДж` means no
-planned work was found, `тип не определён` means the structured steps could not
-be read, and a gym session missing from the breakdown means its activity type
-is not recognised.
+There are four ways the parser can misread a plan, and all four are visible on
+the goals screen: `0 кДж` means no planned work was found and none could be
+summed from the steps, `без плана` means the session has no structured steps at
+all, `нет FTP` means it has steps in watts but nothing to scale them against,
+and a gym session missing from the breakdown means its activity type is not in
+`STRENGTH_TYPES`.
 
 What the screen cannot say is *why*. For that:
 
@@ -356,10 +369,15 @@ bun run intervals:probe -- --key <api-key> --athlete i123456 --explain
 
 Read-only. It prints which fields actually came back and which are null, the
 distinct `type` and `category` values, the first structured `steps` array
-verbatim, and how each session was classified — enough to tell "the plan has no
-kilojoules" from "the field is called something else". The lists to edit are
-`JOULE_KEYS`, `RIDE_TYPES` and `STRENGTH_TYPES` in
-`src/integrations/intervals.ts`.
+verbatim, where FTP was resolved from for the first few events, and how each
+session was classified — enough to tell "the plan has no kilojoules" from "the
+field is called something else". The lists to edit are `JOULE_KEYS`,
+`RIDE_TYPES` and `STRENGTH_TYPES` in `src/integrations/intervals.ts`.
+
+This is not a hypothetical: the first version looked for FTP only in
+`workout_doc.ftp`, which that account does not send, so every watt target was
+unscalable and every ride came back unclassified while the kilojoules looked
+perfectly fine. The probe found it in one run.
 
 ## Two shells, one breakpoint
 

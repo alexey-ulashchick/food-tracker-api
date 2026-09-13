@@ -15,8 +15,14 @@ export type ChatRole = 'user' | 'ai'
 /** Who set a day's goal. See goalSourceEnum in src/db/schema.ts. */
 export type GoalSource = 'manual' | 'auto'
 
-/** How a planned ride was classified, which picks its kilojoule coefficient. */
-export type RideKind = 'z2' | 'threshold' | 'vo2max' | 'unknown'
+/**
+ * How a planned ride was classified, which picks its kilojoule coefficient.
+ *
+ * `unknown` means there was no structured plan to read. `needs_ftp` means there
+ * was one and it named watts, but no FTP could be recovered to scale them —
+ * a different problem with a different fix, so it says so separately.
+ */
+export type RideKind = 'z2' | 'threshold' | 'vo2max' | 'unknown' | 'needs_ftp'
 
 export type ChatKind =
   | 'text'

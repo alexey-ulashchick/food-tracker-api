@@ -33,7 +33,12 @@
 // Imports only pure modules. Reaching for src/db/client.ts would drag in
 // src/env.ts, which exits the process unless DATABASE_URL and
 // ANTHROPIC_API_KEY are set — neither of which this script needs.
-import { normaliseEvents } from '../src/integrations/intervals.ts'
+import {
+  fetchAthleteFtp,
+  normaliseEvents,
+  pickCyclingFtp,
+  resolveFtp,
+} from '../src/integrations/intervals.ts'
 import { scoreRide } from '../src/lib/trainingLoad.ts'
 
 const args = process.argv.slice(2)
@@ -195,11 +200,46 @@ for (const e of events) {
 // reading `unknown` is the parser telling you it found no usable steps.
 
 if (explain) {
+  // ── FTP ────────────────────────────────────────────────────────────────
+  // Watt-based steps cannot be classified without it, and the first version
+  // looked for it only in workout_doc — where this account does not put it —
+  // so every ride came back unclassified. Both sources are shown.
+  console.log()
+  console.log('─ FTP ───────────────────────────────────────────────────────────')
+
+  const settingsUrl = `https://intervals.icu/api/v1/athlete/${athlete}/sport-settings`
+  const settingsRes = await fetch(settingsUrl, { headers: { Authorization: authorization } })
+  if (!settingsRes.ok) {
+    console.log(`  sport-settings: HTTP ${settingsRes.status}`)
+  } else {
+    const body: unknown = await settingsRes.json()
+    const entries = Array.isArray(body) ? body : [body]
+    console.log(`  sport-settings: ${entries.length} block(s)`)
+    for (const e of entries) {
+      const o = (e ?? {}) as Record<string, unknown>
+      console.log(
+        `    ${pad(JSON.stringify(o.types ?? '?'), 40)} ftp=${o.ftp ?? '—'}  icu_ftp=${o.icu_ftp ?? '—'}`,
+      )
+    }
+    console.log(`  picked: ${pickCyclingFtp(body) ?? 'nothing'}`)
+  }
+
+  const athleteFtp = await fetchAthleteFtp({ athleteId: athlete, apiKey: key })
+  console.log(`  fetchAthleteFtp: ${athleteFtp ?? 'undefined'}`)
+  for (const e of events.slice(0, 3)) {
+    const doc = (e.workout_doc ?? null) as Record<string, unknown> | null
+    const resolved = resolveFtp(e, doc, athleteFtp)
+    console.log(
+      `    ${pad(String(e.name).slice(0, 28), 30)} resolved=${resolved === undefined ? '—' : Math.round(resolved)}` +
+        `  (doc.ftp=${doc?.ftp ?? '—'}  NP=${doc?.normalized_power ?? '—'}  IF=${e.icu_intensity ?? '—'})`,
+    )
+  }
+
   console.log()
   console.log('─ as the app reads it ────────────────────────────────────────────')
   console.log(pad('date', 12), pad('kind', 10), pad('class', 10), pad('coeff', 7), pad('kJ', 7), pad('kcal', 7), 'name')
 
-  for (const s of normaliseEvents(events)) {
+  for (const s of normaliseEvents(events, athleteFtp)) {
     if (s.kind === 'ride') {
       const r = scoreRide(s)
       console.log(
@@ -209,7 +249,7 @@ if (explain) {
         pad(r.coeff, 7),
         pad(Math.round(r.kj), 7),
         pad(r.kcal, 7),
-        `${s.name} · ${s.steps.length} steps`,
+        `${s.name} · ${s.steps.length} steps${s.unscaledSteps ? ` · ${s.unscaledSteps} unscaled` : ''}`,
       )
     } else {
       console.log(
