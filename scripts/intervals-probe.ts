@@ -22,16 +22,19 @@
 //   --from / --to   YYYY-MM-DD window. Default: 14 days back, 21 days forward.
 //   --out           Fixture path. Default: tests/fixtures/intervals-events.json
 //   --no-write      Census only, write nothing.
+//   --explain       Also run the normaliser and the coefficient table over the
+//                   response, so you can check the classification against what
+//                   intervals.icu shows you.
 //
 // The key is never printed and never written to the fixture. The raw dump
 // DOES contain whatever you typed into your own workout names and
 // descriptions — read it before committing.
 
-// Deliberately imports nothing: pulling in src/db/client.ts would drag in
+// Imports only pure modules. Reaching for src/db/client.ts would drag in
 // src/env.ts, which exits the process unless DATABASE_URL and
-// ANTHROPIC_API_KEY are set — neither of which this script needs. The empty
-// export is what makes top-level await legal in a file with no imports.
-export {}
+// ANTHROPIC_API_KEY are set — neither of which this script needs.
+import { normaliseEvents } from '../src/integrations/intervals.ts'
+import { scoreRide } from '../src/lib/trainingLoad.ts'
 
 const args = process.argv.slice(2)
 
@@ -41,6 +44,7 @@ let from: string | undefined
 let to: string | undefined
 let out = 'tests/fixtures/intervals-events.json'
 let write = true
+let explain = false
 
 for (let i = 0; i < args.length; i++) {
   const a = args[i]
@@ -50,6 +54,7 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--to') to = args[++i]
   else if (a === '--out' || a === '-o') out = args[++i] ?? out
   else if (a === '--no-write') write = false
+  else if (a === '--explain') explain = true
   else if (a === '--help' || a === '-h') {
     printUsage()
     process.exit(0)
@@ -185,6 +190,41 @@ for (const e of events) {
   )
 }
 
+// ── How the app reads it ───────────────────────────────────────────────────
+// The census above says what came back; this says what was understood. A row
+// reading `unknown` is the parser telling you it found no usable steps.
+
+if (explain) {
+  console.log()
+  console.log('─ as the app reads it ────────────────────────────────────────────')
+  console.log(pad('date', 12), pad('kind', 10), pad('class', 10), pad('coeff', 7), pad('kJ', 7), pad('kcal', 7), 'name')
+
+  for (const s of normaliseEvents(events)) {
+    if (s.kind === 'ride') {
+      const r = scoreRide(s)
+      console.log(
+        pad(s.date, 12),
+        pad(s.kind, 10),
+        pad(r.kind, 10),
+        pad(r.coeff, 7),
+        pad(Math.round(r.kj), 7),
+        pad(r.kcal, 7),
+        `${s.name} · ${s.steps.length} steps`,
+      )
+    } else {
+      console.log(
+        pad(s.date, 12),
+        pad(s.kind, 10),
+        pad('—', 10),
+        pad('—', 7),
+        pad('—', 7),
+        pad(s.kind === 'strength' ? 250 : 0, 7),
+        s.name,
+      )
+    }
+  }
+}
+
 // ── Fixture ────────────────────────────────────────────────────────────────
 
 if (write) {
@@ -249,6 +289,7 @@ function printUsage() {
   console.log('  --from --to     YYYY-MM-DD window (default: -14d … +21d)')
   console.log('  --out, -o       Fixture path (default: tests/fixtures/intervals-events.json)')
   console.log('  --no-write      Print the census, write no fixture')
+  console.log('  --explain       Also show how the app classifies each session')
   console.log()
   console.log('Find both under Settings → Developer at https://intervals.icu.')
 }
