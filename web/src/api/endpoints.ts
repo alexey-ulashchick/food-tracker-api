@@ -6,7 +6,9 @@ import type {
   ServerGoal,
   ServerMeal,
   ServerMemory,
+  ServerSettings,
   ServerWeight,
+  TrainingSyncResult,
 } from '@shared/types.ts'
 import { api } from './client'
 import { type SseHandler, streamSse } from './sse'
@@ -44,6 +46,58 @@ export function listGoals(): Promise<ServerGoal[]> {
 export async function getGoal(date: string): Promise<ServerGoal | null> {
   const rows = await api<ServerGoal[]>(`/goals?date=${date}`, GET)
   return rows[0] ?? null
+}
+
+/**
+ * Drops a day's goal.
+ *
+ * Used by the goals screen to remove a manual override; the next sync writes
+ * the computed goal back in its place, so this deletes an exception rather
+ * than data.
+ */
+export function deleteGoal(date: string): Promise<DeleteAck> {
+  return api<DeleteAck>(`/goals/${date}`, { method: 'DELETE' })
+}
+
+export function getSettings(): Promise<ServerSettings> {
+  return api<ServerSettings>('/settings', GET)
+}
+
+/**
+ * Partial update. Omitting a field leaves it alone; an explicit null clears
+ * it — which is the only way to remove the intervals.icu key, since the server
+ * never sends it back for a round trip.
+ */
+export type SettingsPatch = Partial<{
+  baseCalories: number | null
+  proteinG: number | null
+  fatG: number | null
+  intervalsAthleteId: string | null
+  intervalsApiKey: string | null
+}>
+
+export function updateSettings(patch: SettingsPatch): Promise<ServerSettings> {
+  return api<ServerSettings>('/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+}
+
+/**
+ * Pulls the plan and rewrites the automatic goals.
+ *
+ * A POST, but idempotent — a deterministic computation followed by an upsert —
+ * which is why the client is free to drive it from a useQuery with a staleTime
+ * instead of an effect. `force` skips the server's five-minute cache and is
+ * what the refresh button sends.
+ */
+export function syncTraining(force = false): Promise<TrainingSyncResult> {
+  return api<TrainingSyncResult>('/training/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ force }),
+  })
 }
 
 export function daySummaries(from: string, to: string): Promise<ServerDaySummary[]> {

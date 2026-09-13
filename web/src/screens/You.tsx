@@ -3,6 +3,7 @@ import { listMemories, listWeights } from '@/api/endpoints'
 import { qk } from '@/api/keys'
 import { Page } from '@/components/Page'
 import { ScreenHeader } from '@/components/ScreenHeader'
+import { TrainingSettingsCard } from '@/components/TrainingSettingsCard'
 import { COST_DISPLAY_LABELS, COST_DISPLAY_MODES } from '@/lib/costDisplay'
 import { formatKg, latestWeight } from '@/lib/weight'
 import { useUi } from '@/store/ui'
@@ -73,6 +74,11 @@ export function You() {
                 : `${memoriesQuery.data?.length ?? 0} ${plural(memoriesQuery.data?.length ?? 0)}`
             }
           />
+        </div>
+
+        <div className="card-block">
+          <SectionLabel>Тренировки</SectionLabel>
+          <TrainingSettingsCard />
         </div>
 
         <div className="card-block">

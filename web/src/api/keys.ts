@@ -11,6 +11,10 @@ export const qk = {
   chat: (limit: number) => ['chat', limit] as const,
   memories: ['memories'] as const,
   weights: ['weights'] as const,
+  settings: ['settings'] as const,
+  /** POST /training/sync, driven by a query because it is idempotent and what
+   *  is wanted is a staleTime rather than an effect. */
+  trainingSync: ['training-sync'] as const,
 }
 
 /** Every key a chat turn can invalidate once the LLM wrote something. */

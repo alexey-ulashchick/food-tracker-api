@@ -2,6 +2,12 @@ import { createMemory, deleteMemory, listMemories, updateMemory } from '@/api/en
 import { qk } from '@/api/keys'
 import { Page } from '@/components/Page'
 import { ScreenHeader } from '@/components/ScreenHeader'
+import {
+  fieldStyle,
+  ghostButtonStyle,
+  iconButtonStyle,
+  primaryButtonStyle,
+} from '@/components/formStyles'
 import { useUi } from '@/store/ui'
 import { BrainIcon, MinusCircleIcon, PencilCircleIcon, Spinner, TrayIcon } from '@/theme/icons'
 import {
@@ -269,52 +275,4 @@ function Card({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   )
-}
-
-const fieldStyle: React.CSSProperties = {
-  width: '100%',
-  boxSizing: 'border-box',
-  resize: 'none',
-  background: surface.input,
-  border: 0,
-  borderRadius: radius.field,
-  color: label.primary,
-  fontWeight: 400,
-  fontSize: 'calc(14px * var(--type))',
-  padding: '10px 12px',
-  lineHeight: 1.35,
-}
-
-const iconButtonStyle: React.CSSProperties = {
-  border: 0,
-  background: 'transparent',
-  color: label.secondary,
-  padding: 4,
-  cursor: 'pointer',
-  display: 'flex',
-  flexShrink: 0,
-}
-
-const ghostButtonStyle: React.CSSProperties = {
-  border: 0,
-  borderRadius: radius.field,
-  background: surface.control,
-  color: label.primary,
-  fontWeight: 600,
-  fontSize: 'calc(13px * var(--type))',
-  padding: '8px 12px',
-  cursor: 'pointer',
-}
-
-function primaryButtonStyle(enabled: boolean): React.CSSProperties {
-  return {
-    border: 0,
-    borderRadius: radius.field,
-    background: enabled ? accent : withAlpha(systemGray, 0.18),
-    color: enabled ? onAccent : label.secondary,
-    fontWeight: 600,
-    fontSize: 'calc(13px * var(--type))',
-    padding: '8px 12px',
-    cursor: enabled ? 'pointer' : 'default',
-  }
 }
