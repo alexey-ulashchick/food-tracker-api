@@ -335,17 +335,30 @@ API key (both under Settings → Developer at intervals.icu). The key goes in bu
 never comes back — `GET /settings` returns its last four characters and nothing
 else.
 
-Field names on the intervals.icu side were written against the documented shape
-rather than a live account. Confirm them once against yours:
+That is the whole setup. Press **Обновить план** and the goals screen shows
+each ride with its kilojoules, its class and the coefficient it scored at, so
+the configuration checks itself against what intervals.icu shows you.
+
+### When a number looks wrong
+
+The field names were written against intervals.icu's documented shape rather
+than a live account, so there are three ways the parser can misread a plan,
+and all three are visible on the goals screen: a ride showing `0 кДж` means no
+planned work was found, `тип не определён` means the structured steps could not
+be read, and a gym session missing from the breakdown means its activity type
+is not recognised.
+
+What the screen cannot say is *why*. For that:
 
 ```bash
 bun run intervals:probe -- --key <api-key> --athlete i123456 --explain
 ```
 
-It prints which fields actually came back, the distinct `type` and `category`
-values, the first structured `steps` array verbatim, and how each session was
-classified. If a ride reads `unknown` or a gym session is not picked up, the
-sets to edit are `RIDE_TYPES` and `STRENGTH_TYPES` in
+Read-only. It prints which fields actually came back and which are null, the
+distinct `type` and `category` values, the first structured `steps` array
+verbatim, and how each session was classified — enough to tell "the plan has no
+kilojoules" from "the field is called something else". The lists to edit are
+`JOULE_KEYS`, `RIDE_TYPES` and `STRENGTH_TYPES` in
 `src/integrations/intervals.ts`.
 
 ## Two shells, one breakpoint
