@@ -13,7 +13,8 @@ const BAR_HEIGHT: Record<MeterSize, number> = { large: 14, medium: 10, small: 8 
 
 type Props = {
   current: number
-  goal: number
+  /** Null when the day has no goal at all — rendered as such, not as zero. */
+  goal: number | null
   /** Two-stop palette gradient; the last stop is the tint. */
   stops: readonly string[]
   size?: MeterSize
@@ -24,9 +25,9 @@ type Props = {
 export function CalorieMeter({ current, goal, stops, size = 'large', accessory }: Props) {
   // Capped at 1.2 so a wild overshoot does not stretch the bar off the card;
   // the fill itself is clamped to 1.
-  const pct = goal > 0 ? Math.min(1.2, current / goal) : 0
-  const remaining = Math.max(0, goal - current)
-  const over = Math.max(0, current - goal)
+  const pct = goal !== null && goal > 0 ? Math.min(1.2, current / goal) : 0
+  const remaining = Math.max(0, (goal ?? 0) - current)
+  const over = goal === null ? 0 : Math.max(0, current - goal)
   const tint = stops[stops.length - 1] ?? accent
 
   return (
@@ -59,38 +60,58 @@ export function CalorieMeter({ current, goal, stops, size = 'large', accessory }
           >
             {Math.round(current)}
           </span>
-          <span
-            className="tnum"
-            style={{
-              fontWeight: 500,
-              fontSize: 'calc(14px * var(--type))',
-              color: label.secondary,
-            }}
-          >
-            / {Math.round(goal)}
-          </span>
+          {goal === null ? null : (
+            <span
+              className="tnum"
+              style={{
+                fontWeight: 500,
+                fontSize: 'calc(14px * var(--type))',
+                color: label.secondary,
+              }}
+            >
+              / {Math.round(goal)}
+            </span>
+          )}
         </span>
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 6 }}>
-          <span
-            style={{
-              fontWeight: 600,
-              fontSize: 'calc(11px * var(--type))',
-              letterSpacing: 0.5,
-              color: label.secondary,
-            }}
-          >
-            {over > 0 ? 'ПЕРЕБОР' : 'ОСТАЛОСЬ'}
-          </span>
-          <span
-            className="tnum"
-            style={{
-              fontWeight: 700,
-              fontSize: `calc(${size === 'large' ? 28 : 20}px * var(--type))`,
-              color: over > 0 ? overage : tint,
-            }}
-          >
-            {over > 0 ? Math.round(over) : Math.round(remaining)}
-          </span>
+          {goal === null ? (
+            // "ОСТАЛОСЬ 0" next to a goal of zero reads as a day already
+            // blown. There is no goal; that is a different thing and it is
+            // worth saying, because it is also the thing the user can fix.
+            <span
+              style={{
+                fontWeight: 600,
+                fontSize: 'calc(11px * var(--type))',
+                letterSpacing: 0.5,
+                color: label.secondary,
+              }}
+            >
+              ЦЕЛЬ НЕ ЗАДАНА
+            </span>
+          ) : (
+            <>
+              <span
+                style={{
+                  fontWeight: 600,
+                  fontSize: 'calc(11px * var(--type))',
+                  letterSpacing: 0.5,
+                  color: label.secondary,
+                }}
+              >
+                {over > 0 ? 'ПЕРЕБОР' : 'ОСТАЛОСЬ'}
+              </span>
+              <span
+                className="tnum"
+                style={{
+                  fontWeight: 700,
+                  fontSize: `calc(${size === 'large' ? 28 : 20}px * var(--type))`,
+                  color: over > 0 ? overage : tint,
+                }}
+              >
+                {over > 0 ? Math.round(over) : Math.round(remaining)}
+              </span>
+            </>
+          )}
         </span>
       </div>
 

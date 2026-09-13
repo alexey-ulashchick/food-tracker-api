@@ -21,10 +21,11 @@ import {
   radius,
   ringSpec,
   surface,
+  systemGray,
   withAlpha,
 } from '@/theme/tokens'
 import { DIET_DAY_TITLES } from '@shared/dietDayTitles.ts'
-import type { ServerDaySummary, ServerGoal, ServerMeal } from '@shared/types.ts'
+import type { DayTypeName, ServerDaySummary, ServerGoal, ServerMeal } from '@shared/types.ts'
 import { useQuery } from '@tanstack/react-query'
 
 // Port of CalTracker/TodayView.swift. Structure top to bottom: day header,
@@ -37,19 +38,17 @@ const MEAL_RU: Record<string, string> = {
   Snack: 'Перекус',
 }
 
-const DAY_TYPE_LABEL: Record<string, string> = {
+const DAY_TYPE_LABEL: Record<DayTypeName, string> = {
   training: 'Тренировочный день',
   rest: 'День отдыха',
 }
-
-/** Seed targets, overwritten by the first /goals response — AppState.init. */
-const SEED_GOAL = { calories: 2650, protein: 170, carbs: 330, fat: 74 }
 
 type MacroRow = {
   key: 'protein' | 'carbs' | 'fat'
   name: string
   unit: string
   current: number
+  /** Zero when the day has no goal — the rings then render as bare tracks. */
   goal: number
 }
 
@@ -82,7 +81,7 @@ export function Today() {
 
   const eaten = sumMacros(meals)
   const targets = resolveTargets(goal)
-  const dayType = goal?.dayType ?? 'training'
+  const dayType = goal?.dayType ?? null
 
   const macroRows: MacroRow[] = [
     { key: 'protein', name: 'Белки', unit: 'г', current: eaten.protein, goal: targets.protein },
@@ -116,25 +115,9 @@ export function Today() {
         >
           <CalorieMeter
             current={eaten.calories}
-            goal={targets.calories}
+            goal={goal ? targets.calories : null}
             stops={palette.calories}
-            accessory={
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  fontWeight: 600,
-                  fontSize: 'calc(12.5px * var(--type))',
-                  color: dayTypeTint[dayType],
-                  background: withAlpha(dayTypeTint[dayType], CHIP_BG_ALPHA),
-                  borderRadius: 999,
-                  padding: '6px 11px',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {DAY_TYPE_LABEL[dayType] ?? dayType}
-              </span>
-            }
+            accessory={<DayTypeChip dayType={dayType} />}
           />
           <hr style={{ height: 1, background: surface.hairline, border: 0, margin: 0 }} />
           {verdict ? <Verdict verdict={verdict} /> : null}
@@ -155,16 +138,20 @@ export function Today() {
               rings={macroRows.map((m) => ({
                 value: m.goal > 0 ? m.current / m.goal : 0,
                 stops: palette[m.key],
+                // A track with no arc, the same way a History row renders a
+                // day it has no goal for. A 0% arc would look like "eaten
+                // nothing", which is a different and usually wrong claim.
+                dimmed: !goal,
               }))}
               {...ringSpec.todayStack}
             />
-            <RingCentre rows={macroRows} />
+            <RingCentre rows={macroRows} hasGoal={goal !== null} />
           </div>
 
           <div style={{ flex: 1, minWidth: 0 }}>
             {macroRows.map((m, i) => (
               <div key={m.key}>
-                <MacroStatRow row={m} />
+                <MacroStatRow row={m} hasGoal={goal !== null} />
                 {i < macroRows.length - 1 ? (
                   <hr style={{ height: 1, background: surface.hairline, border: 0, margin: 0 }} />
                 ) : null}
@@ -176,6 +163,33 @@ export function Today() {
 
       <MealsLog meals={meals} loading={mealsQuery.isLoading} />
     </Page>
+  )
+}
+
+/**
+ * The day-type badge, or a plain statement that no goal exists.
+ *
+ * It used to fall back to 'training', so a day with no goal confidently
+ * announced "Тренировочный день" — a label nothing had chosen.
+ */
+function DayTypeChip({ dayType }: { dayType: DayTypeName | null }) {
+  const tint = dayType ? dayTypeTint[dayType] : systemGray
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        fontWeight: 600,
+        fontSize: 'calc(12.5px * var(--type))',
+        color: tint,
+        background: withAlpha(tint, CHIP_BG_ALPHA),
+        borderRadius: 999,
+        padding: '6px 11px',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {dayType ? DAY_TYPE_LABEL[dayType] : 'Цель не задана'}
+    </span>
   )
 }
 
@@ -191,8 +205,18 @@ function sumMacros(meals: ServerMeal[]) {
   )
 }
 
+/**
+ * Zeros when the day has no goal, which the rings and the meter render as
+ * empty rather than as progress.
+ *
+ * This used to be a hard-coded 2650 / 170 / 330 / 74, invented in the browser
+ * bundle and shown as if it were a real target — sitting next to a verdict
+ * that said, correctly, that there was not enough data to judge the day. Now
+ * that a goal is computed from the training plan, a day with none genuinely
+ * has none, and saying so is both true and actionable.
+ */
 function resolveTargets(goal: ServerGoal | null) {
-  if (!goal) return SEED_GOAL
+  if (!goal) return { calories: 0, protein: 0, carbs: 0, fat: 0 }
   return {
     calories: goal.calorieGoal,
     protein: goal.proteinGGoal,
@@ -334,9 +358,9 @@ function Verdict({ verdict }: { verdict: ServerDaySummary }) {
 }
 
 /** The single tight stat inside the ring stack. */
-function RingCentre({ rows }: { rows: MacroRow[] }) {
+function RingCentre({ rows, hasGoal }: { rows: MacroRow[]; hasGoal: boolean }) {
   const ratios = rows.map((m) => (m.goal > 0 ? m.current / m.goal : 0))
-  const allHit = ratios.every((r) => r >= 1)
+  const allHit = hasGoal && ratios.every((r) => r >= 1)
 
   const wrapper = {
     position: 'absolute' as const,
@@ -380,6 +404,25 @@ function RingCentre({ rows }: { rows: MacroRow[] }) {
     )
   }
 
+  if (!hasGoal) {
+    return (
+      <div style={{ ...wrapper, gap: 2 }}>
+        <span
+          style={{
+            fontWeight: 600,
+            fontSize: 'calc(10.5px * var(--type))',
+            color: label.tertiary,
+            letterSpacing: 0.4,
+            textTransform: 'uppercase',
+            textAlign: 'center',
+          }}
+        >
+          Нет цели
+        </span>
+      </div>
+    )
+  }
+
   // The macro furthest from its target is the one worth calling out.
   let lowestIndex = 0
   for (let i = 1; i < ratios.length; i++) {
@@ -412,9 +455,9 @@ function RingCentre({ rows }: { rows: MacroRow[] }) {
   )
 }
 
-function MacroStatRow({ row }: { row: MacroRow }) {
+function MacroStatRow({ row, hasGoal }: { row: MacroRow; hasGoal: boolean }) {
   const ratio = row.goal > 0 ? row.current / row.goal : 0
-  const over = ratio > 1
+  const over = hasGoal && ratio > 1
   const overAmount = Math.max(0, Math.round(row.current - row.goal))
   const tint = palette[row.key][1]
 
@@ -445,21 +488,24 @@ function MacroStatRow({ row }: { row: MacroRow }) {
           className="tnum"
           style={{ fontWeight: 400, fontSize: 'calc(12px * var(--type))', color: label.secondary }}
         >
-          {Math.round(row.current)} / {Math.round(row.goal)}
+          {Math.round(row.current)}
+          {hasGoal ? ` / ${Math.round(row.goal)}` : ''}
           {row.unit}
         </span>
       </div>
-      <span
-        className="tnum"
-        style={{
-          marginLeft: 'auto',
-          fontWeight: 600,
-          fontSize: 'calc(14px * var(--type))',
-          color: over ? overage : tint,
-        }}
-      >
-        {Math.round(ratio * 100)}%
-      </span>
+      {hasGoal ? (
+        <span
+          className="tnum"
+          style={{
+            marginLeft: 'auto',
+            fontWeight: 600,
+            fontSize: 'calc(14px * var(--type))',
+            color: over ? overage : tint,
+          }}
+        >
+          {Math.round(ratio * 100)}%
+        </span>
+      ) : null}
     </div>
   )
 }

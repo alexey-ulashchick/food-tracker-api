@@ -1,5 +1,6 @@
 import { Sidebar } from '@/components/Sidebar'
 import { useIsDesktop } from '@/lib/useIsDesktop'
+import { useTrainingSync } from '@/lib/useTrainingSync'
 import { TAB_ITEMS } from '@/nav'
 import { useUi } from '@/store/ui'
 import { WarnCircleIcon } from '@/theme/icons'
@@ -35,6 +36,11 @@ const TAB_BAR_HEIGHT = 68
 
 export function AppLayout() {
   const isDesktop = useIsDesktop()
+  // Mounted at the shell rather than on Today: every screen shows numbers
+  // derived from a goal, so all of them want the plan to be current. The hook
+  // is a query with a staleTime, so this costs one request per five minutes
+  // however much the user moves around.
+  useTrainingSync()
 
   return (
     // .app-shell rather than an inline maxWidth: a media query cannot widen an

@@ -223,6 +223,14 @@
     --c-day-orange: #ff9500;
     --c-day-red: #ff3b30;
 
+    /* #30b0c7 is iOS teal's DARK variant, and it was the only token in the
+       block above with no light counterpart. That went unnoticed while rest
+       days had to be set by hand and almost never were; now that a day with no
+       planned session is labelled "rest" automatically, the chip appears often
+       enough for it to matter, and the dark teal is too pale on a white card.
+       This is the light variant. */
+    --c-rest: #008299;
+
     --c-material: rgba(250, 250, 250, 0.72);
     --c-skeleton: rgba(60, 60, 67, 0.08);
     --c-hover: rgba(60, 60, 67, 0.06);

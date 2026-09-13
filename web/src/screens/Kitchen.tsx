@@ -20,6 +20,7 @@ import {
   palette,
   singleRingSpec,
   surface,
+  systemGray,
   withAlpha,
 } from '@/theme/tokens'
 import type { RecommendationMeta } from '@shared/types.ts'
@@ -296,6 +297,15 @@ export function Kitchen() {
           goal={2650}
           stops={palette.calories}
           accessory={<Chip label="День отдыха" tint={dayTypeTint.rest} />}
+        />
+      </Card>
+
+      <Card title="Калорийная шкала — цели нет">
+        <CalorieMeter
+          current={1748}
+          goal={null}
+          stops={palette.calories}
+          accessory={<Chip label="Цель не задана" tint={systemGray} />}
         />
       </Card>
 
