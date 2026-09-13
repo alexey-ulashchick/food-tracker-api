@@ -86,6 +86,7 @@ Plain commands target the local DB (`.env`); the `*:neon` variants override `DAT
 | `bun run db:studio` / `bun run db:studio:neon` | Open Drizzle Studio (DB browser at localhost:4983) |
 | `bun run import:md [dir]` / `bun run import:md:neon [dir]` | Import food-diary markdown files for the test user (default `~/Downloads`) |
 | `bun run issue-token -- --user <uuid> [--label <name>]` / `:neon` | Issue an MCP bearer token for `/mcp/:token` (mobile Claude) |
+| `bun run intervals:probe -- --key <k> --athlete <id> [--explain]` | Read-only census of the intervals.icu response, and how the app reads it |
 | `bun test` | Backend tests (uses local docker by default) |
 | `bun run web:dev` | Vite dev server for the web client, proxying the API |
 | `bun run web:build` | Build the SPA into `web/dist`, which `src/static.ts` serves |
@@ -278,6 +279,74 @@ app.
 
 There is no in-app entry UI. Weight arrives through `POST /weights`, which the
 user's own sync script drives; the web client only reads it.
+
+## Daily goals: computed, unless asked otherwise
+
+A day's nutrition goal comes from one of two places, and `daily_goals.source`
+records which.
+
+**`auto`** is computed by `POST /training/sync` from the intervals.icu plan:
+
+```
+calories = base expenditure + 250 per strength session + Σ (planned kJ × coefficient)
+protein  = the fixed figure from settings
+fat      = the fixed figure from settings
+carbs    = whatever calories are left over, floored at zero
+```
+
+The coefficient comes from the session's **defining block** — the hardest
+intensity band holding at least ten minutes of planned work, or the band with
+the most time if none reaches that:
+
+| Class | Duration | × kJ |
+|---|---|---|
+| Z2 | ≤ 75 min | 0.70 |
+| Z2 | 75 min – 2.5 h | 0.80 |
+| Z2 | > 2.5 h | 0.90 |
+| Sweet spot / threshold | any | 0.90 |
+| VO₂max | any | 0.95 |
+| no structured plan | any | 0.70, flagged in the UI |
+
+Ten minutes rather than "the longest step" because a 3×12 sweet-spot workout
+spends more time warming up and recovering than working, and longest-wins would
+file it as Z2. The same threshold stops one 2-minute surge from promoting a
+three-hour endurance ride to VO₂max. The numbers live in
+`src/lib/trainingLoad.ts` and nowhere else.
+
+**`manual`** is anything a human asked for — `set_goal` from chat, `PATCH
+/goals`, the MCP tool. It always wins, and not by convention: the sync's upsert
+carries `setWhere: source = 'auto'`, so a manual row refuses to be recomputed.
+`clear_goal` or the delete button on **Профиль → Цели** removes the override and
+hands the day back to the plan.
+
+Two more rules worth knowing:
+
+* **The past is frozen.** Days before today are inserted if missing but never
+  updated, so editing an old workout in intervals.icu cannot retroactively move
+  a target that has already been eaten against.
+* **An unreadable plan is visible, not silent.** A ride the parser cannot
+  classify scores at 0.70 and shows "тип не определён" on the goals screen; a
+  ride with no planned kilojoules scores zero but still appears.
+
+### Setting it up
+
+`Профиль → Тренировки`: base expenditure, fixed protein and fat, athlete id and
+API key (both under Settings → Developer at intervals.icu). The key goes in but
+never comes back — `GET /settings` returns its last four characters and nothing
+else.
+
+Field names on the intervals.icu side were written against the documented shape
+rather than a live account. Confirm them once against yours:
+
+```bash
+bun run intervals:probe -- --key <api-key> --athlete i123456 --explain
+```
+
+It prints which fields actually came back, the distinct `type` and `category`
+values, the first structured `steps` array verbatim, and how each session was
+classified. If a ride reads `unknown` or a gym session is not picked up, the
+sets to edit are `RIDE_TYPES` and `STRENGTH_TYPES` in
+`src/integrations/intervals.ts`.
 
 ## Two shells, one breakpoint
 

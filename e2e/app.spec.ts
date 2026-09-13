@@ -128,6 +128,38 @@ test('tapping a History row opens that day on Today', async ({ page }) => {
   }
 })
 
+test('the training settings reach the server and come back without the key', async ({ page }) => {
+  await authenticate(page)
+  await page.goto('/you')
+
+  await expect(page.getByRole('heading', { name: 'Профиль' })).toBeVisible()
+
+  const key = 'e2e-intervals-key-0000'
+  await page.getByRole('button', { name: /Задать|Заменить/ }).click()
+  await page.getByPlaceholder('вставь ключ').fill(key)
+  await page.getByRole('button', { name: 'Сохранить' }).click()
+
+  // Only the hint survives the round trip. Asserted on the page rather than on
+  // the response so a future field that smuggles the key back out fails too.
+  await expect(page.getByText('…0000')).toBeVisible()
+  await expect(page.locator('body')).not.toContainText(key)
+
+  // And the base expenditure persists across a reload, which is the part that
+  // proves the PATCH landed rather than just re-rendering local state.
+  await page.getByRole('button', { name: /Заменить/ }).waitFor()
+  await page.reload()
+  await expect(page.getByText('…0000')).toBeVisible()
+})
+
+test('the goals screen lists days and is reachable from Профиль', async ({ page }) => {
+  await authenticate(page)
+  await page.goto('/you')
+
+  await page.getByRole('link', { name: /Цели/ }).click()
+  await expect(page.getByRole('heading', { name: 'Цели' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Обновить план' })).toBeVisible()
+})
+
 test('the phone shell keeps its own metrics', async ({ page }) => {
   await authenticate(page)
   await page.goto('/')

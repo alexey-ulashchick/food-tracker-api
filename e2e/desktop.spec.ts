@@ -28,7 +28,7 @@ test('the sidebar replaces the tab bar and carries every section', async ({ page
   await expect(page.locator('.tab-bar')).toHaveCount(0)
 
   const links = page.getByRole('navigation').getByRole('link')
-  await expect(links).toHaveText(['Сегодня', 'Чат', 'История', 'Вес', 'Память', 'Профиль'])
+  await expect(links).toHaveText(['Сегодня', 'Чат', 'История', 'Цели', 'Вес', 'Память', 'Профиль'])
 })
 
 test('Профиль stops being active once a sub-screen of it is open', async ({ page }) => {
