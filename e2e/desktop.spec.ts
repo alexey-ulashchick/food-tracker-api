@@ -236,8 +236,12 @@ test('Профиль stays a single column', async ({ page }) => {
 
   // Two-up scattered the section labels into the right-hand column and left a
   // ragged gap under the shorter card. Every block shares a left edge now.
+  //
+  // The count is literal on purpose: Вес, Ассистент, Тренировки, Стоимость,
+  // Доступ. A block added without a thought for this screen's layout should
+  // trip it, which is exactly what the training card did.
   const blocks = page.locator('.settings-column > .card-block')
-  await expect(blocks).toHaveCount(4)
+  await expect(blocks).toHaveCount(5)
 
   const lefts = await blocks.evaluateAll((els) =>
     els.map((el) => Math.round(el.getBoundingClientRect().left)),
