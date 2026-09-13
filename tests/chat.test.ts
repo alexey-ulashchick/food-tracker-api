@@ -221,6 +221,119 @@ describe('POST /chat', () => {
     expect(mealRows).toHaveLength(0)
   })
 
+  test('set_goal: marks the row manual so the training sync leaves it alone', async () => {
+    // The whole "a goal asked for beats a goal computed" rule rests on this
+    // stamp; without it POST /training/sync silently recomputes over the top.
+    const { userId, token } = await seedUser()
+    await seedGoal(userId, {
+      date: '2026-06-17',
+      source: 'auto',
+      breakdown: { base: 1450, strength: 0, rides: [] },
+    })
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_g',
+            name: 'set_goal',
+            input: {
+              date: '2026-06-17',
+              dayType: 'training',
+              calorieGoal: 2600,
+              proteinGGoal: 180,
+              carbsGGoal: 280,
+              fatGGoal: 80,
+            },
+          },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({ content: [{ type: 'text', text: 'Готово.' }], stop_reason: 'end_turn' }),
+    )
+
+    await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'поставь 2600 на 17 июня' }),
+      }),
+    )
+
+    const [row] = await db.select().from(dailyGoals).where(eq(dailyGoals.userId, userId))
+    expect(row?.source).toBe('manual')
+    // The derivation described the old number and would now be a lie.
+    expect(row?.breakdown).toBeNull()
+  })
+
+  test('clear_goal: removes the day and logs no card', async () => {
+    const { userId, token } = await seedUser()
+    await seedGoal(userId, { date: '2026-06-17', source: 'manual' })
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          { type: 'tool_use', id: 'toolu_c', name: 'clear_goal', input: { date: '2026-06-17' } },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'Убрал, теперь считается автоматически.' }],
+        stop_reason: 'end_turn',
+      }),
+    )
+
+    const res = await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'убери цель на 17 июня' }),
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { ai: Array<{ kind: string }> }
+    // A removal has no row to describe, and chat_kind has no value for it.
+    expect(body.ai.every((m) => m.kind === 'text')).toBe(true)
+
+    const rows = await db.select().from(dailyGoals).where(eq(dailyGoals.userId, userId))
+    expect(rows).toHaveLength(0)
+  })
+
+  test('clear_goal: says so when there was nothing to clear', async () => {
+    const { token } = await seedUser()
+
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [
+          { type: 'tool_use', id: 'toolu_c', name: 'clear_goal', input: { date: '2026-06-17' } },
+        ],
+        stop_reason: 'tool_use',
+      }),
+    )
+    messagesCreate.mockResolvedValueOnce(
+      llmResponse({
+        content: [{ type: 'text', text: 'На эту дату цели и не было.' }],
+        stop_reason: 'end_turn',
+      }),
+    )
+
+    const res = await makeApp().fetch(
+      new Request('http://x/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'убери цель на 17 июня' }),
+      }),
+    )
+
+    expect(res.status).toBe(201)
+  })
+
   test('set_goal: upserts goal and logs goal_set card', async () => {
     const { userId, token } = await seedUser()
 

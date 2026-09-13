@@ -322,6 +322,24 @@ export function buildMcpServer(userId: string): McpServer {
   )
 
   server.registerTool(
+    'clear_goal',
+    {
+      title: 'Clear a daily goal',
+      description:
+        'Remove the goal for `date` so it reverts to being computed from the training plan. ' +
+        'Harmless on an already-computed goal — the next sync writes it straight back.',
+      inputSchema: { date: isoDate },
+    },
+    logged('clear_goal', async ({ date }) => {
+      const [row] = await db
+        .delete(dailyGoals)
+        .where(and(eq(dailyGoals.userId, userId), eq(dailyGoals.date, date)))
+        .returning({ id: dailyGoals.id })
+      return ok(row ? { cleared: date } : { cleared: null, reason: `No goal set for ${date}` })
+    }),
+  )
+
+  server.registerTool(
     'list_memories',
     {
       title: 'List memories',

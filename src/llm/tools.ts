@@ -202,6 +202,20 @@ export const tools: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'clear_goal',
+    description:
+      'Remove the goal for a date so it goes back to being computed from the training plan. ' +
+      'Use when the user wants to undo a manual goal ("убери мою цель на завтра", "считай как обычно"). ' +
+      'Harmless on a computed goal — the next sync writes it straight back.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: 'Calendar date in YYYY-MM-DD format.' },
+      },
+      required: ['date'],
+    },
+  },
+  {
     name: 'add_memory',
     description:
       'Save a long-lived fact, preference, dish, recipe, or behaviour the user explicitly asked you to remember. ' +
@@ -251,6 +265,7 @@ const WRITE_TOOL_NAMES = new Set<ToolName>([
   'update_meal',
   'delete_meal',
   'set_goal',
+  'clear_goal',
   'add_memory',
   'update_memory',
   'delete_memory',
@@ -274,6 +289,7 @@ export type ToolExecResult =
   | { ok: true; kind: 'meal_updated'; meal: Meal; before: Meal }
   | { ok: true; kind: 'meal_removed'; meal: Meal }
   | { ok: true; kind: 'goal_set'; goal: Goal }
+  | { ok: true; kind: 'goal_cleared'; date: string }
   | { ok: true; kind: 'memory_added'; memory: Memory }
   | { ok: true; kind: 'memory_updated'; memory: Memory; before: Memory }
   | { ok: true; kind: 'memory_removed'; memory: Memory }
@@ -540,6 +556,16 @@ export async function executeTool(
         })
         .returning()
       return { ok: true, kind: 'goal_set', goal: row! }
+    }
+    case 'clear_goal': {
+      const date = asString(input.date)
+      if (!date || !isoDateRe.test(date)) return badInput('date must be YYYY-MM-DD')
+      const [row] = await db
+        .delete(dailyGoals)
+        .where(and(eq(dailyGoals.userId, userId), eq(dailyGoals.date, date)))
+        .returning()
+      if (!row) return { ok: false, error: `No goal set for ${date}` }
+      return { ok: true, kind: 'goal_cleared', date }
     }
     case 'add_memory': {
       const content = asString(input.content)?.trim()

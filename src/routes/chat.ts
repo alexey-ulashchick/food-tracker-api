@@ -1066,6 +1066,8 @@ function toolResultPayload(
       return { ok: true, action: 'meal_removed', meal: result.meal }
     case 'goal_set':
       return { ok: true, action: 'goal_set', goal: result.goal }
+    case 'goal_cleared':
+      return { ok: true, action: 'goal_cleared', date: result.date }
     case 'memory_added':
       return { ok: true, action: 'memory_added', memory: result.memory }
     case 'memory_updated':
@@ -1196,7 +1198,12 @@ async function persistActionCard(
         .returning()
       return row
     }
+    // No card for either. A read produced nothing to describe, and clearing a
+    // goal removes a row rather than creating one — the chat_kind enum has no
+    // value for it, and inventing one would mean a card that renders an
+    // absence. The model's own reply says what happened.
     case 'read':
+    case 'goal_cleared':
       return undefined
   }
 }
@@ -1356,15 +1363,23 @@ function buildSystemPrompt(ctx: ChatContext): string {
       fats: todaysGoal.fatGGoal - eaten.fats,
     }
     const overNote = remain.calories < 0 ? '  (over on calories)' : ''
+    // Provenance, because it changes what the model should do. An automatic
+    // goal is recomputed from the training plan on every sync; overwriting it
+    // with set_goal converts the day to a manual override that no longer
+    // tracks the plan, which is right when asked for and wrong otherwise.
+    const sourceNote =
+      todaysGoal.source === 'auto'
+        ? 'computed from the training plan — calling set_goal for this date replaces it with a manual override that stops updating'
+        : 'set manually — it already overrides the computed goal'
     todayBlock.push(
-      `Today is ${today} (${todaysGoal.dayType} day).`,
+      `Today is ${today} (${todaysGoal.dayType} day). Goal ${sourceNote}.`,
       `  Targets:   ${fmt(todaysGoal.calorieGoal)} kcal · ${fmt(todaysGoal.proteinGGoal)} P · ${fmt(todaysGoal.carbsGGoal)} C · ${fmt(todaysGoal.fatGGoal)} F`,
       `  Eaten:     ${fmt(eaten.calories)} kcal · ${fmt(eaten.protein)} P · ${fmt(eaten.carbs)} C · ${fmt(eaten.fats)} F  (${todayMeals.length} meal${todayMeals.length === 1 ? '' : 's'})`,
       `  Remaining: ${fmt(remain.calories)} kcal · ${fmt(remain.protein)} P · ${fmt(remain.carbs)} C · ${fmt(remain.fats)} F${overNote}`,
     )
   } else {
     todayBlock.push(
-      `Today is ${today}. No goal configured yet — call set_goal if the user asks for one.`,
+      `Today is ${today}. No goal for this date — either the training integration is not set up, or the day predates it. Call set_goal if the user asks for one.`,
       `  Eaten today: ${fmt(eaten.calories)} kcal · ${fmt(eaten.protein)} P · ${fmt(eaten.carbs)} C · ${fmt(eaten.fats)} F  (${todayMeals.length} meal${todayMeals.length === 1 ? '' : 's'})`,
     )
   }
