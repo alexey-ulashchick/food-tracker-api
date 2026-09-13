@@ -18,6 +18,7 @@ import {
 } from '@/theme/tokens'
 import type { GoalBreakdown, ServerGoal } from '@shared/types.ts'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 
 // Every day that has a goal, newest first, with where the number came from.
 //
@@ -56,9 +57,22 @@ export function Goals() {
     onError: setError,
   })
 
-  // Newest first: the days you can still act on are the ones you came for.
-  const rows = [...(query.data ?? [])].sort((a, b) => b.date.localeCompare(a.date))
   const today = todayIso()
+  const all = query.data ?? []
+
+  // Today first, then forward. Newest-first put 4 October at the top and
+  // buried today twenty cards down, which is backwards: the day you are
+  // steering is today, and the days you can still change are the ones after
+  // it. Past days are reference material, so they go behind a button rather
+  // than above the fold.
+  const upcoming = all.filter((g) => g.date >= today).sort((a, b) => a.date.localeCompare(b.date))
+  // Descending, so the first past card is yesterday rather than six weeks ago.
+  const past = all.filter((g) => g.date < today).sort((a, b) => b.date.localeCompare(a.date))
+
+  // Nothing ahead means the plan has not been synced; the history is then all
+  // there is to show, and hiding it behind a button would show nothing at all.
+  const [pastOpen, setPastOpen] = useState(false)
+  const showPast = pastOpen || upcoming.length === 0
 
   return (
     <Page>
@@ -79,11 +93,11 @@ export function Goals() {
         }
       />
 
-      {query.isLoading ? null : rows.length === 0 ? (
+      {query.isLoading ? null : all.length === 0 ? (
         <Empty />
       ) : (
         <div className="settings-column">
-          {rows.map((goal) => (
+          {upcoming.map((goal) => (
             <GoalRow
               key={goal.id}
               goal={goal}
@@ -92,9 +106,52 @@ export function Goals() {
               onDelete={() => remove.mutate(goal.date)}
             />
           ))}
+
+          {past.length === 0 ? null : showPast ? (
+            <>
+              {/* The dates run forward above and backward below, so the break
+                  is labelled rather than left to be inferred from the numbers. */}
+              <SectionLabel>Прошедшие дни</SectionLabel>
+              {past.map((goal) => (
+                <GoalRow
+                  key={goal.id}
+                  goal={goal}
+                  today={today}
+                  busy={remove.isPending}
+                  onDelete={() => remove.mutate(goal.date)}
+                />
+              ))}
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setPastOpen(true)}
+              style={{ ...ghostButtonStyle, alignSelf: 'flex-start' }}
+            >
+              Прошедшие дни ({past.length})
+            </button>
+          )}
         </div>
       )}
     </Page>
+  )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        fontWeight: 600,
+        fontSize: 'calc(12.5px * var(--type))',
+        color: label.secondary,
+        letterSpacing: 0.4,
+        textTransform: 'uppercase',
+        paddingLeft: 4,
+        paddingTop: 6,
+      }}
+    >
+      {children}
+    </span>
   )
 }
 
