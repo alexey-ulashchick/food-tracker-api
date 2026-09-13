@@ -1,9 +1,10 @@
 import { zValidator } from '@hono/zod-validator'
 import { and, desc, eq } from 'drizzle-orm'
-import { type Context, Hono } from 'hono'
+import { Hono } from 'hono'
 import { z } from 'zod'
 import { db } from '../db/client.ts'
 import { meals } from '../db/schema.ts'
+import { clientTzOffsetMin } from '../lib/clientDate.ts'
 import {
   type DatedMeal,
   decorateLocalDate,
@@ -49,15 +50,6 @@ const listMealsSchema = z
 const idParamSchema = z.object({
   id: z.string().uuid(),
 })
-
-// Reads the X-Client-TZ-Offset header used as a fallback when a meal's
-// own tz_offset_min is NULL (legacy rows). Defaults to UTC for callers
-// that don't send the header (curl, MCP clients sometimes).
-function clientTzOffsetMin(c: Context<AuthEnv>): number {
-  const raw = c.req.header('X-Client-TZ-Offset')
-  const parsed = raw !== undefined ? Number.parseInt(raw, 10) : 0
-  return Number.isFinite(parsed) ? parsed : 0
-}
 
 export const mealsRoute = new Hono<AuthEnv>()
   .use(auth)

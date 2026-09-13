@@ -22,6 +22,16 @@ import { classifyRide } from '../src/lib/trainingLoad.ts'
 
 const realFetch = globalThis.fetch
 
+/** The rejection of a promise that is expected to reject. */
+async function caught(p: Promise<unknown>): Promise<Error> {
+  try {
+    await p
+    throw new Error('expected a rejection')
+  } catch (e) {
+    return e as Error
+  }
+}
+
 afterEach(() => {
   globalThis.fetch = realFetch
   clearIntervalsCache()
@@ -193,30 +203,30 @@ describe('fetchRawEvents', () => {
   })
 
   test('says plainly that the credentials were rejected', async () => {
-    globalThis.fetch = mock(async () => new Response('nope', { status: 403 })) as typeof fetch
+    globalThis.fetch = mock(
+      async () => new Response('nope', { status: 403 }),
+    ) as unknown as typeof fetch
 
-    const err = await fetchRawEvents({ athleteId: 'i1', apiKey: 'k'.repeat(10) }, 'a', 'b').catch(
-      (e) => e as IntervalsError,
-    )
+    const err = await caught(fetchRawEvents({ athleteId: 'i1', apiKey: 'k'.repeat(10) }, 'a', 'b'))
     expect(err).toBeInstanceOf(IntervalsError)
-    expect(err.status).toBe(403)
+    expect((err as IntervalsError).status).toBe(403)
     expect(err.message).toContain('rejected the credentials')
   })
 
   test('never puts the key in the error', async () => {
-    globalThis.fetch = mock(async () => new Response('', { status: 500 })) as typeof fetch
+    globalThis.fetch = mock(
+      async () => new Response('', { status: 500 }),
+    ) as unknown as typeof fetch
 
     const key = 'super-secret-key'
-    const err = await fetchRawEvents({ athleteId: 'i1', apiKey: key }, 'a', 'b').catch(
-      (e) => e as Error,
-    )
+    const err = await caught(fetchRawEvents({ athleteId: 'i1', apiKey: key }, 'a', 'b'))
     expect(err.message).not.toContain(key)
   })
 
   test('treats a non-list body as an upstream failure', async () => {
     globalThis.fetch = mock(
       async () => new Response(JSON.stringify({ error: 'x' }), { status: 200 }),
-    ) as typeof fetch
+    ) as unknown as typeof fetch
 
     expect(fetchRawEvents({ athleteId: 'i1', apiKey: 'k' }, 'a', 'b')).rejects.toThrow(
       'not a list of events',
@@ -232,7 +242,7 @@ describe('the cache', () => {
     globalThis.fetch = mock(async () => {
       calls++
       return new Response(JSON.stringify([SS_EVENT]), { status: 200 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
   })
 
   const creds = { athleteId: 'i1', apiKey: 'k' }

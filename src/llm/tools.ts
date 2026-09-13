@@ -508,9 +508,23 @@ export async function executeTool(
           'set_goal requires dayType, calorieGoal, proteinGGoal, carbsGGoal, fatGGoal',
         )
       }
+      // source 'manual' is what stops POST /training/sync recomputing the
+      // day: its upsert only touches rows already marked 'auto'. Every
+      // human-facing writer stamps it — see also src/routes/goals.ts and
+      // src/mcp/server.ts.
       const [row] = await db
         .insert(dailyGoals)
-        .values({ userId, date, dayType, calorieGoal, proteinGGoal, carbsGGoal, fatGGoal })
+        .values({
+          userId,
+          date,
+          dayType,
+          calorieGoal,
+          proteinGGoal,
+          carbsGGoal,
+          fatGGoal,
+          source: 'manual',
+          breakdown: null,
+        })
         .onConflictDoUpdate({
           target: [dailyGoals.userId, dailyGoals.date],
           set: {
@@ -519,6 +533,8 @@ export async function executeTool(
             proteinGGoal,
             carbsGGoal,
             fatGGoal,
+            source: 'manual',
+            breakdown: null,
             updatedAt: new Date(),
           },
         })

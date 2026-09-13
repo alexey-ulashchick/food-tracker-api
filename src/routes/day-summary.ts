@@ -8,10 +8,11 @@
 
 import { zValidator } from '@hono/zod-validator'
 import { and, eq, gte, lte } from 'drizzle-orm'
-import { type Context, Hono } from 'hono'
+import { Hono } from 'hono'
 import { z } from 'zod'
 import { db } from '../db/client.ts'
 import { dailyGoals, meals } from '../db/schema.ts'
+import { clientTzOffsetMin, dateRange } from '../lib/clientDate.ts'
 import { type DietDayVerdict, verdictDietDay } from '../lib/dietDayClassifier.ts'
 import { mealLocalDate } from '../lib/mealLocalDate.ts'
 import { type AuthEnv, auth } from '../middleware/auth.ts'
@@ -135,12 +136,6 @@ export const daySummaryRoute = new Hono<AuthEnv>()
     return c.json(summaries)
   })
 
-function clientTzOffsetMin(c: Context<AuthEnv>): number {
-  const raw = c.req.header('X-Client-TZ-Offset')
-  const parsed = raw !== undefined ? Number.parseInt(raw, 10) : 0
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
 function sumMacros(rows: Meal[]) {
   return rows.reduce(
     (acc, m) => ({
@@ -153,20 +148,3 @@ function sumMacros(rows: Meal[]) {
   )
 }
 
-// Inclusive on both ends, walks calendar dates in ISO YYYY-MM-DD without
-// going through Date arithmetic — string math sidesteps DST oddities.
-function dateRange(from: string, to: string): string[] {
-  const dates: string[] = []
-  let cursor = from
-  while (cursor <= to) {
-    dates.push(cursor)
-    cursor = nextDate(cursor)
-  }
-  return dates
-}
-
-function nextDate(d: string): string {
-  const t = new Date(`${d}T00:00:00Z`)
-  t.setUTCDate(t.getUTCDate() + 1)
-  return t.toISOString().slice(0, 10)
-}

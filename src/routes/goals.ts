@@ -41,13 +41,18 @@ export const goalsRoute = new Hono<AuthEnv>()
   })
   // Upsert keyed on (userId, date). dayType is stored as a label for the day
   // (training/rest) but does not partition rows — one goal per calendar day.
+  //
+  // Always stamps source 'manual' and clears the breakdown: a human asked for
+  // this number, so POST /training/sync must stop recomputing the day. Every
+  // human-facing writer has to do this — see also set_goal in src/llm/tools.ts
+  // and src/mcp/server.ts — because it is what the sync's `setWhere` reads.
   .patch('/', zValidator('json', upsertGoalsSchema), async (c) => {
     const userId = c.get('userId')
     const body = c.req.valid('json')
 
     const [row] = await db
       .insert(dailyGoals)
-      .values({ userId, ...body })
+      .values({ userId, ...body, source: 'manual', breakdown: null })
       .onConflictDoUpdate({
         target: [dailyGoals.userId, dailyGoals.date],
         set: {
@@ -56,10 +61,27 @@ export const goalsRoute = new Hono<AuthEnv>()
           proteinGGoal: body.proteinGGoal,
           carbsGGoal: body.carbsGGoal,
           fatGGoal: body.fatGGoal,
+          source: 'manual',
+          breakdown: null,
           updatedAt: new Date(),
         },
       })
       .returning()
 
     return c.json(row!)
+  })
+  // Removes a day's goal outright. The goals screen uses it to drop a manual
+  // override, after which the next POST /training/sync writes the computed
+  // goal back in its place — so this deletes an exception, not the data.
+  .delete('/:date', zValidator('param', z.object({ date: isoDate })), async (c) => {
+    const userId = c.get('userId')
+    const { date } = c.req.valid('param')
+
+    const [row] = await db
+      .delete(dailyGoals)
+      .where(and(eq(dailyGoals.userId, userId), eq(dailyGoals.date, date)))
+      .returning({ id: dailyGoals.id })
+
+    if (!row) return c.json({ error: 'goal not found' }, 404)
+    return c.json({ ok: true, id: row.id })
   })

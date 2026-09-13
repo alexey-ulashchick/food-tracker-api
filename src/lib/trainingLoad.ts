@@ -210,9 +210,7 @@ export function computeDay(
     date,
     // A planned session makes it a training day even if it scored nothing —
     // the day type describes the plan, not the arithmetic.
-    dayType: sessions.some((s) => s.kind === 'ride' || s.kind === 'strength')
-      ? 'training'
-      : 'rest',
+    dayType: sessions.some((s) => s.kind === 'ride' || s.kind === 'strength') ? 'training' : 'rest',
     calories,
     protein: settings.proteinG,
     fat: settings.fatG,

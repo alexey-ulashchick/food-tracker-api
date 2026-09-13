@@ -17,6 +17,7 @@ const API_PATHS = [
   '/day-summary',
   '/weights',
   '/settings',
+  '/training',
   '/mcp',
 ]
 

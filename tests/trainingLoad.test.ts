@@ -81,9 +81,9 @@ describe('classifyRide', () => {
 
   test('exactly the defining block counts, a second less does not', () => {
     const short = DEFINING_BLOCK_SECONDS / 60 - 1 / 60
-    expect(classifyRide([step(60, 0.65), { seconds: DEFINING_BLOCK_SECONDS, intensity: 1.2 }])).toBe(
-      'vo2max',
-    )
+    expect(
+      classifyRide([step(60, 0.65), { seconds: DEFINING_BLOCK_SECONDS, intensity: 1.2 }]),
+    ).toBe('vo2max')
     expect(classifyRide([step(60, 0.65), step(short, 1.2)])).toBe('z2')
   })
 
@@ -165,7 +165,13 @@ describe('computeDay', () => {
   })
 
   test('two strength sessions count twice', () => {
-    const gym = { date: '2026-09-13', name: 'Gym', kind: 'strength' as const, minutes: 45, steps: [] }
+    const gym = {
+      date: '2026-09-13',
+      name: 'Gym',
+      kind: 'strength' as const,
+      minutes: 45,
+      steps: [],
+    }
     expect(computeDay('2026-09-13', [gym, gym], SETTINGS).breakdown.strength).toBe(
       STRENGTH_KCAL * 2,
     )
@@ -176,7 +182,13 @@ describe('computeDay', () => {
       '2026-09-12',
       [
         { date: '2026-09-12', name: 'Gym', kind: 'strength', minutes: 45, steps: [] },
-        ride({ date: '2026-09-12', name: 'Long Z2', kj: 1678, minutes: 180, steps: [step(180, 0.65)] }),
+        ride({
+          date: '2026-09-12',
+          name: 'Long Z2',
+          kj: 1678,
+          minutes: 180,
+          steps: [step(180, 0.65)],
+        }),
       ],
       SETTINGS,
     )

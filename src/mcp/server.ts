@@ -298,9 +298,11 @@ export function buildMcpServer(userId: string): McpServer {
       },
     },
     logged('set_goal', async (input) => {
+      // source 'manual' keeps POST /training/sync from recomputing the day.
+      // Third copy of this upsert; see src/routes/goals.ts for the first.
       const [row] = await db
         .insert(dailyGoals)
-        .values({ userId, ...input })
+        .values({ userId, ...input, source: 'manual', breakdown: null })
         .onConflictDoUpdate({
           target: [dailyGoals.userId, dailyGoals.date],
           set: {
@@ -309,6 +311,8 @@ export function buildMcpServer(userId: string): McpServer {
             proteinGGoal: input.proteinGGoal,
             carbsGGoal: input.carbsGGoal,
             fatGGoal: input.fatGGoal,
+            source: 'manual',
+            breakdown: null,
             updatedAt: new Date(),
           },
         })

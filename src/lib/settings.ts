@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import type { ServerSettings } from '../../shared/types.ts'
+import type { ServerSettings, TrainingSetupField } from '../../shared/types.ts'
 import { db } from '../db/client.ts'
 import { userSettings } from '../db/schema.ts'
 
@@ -70,12 +70,25 @@ export function isConfigured(row: SettingsRow | null): row is SettingsRow & {
   intervalsAthleteId: string
   intervalsApiKey: string
 } {
-  return (
-    row !== null &&
-    row.baseCalories !== null &&
-    row.proteinG !== null &&
-    row.fatG !== null &&
-    row.intervalsAthleteId !== null &&
-    row.intervalsApiKey !== null
-  )
+  return missingSetup(row).length === 0
 }
+
+/**
+ * Which of the five required fields are still blank.
+ *
+ * Returned to the client so the profile screen can name what is missing
+ * instead of saying "not configured" and leaving the user to guess which box
+ * is empty.
+ */
+export function missingSetup(row: SettingsRow | null): TrainingSetupField[] {
+  if (!row) return [...REQUIRED_FIELDS]
+  return REQUIRED_FIELDS.filter((f) => row[f] === null)
+}
+
+const REQUIRED_FIELDS = [
+  'baseCalories',
+  'proteinG',
+  'fatG',
+  'intervalsAthleteId',
+  'intervalsApiKey',
+] as const satisfies readonly TrainingSetupField[]

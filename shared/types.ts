@@ -254,6 +254,40 @@ export type RecommendationMeta = {
 
 export type RecommendError = { code: 'no_goal' | 'internal'; message: string; date?: string }
 
+// ── POST /training/sync ───────────────────────────────────────────────────
+
+/** A settings field the automatic goal cannot be computed without. */
+export type TrainingSetupField =
+  | 'baseCalories'
+  | 'proteinG'
+  | 'fatG'
+  | 'intervalsAthleteId'
+  | 'intervalsApiKey'
+
+/**
+ * Not an error when unconfigured — the app simply has no automatic goal yet,
+ * and `missing` names the empty boxes so the profile screen can point at them
+ * instead of saying "not set up" and leaving the user to guess.
+ */
+export type TrainingSyncResult =
+  | { configured: false; missing: TrainingSetupField[] }
+  | {
+      configured: true
+      /** The window that was fetched and written, inclusive. */
+      from: string
+      to: string
+      /** Today in the caller's calendar — the line past which rows are
+       *  refreshed rather than merely filled in. */
+      today: string
+      syncedAt: string
+      /** Planned sessions the window contained. */
+      sessions: number
+      /** Automatic goal rows created or updated. */
+      written: number
+      /** Days left alone because a manual goal already claims them. */
+      skipped: number
+    }
+
 // ── Envelopes ─────────────────────────────────────────────────────────────
 
 export type ChatPostResponse = { user: ServerChatMessage; ai: ServerChatMessage[] }

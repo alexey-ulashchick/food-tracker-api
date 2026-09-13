@@ -17,6 +17,7 @@ import {
   type Recommendation,
   generateRecommendations,
 } from '../lib/recommend.ts'
+import { clientTzOffsetMin, todayInOffset } from '../lib/clientDate.ts'
 import { mealLocalDate } from '../lib/mealLocalDate.ts'
 import { type AuthEnv, auth } from '../middleware/auth.ts'
 
@@ -1274,20 +1275,6 @@ function serializeMemory(m: Memory): Record<string, unknown> {
     createdAt: m.createdAt.toISOString(),
     updatedAt: m.updatedAt.toISOString(),
   }
-}
-
-// Returns YYYY-MM-DD in the user's local calendar, derived from the
-// X-Client-TZ-Offset header (minutes east of UTC, matching iOS's
-// TimeZone.current.secondsFromGMT() / 60). Falls back to UTC when the header
-// is absent — direct curl calls keep working.
-function clientTzOffsetMin(c: Context<AuthEnv>): number {
-  const raw = c.req.header('X-Client-TZ-Offset')
-  const parsed = raw !== undefined ? Number.parseInt(raw, 10) : 0
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-function todayInOffset(offsetMin: number): string {
-  return new Date(Date.now() + offsetMin * 60_000).toISOString().slice(0, 10)
 }
 
 // What calendar date a meal falls on uses the shared helper in
