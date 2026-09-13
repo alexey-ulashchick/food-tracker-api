@@ -7,7 +7,15 @@ import { TrainingSettingsCard } from '@/components/TrainingSettingsCard'
 import { COST_DISPLAY_LABELS, COST_DISPLAY_MODES } from '@/lib/costDisplay'
 import { formatKg, latestWeight } from '@/lib/weight'
 import { useUi } from '@/store/ui'
-import { BrainIcon, ChevronIcon, DollarIcon, KeyIcon, ScaleIcon, Spinner } from '@/theme/icons'
+import {
+  BrainIcon,
+  ChevronIcon,
+  DollarIcon,
+  KeyIcon,
+  ScaleIcon,
+  Spinner,
+  TargetIcon,
+} from '@/theme/icons'
 import { accent, danger, label, radius, surface, systemBlue, withAlpha } from '@/theme/tokens'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
@@ -78,6 +86,13 @@ export function You() {
 
         <div className="card-block">
           <SectionLabel>Тренировки</SectionLabel>
+          <NavCard
+            to="/you/goals"
+            icon={<TargetIcon size={15} />}
+            tint={systemBlue}
+            title="Цели"
+            subtitle="Что стоит на каждый день и откуда взялось"
+          />
           <TrainingSettingsCard />
         </div>
 

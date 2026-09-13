@@ -3,6 +3,7 @@ import {
   ChatTabIcon,
   HistoryTabIcon,
   ScaleIcon,
+  TargetIcon,
   TodayTabIcon,
   YouTabIcon,
 } from '@/theme/icons'
@@ -37,6 +38,7 @@ export const NAV: readonly NavItem[] = [
   { to: '/', label: 'Сегодня', Icon: TodayTabIcon, tab: true, group: 'main' },
   { to: '/chat', label: 'Чат', Icon: ChatTabIcon, tab: true, group: 'main' },
   { to: '/history', label: 'История', Icon: HistoryTabIcon, tab: true, group: 'main' },
+  { to: '/you/goals', label: 'Цели', Icon: TargetIcon, tab: false, group: 'data' },
   { to: '/you/weight', label: 'Вес', Icon: ScaleIcon, tab: false, group: 'data' },
   { to: '/you/memories', label: 'Память', Icon: BrainIcon, tab: false, group: 'data' },
   { to: '/you', label: 'Профиль', Icon: YouTabIcon, tab: true, group: 'settings' },

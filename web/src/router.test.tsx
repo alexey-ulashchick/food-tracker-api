@@ -75,6 +75,7 @@ describe('routing with a token', () => {
     ['/chat', 'Чат'],
     ['/history', 'История'],
     ['/you', 'Профиль'],
+    ['/you/goals', 'Цели'],
     ['/you/memories', 'Память'],
     ['/you/weight', 'Вес'],
   ])('%s renders its own screen', (path, heading) => {
@@ -143,6 +144,7 @@ describe('the shell above the desktop breakpoint', () => {
       'Сегодня',
       'Чат',
       'История',
+      'Цели',
       'Вес',
       'Память',
       'Профиль',
