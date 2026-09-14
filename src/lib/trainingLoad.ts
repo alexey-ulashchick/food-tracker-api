@@ -3,6 +3,7 @@ import {
   type GoalTuning,
   bandOf,
   rideCoefficient,
+  weekdayAdjustment,
 } from '../../shared/goalTuning.ts'
 import type { DayTypeName, GoalBreakdown, RideContribution, RideKind } from '../../shared/types.ts'
 
@@ -156,9 +157,15 @@ export function computeDay(
 ): ComputedDay {
   const rides = sessions.filter((s) => s.kind === 'ride').map((s) => scoreRide(s, tuning))
   const strength = sessions.filter((s) => s.kind === 'strength').length * tuning.strengthKcal
+  const weekday = weekdayAdjustment(date, tuning)
 
-  const calories = Math.round(
-    settings.baseCalories + strength + rides.reduce((sum, r) => sum + r.kcal, 0),
+  // Floored at zero: the adjustment is signed and nothing stops it from being
+  // larger than the base. A negative target is not a target.
+  const calories = Math.max(
+    0,
+    Math.round(
+      settings.baseCalories + weekday + strength + rides.reduce((sum, r) => sum + r.kcal, 0),
+    ),
   )
 
   // Protein and fat are fixed; carbohydrate is whatever calories remain.
@@ -168,6 +175,9 @@ export function computeDay(
 
   const breakdown: GoalBreakdown = {
     base: settings.baseCalories,
+    // Absent when it is zero, so a breakdown reads as the sum it describes
+    // rather than carrying a term that adds nothing.
+    ...(weekday === 0 ? {} : { weekday }),
     strength,
     rides,
     ...(clamped ? { carbsClamped: true as const } : {}),

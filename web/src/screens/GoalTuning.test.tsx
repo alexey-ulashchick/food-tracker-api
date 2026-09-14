@@ -144,6 +144,73 @@ describe('the preview', () => {
   })
 })
 
+describe('the weekday adjustment', () => {
+  test('offers one field per day, starting on Monday', async () => {
+    renderScreen()
+    await screen.findByText('Пн 1450')
+    expect(field('Пн')).toHaveValue('0')
+    for (const day of ['Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']) {
+      expect(field(day)).toHaveValue('0')
+    }
+  })
+
+  test('says what the numbers are for', async () => {
+    // A column of signed kcal explains nothing on its own.
+    renderScreen()
+    expect(await screen.findByText(/обычное число шагов/)).toBeInTheDocument()
+  })
+
+  test('totals each day against the base, live', async () => {
+    renderScreen()
+    // Awaited on the total, not on the field: the fields fall back to the
+    // defaults so the form is usable at once, which means a default value is
+    // on screen before the settings have arrived and waiting on one waits for
+    // nothing.
+    expect(await screen.findByText('Пн 1450')).toBeInTheDocument()
+
+    fireEvent.change(field('Пн'), { target: { value: '-150' } })
+
+    expect(await screen.findByText('Пн 1300')).toBeInTheDocument()
+    // The other days must not move with it.
+    expect(screen.getByText('Вт 1450')).toBeInTheDocument()
+  })
+
+  test('accepts a negative value, unlike every other dial', async () => {
+    renderScreen()
+    await screen.findByText('Пн 1450')
+
+    fireEvent.change(field('Пн'), { target: { value: '-150' } })
+    fireEvent.click(saveButton())
+
+    await waitFor(() => expect(updateSettings).toHaveBeenCalled())
+    const sent = updateSettings.mock.calls[0]?.[0] as { goalTuning: typeof DEFAULT_TUNING }
+    expect(sent.goalTuning.monKcal).toBe(-150)
+  })
+
+  test('never shows a base below zero', async () => {
+    renderScreen()
+    await screen.findByText('Пн 1450')
+
+    fireEvent.change(field('Пн'), { target: { value: '-2000' } })
+    expect(await screen.findByText('Пн 0')).toBeInTheDocument()
+  })
+
+  test('asks for the base when there is none to total against', async () => {
+    getSettings.mockResolvedValue({ ...settings(), baseCalories: null })
+    renderScreen()
+    expect(await screen.findByText(/Базовый расход не задан/)).toBeInTheDocument()
+  })
+
+  test('does not claim the base is unset while it is still loading', async () => {
+    // The fields render defaults immediately, so this line had a window in
+    // which it contradicted a base that was in fact set.
+    getSettings.mockReturnValue(new Promise(() => {}))
+    renderScreen()
+    await screen.findByRole('textbox', { name: 'Пн' })
+    expect(screen.queryByText(/Базовый расход не задан/)).not.toBeInTheDocument()
+  })
+})
+
 describe('bounds', () => {
   test('refuses to save a value the server would reject', async () => {
     renderScreen()

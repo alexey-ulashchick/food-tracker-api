@@ -328,7 +328,7 @@ records which.
 **`auto`** is computed by `POST /training/sync` from the intervals.icu plan:
 
 ```
-calories = base expenditure + 250 per strength session + Σ (planned kJ × coefficient)
+calories = base + weekday adjustment + 250 per strength session + Σ (planned kJ × coefficient)
 protein  = the fixed figure from settings
 fat      = the fixed figure from settings
 carbs    = whatever calories are left over, floored at zero
@@ -353,8 +353,10 @@ the most time if none reaches that:
 | watts with no FTP to scale them | any | 0.70, shown as «нет FTP» |
 
 Every number in that table is editable at **Профиль → Расчёт цели**, together
-with the band edges, the zone edges, the strength bonus and the defining-block
-threshold. The screen previews what the current values would do, live, before
+with the band edges, the zone edges, the strength bonus, the defining-block
+threshold, and a signed per-weekday adjustment — a flat nudge for how much
+walking a given weekday usually involves, added to the base. Monday first; the
+screen totals each day against the base as you type. The screen previews what the current values would do, live, before
 saving — and it prices those examples at the athlete's own FTP, recorded by the
 last sync (`user_settings.intervals_ftp`), because a ride's size is FTP × time ×
 how hard it was ridden. Until a first sync records one, the preview says so and

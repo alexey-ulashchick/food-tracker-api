@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { DEFAULT_TUNING } from '../shared/goalTuning.ts'
 import {
   type PlannedSession,
   type PlannedStep,
@@ -9,7 +10,6 @@ import {
   rideCoefficient,
   scoreRide,
 } from '../src/lib/trainingLoad.ts'
-import { DEFAULT_TUNING } from '../shared/goalTuning.ts'
 
 // The numbers are a stored, user-editable tuning now — see
 // tests/goalTuning.test.ts for the dials themselves. What these assert is that
@@ -251,6 +251,53 @@ describe('computeDay', () => {
     expect(day.fat).toBe(60)
     expect(day.calories).toBe(1450 + 1800)
     expect(day.carbs).toBe(Math.round((3250 - 560 - 540) / 4))
+  })
+})
+
+describe('the weekday adjustment', () => {
+  // Monday and Saturday of the same week.
+  const MONDAY = '2026-09-14'
+  const SATURDAY = '2026-09-19'
+  const tuned = { ...DEFAULT_TUNING, monKcal: -150, satKcal: 200 }
+
+  test('moves the target by a flat amount', () => {
+    expect(computeDay(MONDAY, [], SETTINGS, tuned).calories).toBe(1450 - 150)
+    expect(computeDay(SATURDAY, [], SETTINGS, tuned).calories).toBe(1450 + 200)
+  })
+
+  test('carbohydrate follows, since it is the remainder', () => {
+    const day = computeDay(MONDAY, [], SETTINGS, tuned)
+    expect(day.carbs).toBe(Math.round((1300 - 140 * 4 - 60 * 9) / 4))
+    // Protein and fat are fixed and must not move.
+    expect([day.protein, day.fat]).toEqual([140, 60])
+  })
+
+  test('stacks with training rather than replacing it', () => {
+    const day = computeDay(
+      SATURDAY,
+      [ride({ date: SATURDAY, kj: 2000, minutes: 180, steps: [step(180, 0.65)] })],
+      SETTINGS,
+      tuned,
+    )
+    expect(day.calories).toBe(1450 + 200 + 1800)
+  })
+
+  test('is recorded in the breakdown, and omitted when it is zero', () => {
+    expect(computeDay(MONDAY, [], SETTINGS, tuned).breakdown.weekday).toBe(-150)
+    // A term that adds nothing would make the derivation read wrong.
+    expect('weekday' in computeDay('2026-09-16', [], SETTINGS, tuned).breakdown).toBe(false)
+  })
+
+  test('cannot drive the target below zero', () => {
+    // The bounds allow an adjustment larger than the base; a negative target is
+    // not a target.
+    const day = computeDay(MONDAY, [], SETTINGS, { ...DEFAULT_TUNING, monKcal: -2000 })
+    expect(day.calories).toBe(0)
+    expect(day.carbs).toBe(0)
+  })
+
+  test('no adjustment leaves the day exactly as it was', () => {
+    expect(computeDay(MONDAY, [], SETTINGS).calories).toBe(1450)
   })
 })
 

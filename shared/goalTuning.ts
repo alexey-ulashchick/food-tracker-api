@@ -46,7 +46,33 @@ export type GoalTuning = {
    * and how long that is depends on how you write your intervals.
    */
   definingBlockSeconds: number
+
+  /**
+   * A flat kcal adjustment per weekday, added to the base.
+   *
+   * Seven named fields rather than an array, so they inherit the bounds, the
+   * merge, the overrides-only storage and the form from the same table every
+   * other dial uses. Signed: a lighter Monday is negative.
+   */
+  monKcal: number
+  tueKcal: number
+  wedKcal: number
+  thuKcal: number
+  friKcal: number
+  satKcal: number
+  sunKcal: number
 }
+
+/** Monday first, which is how the week reads and how the form lists it. */
+export const WEEKDAY_FIELDS = [
+  { key: 'monKcal', label: 'Пн' },
+  { key: 'tueKcal', label: 'Вт' },
+  { key: 'wedKcal', label: 'Ср' },
+  { key: 'thuKcal', label: 'Чт' },
+  { key: 'friKcal', label: 'Пт' },
+  { key: 'satKcal', label: 'Сб' },
+  { key: 'sunKcal', label: 'Вс' },
+] as const satisfies ReadonlyArray<{ key: keyof GoalTuning; label: string }>
 
 export const DEFAULT_TUNING: GoalTuning = {
   strengthKcal: 250,
@@ -63,6 +89,15 @@ export const DEFAULT_TUNING: GoalTuning = {
   /** Tempo (0.76–0.90) lands in threshold; both of its neighbours are 0.90. */
   thresholdMaxIntensity: 1.05,
   definingBlockSeconds: 600,
+  // Zero, so the feature costs nothing until someone uses it — and so a
+  // weekday left alone is absent from the stored overrides.
+  monKcal: 0,
+  tueKcal: 0,
+  wedKcal: 0,
+  thuKcal: 0,
+  friKcal: 0,
+  satKcal: 0,
+  sunKcal: 0,
 }
 
 // ── Editing ────────────────────────────────────────────────────────────────
@@ -84,14 +119,25 @@ export type TuningField = {
 const RATIO_MIN = 0.1
 const RATIO_MAX = 2
 
+/** A weekday nudge, either way. Past this it is not a nudge but a second base. */
+const WEEKDAY_LIMIT = 2000
+
 /**
  * Every dial, grouped as the settings screen shows them.
  *
  * The single source for both the form and the server's validation — a field
  * added here is editable and bounded without touching either side.
  */
-export const TUNING_GROUPS: ReadonlyArray<{ title: string; fields: readonly TuningField[] }> = [
+export const TUNING_GROUPS: ReadonlyArray<{
+  /** Stable handle for a group the form treats specially. */
+  id: string
+  title: string
+  /** Explains the group where one line per field would only repeat itself. */
+  hint?: string
+  fields: readonly TuningField[]
+}> = [
   {
+    id: 'coefficients',
     title: 'Коэффициенты',
     fields: [
       { key: 'z2Short', label: 'Z2 короткий', unit: 'ratio', min: RATIO_MIN, max: RATIO_MAX },
@@ -110,6 +156,7 @@ export const TUNING_GROUPS: ReadonlyArray<{ title: string; fields: readonly Tuni
     ],
   },
   {
+    id: 'strength',
     title: 'Силовая',
     fields: [
       {
@@ -123,6 +170,7 @@ export const TUNING_GROUPS: ReadonlyArray<{ title: string; fields: readonly Tuni
     ],
   },
   {
+    id: 'z2bands',
     title: 'Полосы Z2',
     fields: [
       { key: 'z2ShortMaxMinutes', label: 'Короткий до', unit: 'minutes', min: 10, max: 600 },
@@ -130,6 +178,7 @@ export const TUNING_GROUPS: ReadonlyArray<{ title: string; fields: readonly Tuni
     ],
   },
   {
+    id: 'zones',
     title: 'Границы зон',
     fields: [
       { key: 'z2MaxIntensity', label: 'Z2 до', unit: 'ratio', min: 0.3, max: 1 },
@@ -137,6 +186,21 @@ export const TUNING_GROUPS: ReadonlyArray<{ title: string; fields: readonly Tuni
     ],
   },
   {
+    id: 'weekday',
+    title: 'Поправка по дням недели',
+    // What these are actually for: the base expenditure is one number, but the
+    // walking around it is not the same on a Monday as on a Saturday.
+    hint: 'Поправка на обычное число шагов в этот день недели. Прибавляется к базе.',
+    fields: WEEKDAY_FIELDS.map((d) => ({
+      key: d.key,
+      label: d.label,
+      unit: 'kcal' as const,
+      min: -WEEKDAY_LIMIT,
+      max: WEEKDAY_LIMIT,
+    })),
+  },
+  {
+    id: 'defining',
     title: 'Определяющий блок',
     fields: [
       {
@@ -230,6 +294,28 @@ export function bandOf(
   if (intensity <= tuning.z2MaxIntensity) return 'z2'
   if (intensity <= tuning.thresholdMaxIntensity) return 'threshold'
   return 'vo2max'
+}
+
+/**
+ * The weekday adjustment for a calendar date, in kcal.
+ *
+ * Anchored to UTC midnight on purpose: the only question is which weekday that
+ * calendar date is, and reading it in the viewer's zone could answer with the
+ * neighbouring day for half of every evening.
+ */
+export function weekdayAdjustment(date: string, tuning: GoalTuning = DEFAULT_TUNING): number {
+  const parsed = new Date(`${date}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime())) return 0
+  // getUTCDay is Sunday-first; WEEKDAY_FIELDS is Monday-first.
+  const index = (parsed.getUTCDay() + 6) % 7
+  return tuning[WEEKDAY_FIELDS[index]!.key]
+}
+
+/** The label the goals screen puts next to that adjustment. */
+export function weekdayLabel(date: string): string {
+  const parsed = new Date(`${date}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return WEEKDAY_FIELDS[(parsed.getUTCDay() + 6) % 7]!.label
 }
 
 /** The multiplier applied to a ride's planned kilojoules. */

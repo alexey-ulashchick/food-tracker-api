@@ -184,6 +184,40 @@ describe('the derivation', () => {
     expect(screen.getByText(/3x12 SS · 1678 кДж · SS\/порог · 90%/)).toBeInTheDocument()
   })
 
+  test('carries the weekday adjustment with its own sign', async () => {
+    // 12 September 2026 is a Saturday. A fixed plus would misread a negative
+    // term as an addition.
+    listGoals.mockResolvedValue([
+      goal({
+        date: '2026-09-12',
+        dayType: 'training',
+        breakdown: { base: 1450, weekday: -150, strength: 250, rides: [] },
+      }),
+    ])
+    renderGoals()
+
+    expect(await screen.findByText('1450 база − 150 сб + 250 силовая')).toBeInTheDocument()
+  })
+
+  test('a positive adjustment reads as an addition', async () => {
+    listGoals.mockResolvedValue([
+      goal({ date: '2026-09-12', breakdown: { base: 1450, weekday: 200, strength: 0, rides: [] } }),
+    ])
+    renderGoals()
+
+    expect(await screen.findByText('1450 база + 200 сб')).toBeInTheDocument()
+  })
+
+  test('an absent adjustment adds no term', async () => {
+    // Rows written before the dial existed have no such field at all.
+    listGoals.mockResolvedValue([
+      goal({ date: '2026-09-12', breakdown: { base: 1450, strength: 0, rides: [] } }),
+    ])
+    renderGoals()
+
+    expect(await screen.findByText('1450 база')).toBeInTheDocument()
+  })
+
   test('says a session had no structured plan', async () => {
     listGoals.mockResolvedValue([
       goal({

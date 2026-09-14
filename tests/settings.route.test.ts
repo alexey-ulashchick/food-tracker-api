@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
+import { DEFAULT_TUNING } from '../shared/goalTuning.ts'
 import { db } from '../src/db/client.ts'
 import { userSettings } from '../src/db/schema.ts'
 import { settingsRoute } from '../src/routes/settings.ts'
-import { DEFAULT_TUNING } from '../shared/goalTuning.ts'
 import { authHeaders, seedUser, truncateAll } from './helpers.ts'
 
 // `user_settings` is not named in truncateAll's TRUNCATE, but it FKs to users

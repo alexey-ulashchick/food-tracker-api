@@ -69,6 +69,12 @@ export type RideContribution = {
 export type GoalBreakdown = {
   /** Base expenditure from settings, kcal. */
   base: number
+  /**
+   * The weekday adjustment, signed. Optional because rows written before the
+   * dial existed have no such field — a snapshot is only ever as complete as
+   * the day it was taken.
+   */
+  weekday?: number
   /** Sum of the fixed strength bonuses, kcal. */
   strength: number
   rides: RideContribution[]

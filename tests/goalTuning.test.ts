@@ -3,11 +3,14 @@ import {
   DEFAULT_TUNING,
   type GoalTuning,
   TUNING_FIELDS,
+  WEEKDAY_FIELDS,
   bandOf,
   mergeTuning,
   rideCoefficient,
   tuningOrderError,
   tuningOverrides,
+  weekdayAdjustment,
+  weekdayLabel,
 } from '../shared/goalTuning.ts'
 
 // The dials are stored as overrides and read back merged, so the interesting
@@ -130,6 +133,76 @@ describe('the dials actually drive the lookups', () => {
   test('called with no tuning, the defaults apply', () => {
     expect(rideCoefficient('vo2max', 60)).toBe(DEFAULT_TUNING.vo2max)
     expect(bandOf(0.85)).toBe('threshold')
+  })
+})
+
+describe('the weekday adjustment', () => {
+  // A distinct value per day, so an off-by-one between Sunday-first
+  // getUTCDay() and the Monday-first field order cannot pass.
+  const perDay = tuned({
+    monKcal: -100,
+    tueKcal: -200,
+    wedKcal: -300,
+    thuKcal: -400,
+    friKcal: -500,
+    satKcal: 600,
+    sunKcal: 700,
+  })
+
+  // 2026-09-14 is a Monday.
+  const week = [
+    ['2026-09-14', 'Пн', -100],
+    ['2026-09-15', 'Вт', -200],
+    ['2026-09-16', 'Ср', -300],
+    ['2026-09-17', 'Чт', -400],
+    ['2026-09-18', 'Пт', -500],
+    ['2026-09-19', 'Сб', 600],
+    ['2026-09-20', 'Вс', 700],
+  ] as const
+
+  test.each(week)('%s is %s', (date, expectedLabel, expectedKcal) => {
+    // Cross-checked against the platform's own weekday name, so the fixture
+    // cannot drift from the calendar.
+    const platform = new Date(`${date}T00:00:00Z`).toLocaleDateString('en-GB', {
+      weekday: 'long',
+      timeZone: 'UTC',
+    })
+    expect([
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ]).toContain(platform)
+    expect(weekdayLabel(date)).toBe(expectedLabel)
+    expect(weekdayAdjustment(date, perDay)).toBe(expectedKcal)
+  })
+
+  test('the form lists the week starting on Monday', () => {
+    expect(WEEKDAY_FIELDS.map((f) => f.label)).toEqual(['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'])
+  })
+
+  test('defaults to nothing, so the dial costs nothing unused', () => {
+    expect(weekdayAdjustment('2026-09-14')).toBe(0)
+    for (const field of WEEKDAY_FIELDS) expect(DEFAULT_TUNING[field.key]).toBe(0)
+  })
+
+  test('an unparseable date adjusts by nothing rather than throwing', () => {
+    expect(weekdayAdjustment('nonsense', perDay)).toBe(0)
+    expect(weekdayLabel('nonsense')).toBe('')
+  })
+
+  test('a negative adjustment is stored, unlike every other dial', () => {
+    // The bounds run both ways here; elsewhere they start at zero.
+    expect(mergeTuning({ monKcal: -150 }).monKcal).toBe(-150)
+    expect(tuningOverrides(tuned({ monKcal: -150 }))).toEqual({ monKcal: -150 })
+  })
+
+  test('past the bound it falls back, either way', () => {
+    expect(mergeTuning({ monKcal: -9000 }).monKcal).toBe(0)
+    expect(mergeTuning({ monKcal: 9000 }).monKcal).toBe(0)
   })
 })
 

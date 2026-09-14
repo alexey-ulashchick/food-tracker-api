@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
+import { DEFAULT_TUNING } from '../shared/goalTuning.ts'
 import { db } from '../src/db/client.ts'
 import { dailyGoals, userSettings } from '../src/db/schema.ts'
 import { clearIntervalsCache } from '../src/integrations/intervals.ts'
 import { addDays, todayInOffset } from '../src/lib/clientDate.ts'
 import { trainingRoute } from '../src/routes/training.ts'
-import { DEFAULT_TUNING } from '../shared/goalTuning.ts'
 import { authHeaders, seedGoal, seedUser, truncateAll } from './helpers.ts'
 
 // The rule this suite exists for: a manual goal is never recomputed, and a

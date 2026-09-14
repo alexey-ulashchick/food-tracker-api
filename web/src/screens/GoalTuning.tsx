@@ -12,6 +12,7 @@ import {
   TUNING_GROUPS,
   type TuningField,
   type TuningUnit,
+  WEEKDAY_FIELDS,
   rideCoefficient,
   tuningOrderError,
 } from '@shared/goalTuning.ts'
@@ -158,8 +159,9 @@ export function GoalTuningScreen() {
         <Preview tuning={draft} ftp={query.data?.intervalsFtp ?? null} />
 
         {TUNING_GROUPS.map((group) => (
-          <div className="card-block" key={group.title}>
+          <div className="card-block" key={group.id}>
             <SectionLabel>{group.title}</SectionLabel>
+            {group.hint ? <GroupHint>{group.hint}</GroupHint> : null}
             <Card>
               {group.fields.map((field, i) => (
                 <div key={field.key}>
@@ -173,6 +175,15 @@ export function GoalTuningScreen() {
                 </div>
               ))}
             </Card>
+            {/* Live, because a column of signed nudges does not tell you what
+                any day actually ends up at.
+
+                Only once the settings have arrived: the fields above fall back
+                to the defaults so the form is usable immediately, but this line
+                would spend that moment claiming the base is unset. */}
+            {group.id === 'weekday' && query.data ? (
+              <WeekdayBases tuning={draft} base={query.data.baseCalories} />
+            ) : null}
           </div>
         ))}
 
@@ -341,6 +352,48 @@ function Field({
         {SUFFIX[field.unit]}
       </span>
     </div>
+  )
+}
+
+/** Base plus each day's nudge, so the column of signs adds up to something. */
+function WeekdayBases({ tuning, base }: { tuning: GoalTuning; base: number | null }) {
+  if (base === null) {
+    return <GroupHint>Базовый расход не задан — заполни его в Профиле.</GroupHint>
+  }
+
+  return (
+    <span
+      className="tnum"
+      style={{
+        fontSize: 'calc(12px * var(--type))',
+        color: label.secondary,
+        paddingLeft: 4,
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '2px 10px',
+      }}
+    >
+      {WEEKDAY_FIELDS.map((d) => (
+        <span key={d.key}>
+          {d.label} {Math.max(0, Math.round(base + tuning[d.key]))}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+function GroupHint({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        fontSize: 'calc(11.5px * var(--type))',
+        color: label.tertiary,
+        paddingLeft: 4,
+        marginTop: -4,
+      }}
+    >
+      {children}
+    </span>
   )
 }
 

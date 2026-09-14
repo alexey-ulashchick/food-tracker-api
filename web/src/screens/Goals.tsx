@@ -16,6 +16,7 @@ import {
   systemBlue,
   withAlpha,
 } from '@/theme/tokens'
+import { weekdayLabel } from '@shared/goalTuning.ts'
 import type { GoalBreakdown, ServerGoal } from '@shared/types.ts'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -232,17 +233,24 @@ function GoalRow({
         </span>
       </div>
 
-      {goal.breakdown ? <Breakdown breakdown={goal.breakdown} /> : null}
+      {goal.breakdown ? <Breakdown breakdown={goal.breakdown} date={goal.date} /> : null}
     </section>
   )
 }
 
 /** Where an automatic number came from — base, gym, and one line per ride. */
-function Breakdown({ breakdown }: { breakdown: GoalBreakdown }) {
+function Breakdown({ breakdown, date }: { breakdown: GoalBreakdown; date: string }) {
+  // Signed, because the weekday adjustment can go either way — so the terms
+  // carry their own operator rather than being joined by a fixed plus.
   const parts = [`${Math.round(breakdown.base)} база`]
-  if (breakdown.strength > 0) parts.push(`${Math.round(breakdown.strength)} силовая`)
+  const add = (value: number, name: string) => {
+    if (value === 0) return
+    parts.push(`${value > 0 ? '+' : '−'} ${Math.abs(Math.round(value))} ${name}`)
+  }
+  add(breakdown.weekday ?? 0, weekdayLabel(date).toLowerCase())
+  add(breakdown.strength, 'силовая')
   const rideKcal = breakdown.rides.reduce((sum, r) => sum + r.kcal, 0)
-  if (rideKcal > 0) parts.push(`${Math.round(rideKcal)} вело`)
+  add(rideKcal, 'вело')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -250,7 +258,7 @@ function Breakdown({ breakdown }: { breakdown: GoalBreakdown }) {
         className="tnum"
         style={{ fontSize: 'calc(12.5px * var(--type))', color: label.secondary }}
       >
-        {parts.join(' + ')}
+        {parts.join(' ')}
       </span>
 
       {breakdown.rides.map((ride, i) => (
