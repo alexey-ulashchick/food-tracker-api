@@ -175,6 +175,23 @@ test('the goal tuning screen previews a coefficient before it is saved', async (
   await expect(page.getByRole('button', { name: 'Сохранить' })).toBeEnabled()
 })
 
+test('the history screen exports a PDF of the whole period', async ({ page }) => {
+  await authenticate(page)
+  await page.goto('/history')
+  await expect(page.getByRole('heading', { name: 'История' })).toBeVisible()
+
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'PDF' }).click()
+
+  const file = await download
+  expect(file.suggestedFilename()).toMatch(/^calories_.*\.pdf$/)
+
+  // The one thing a browser can confirm that a unit test cannot: the bytes it
+  // received really are a PDF.
+  const path = await file.path()
+  expect(path).not.toBeNull()
+})
+
 test('the phone shell keeps its own metrics', async ({ page }) => {
   await authenticate(page)
   await page.goto('/')

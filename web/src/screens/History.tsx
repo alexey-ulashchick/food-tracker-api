@@ -3,6 +3,7 @@ import { qk } from '@/api/keys'
 import { CHART_HEIGHT, CalorieChart, type ChartApi, type ChartDay } from '@/components/CalorieChart'
 import { Page } from '@/components/Page'
 import { ScreenHeader } from '@/components/ScreenHeader'
+import { ghostButtonStyle } from '@/components/formStyles'
 import { MacroRing } from '@/components/ring/MacroRing'
 import {
   CHART_PAGE_DAYS,
@@ -20,6 +21,7 @@ import {
   metricsRange,
 } from '@/lib/calorieMetrics'
 import { addDays, dayMonth, dayOfMonth, monthShort, todayIso, weekdayLong } from '@/lib/dates'
+import { exportCalorieReport } from '@/lib/exportCalorieReport'
 import { useUi } from '@/store/ui'
 import { ChevronIcon, FlameIcon, Spinner, TrayIcon } from '@/theme/icons'
 import {
@@ -33,7 +35,7 @@ import {
   withAlpha,
 } from '@/theme/tokens'
 import type { ServerDaySummary, ServerGoal, ServerMeal } from '@shared/types.ts'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
@@ -105,7 +107,15 @@ export function History() {
 
   return (
     <Page>
-      <ScreenHeader title="История" trailing={loading ? <Spinner /> : null} />
+      <ScreenHeader
+        title="История"
+        trailing={
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {loading ? <Spinner /> : null}
+            <ExportButton />
+          </span>
+        }
+      />
 
       <section
         style={{
@@ -175,6 +185,33 @@ function buildChartDays(
     ...d,
     color: colorByDate.get(d.date) ?? null,
   }))
+}
+
+/**
+ * Exports every observed day as a PDF.
+ *
+ * Lives on History because that is the screen about the period. It fetches its
+ * own data rather than reusing what the screen has: the screen holds six weeks
+ * for its metrics and a paged chart window, and the report wants everything.
+ */
+function ExportButton() {
+  const setError = useUi((s) => s.setError)
+
+  const exportPdf = useMutation({
+    mutationFn: () => exportCalorieReport(),
+    onError: (err) => setError(err instanceof Error ? err.message : String(err)),
+  })
+
+  return (
+    <button
+      type="button"
+      onClick={() => exportPdf.mutate()}
+      disabled={exportPdf.isPending}
+      style={ghostButtonStyle}
+    >
+      {exportPdf.isPending ? 'Готовлю…' : 'PDF'}
+    </button>
+  )
 }
 
 function ChartHeader({

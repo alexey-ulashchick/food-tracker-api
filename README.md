@@ -296,6 +296,30 @@ The copy lands at the clock time the original row displays, not at the current
 minute, so a breakfast copied in the evening still sits at breakfast time and
 the day's log stays in the order it was eaten in.
 
+## The PDF export
+
+**История → PDF** downloads one line per observed day: the date, the goal, what
+was eaten, the difference and the macros as they actually were, under a summary
+of the period. Paginated, A4, a few tens of kilobytes.
+
+It is **in English**, and that is the whole design decision. The PDF format has
+fourteen fonts every reader carries built in, and not one of them has a single
+Cyrillic glyph — there is no encoding trick that adds them. Russian labels would
+mean embedding a font, which together with a PDF library costs roughly half a
+megabyte in a bundle that already warns about chunk size. So `web/src/lib/pdf.ts`
+writes the file by hand: no dependency, no font, English labels, and every
+string forced through `ascii()`.
+
+That last part is not cosmetic. Byte offsets in the xref table are computed from
+string length, which only equals the byte count while every character is one
+UTF-8 byte, so one stray Cyrillic character would corrupt the file rather than
+just look wrong. `buildPdf` refuses to emit a document containing one.
+
+Since a PDF cannot be opened in CI, `pdf.test.ts` reads the xref table back the
+way a reader would and asserts that every offset lands exactly on its object
+header, that each stream declares its true length, and that the page tree counts
+what it lists.
+
 ## Daily goals: computed, unless asked otherwise
 
 A day's nutrition goal comes from one of two places, and `daily_goals.source`
