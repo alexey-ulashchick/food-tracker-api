@@ -252,9 +252,11 @@ describe('the stored tuning drives the numbers', () => {
 
   test('moved band edges reclassify the same ride', async () => {
     // A two-hour ride is "medium" by default; widen the short band past it and
-    // it becomes short.
+    // it becomes short. 130 rather than 180: the long edge stays at 150, and a
+    // short edge above it is an inverted pair that mergeTuning repairs back to
+    // the defaults — which is what this test asserted the first time round.
     const { token, userId } = await seedUser()
-    await configure(userId, { goalTuning: { z2ShortMaxMinutes: 180 } })
+    await configure(userId, { goalTuning: { z2ShortMaxMinutes: 130 } })
     const date = addDays(today(), 2)
     stubEvents([rideOn(date)])
 

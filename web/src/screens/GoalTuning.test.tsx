@@ -107,10 +107,14 @@ describe('the preview', () => {
     // The two-hour Z2 example is "medium" by default: 1800 × 80%.
     await waitFor(() => expect(screen.getByText('1440 ккал')).toBeInTheDocument())
 
-    // Widen the short band past two hours; it becomes 1800 × 70%.
-    fireEvent.change(field('Короткий до'), { target: { value: '180' } })
+    // Widen the short band past two hours; it becomes 1800 × 70%. 130 and not
+    // 180, because the long edge is 150 and a short edge above it is the
+    // inverted pair the form refuses to save — previewing a state you cannot
+    // save is not what this test is for.
+    fireEvent.change(field('Короткий до'), { target: { value: '130' } })
 
     expect(await screen.findByText('1260 ккал')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Сохранить/ })).toBeEnabled()
   })
 
   test('follows the strength bonus', async () => {
