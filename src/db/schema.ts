@@ -72,6 +72,10 @@ export const userSettings = pgTable('user_settings', {
   // secrets, which is the same secret one level down.
   intervalsApiKey: text('intervals_api_key'),
   intervalsSyncedAt: timestamp('intervals_synced_at', { withTimezone: true }),
+  // Recorded by the sync, never edited: the FTP intervals.icu was scaling this
+  // athlete's watt targets against. Not a setting — a figure typed in here
+  // would go stale the moment it changed upstream.
+  intervalsFtp: real('intervals_ftp'),
   // Overrides only, merged over DEFAULT_TUNING on read. Null means "all
   // defaults", and storing just the differences means a dial added later
   // arrives at its default for everyone instead of needing a backfill.

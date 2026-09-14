@@ -159,12 +159,7 @@ const MAX_STEP_DEPTH = 8
 
 type FlatStep = { seconds: number; intensity?: number; watts?: number }
 
-function flattenSteps(
-  steps: unknown,
-  ftp: number | undefined,
-  out: FlatStep[],
-  depth = 0,
-): void {
+function flattenSteps(steps: unknown, ftp: number | undefined, out: FlatStep[], depth = 0): void {
   if (!Array.isArray(steps) || depth > MAX_STEP_DEPTH) return
 
   for (const entry of steps) {
@@ -222,15 +217,16 @@ export function normaliseEvent(raw: RawEvent, athleteFtp?: number): PlannedSessi
   // Steps that named watts we could not scale, because no FTP was recoverable.
   // Counted rather than dropped silently: with none of them scaled the ride is
   // unclassifiable, and the screen should say why rather than shrug.
-  const unscaledSteps = flat.filter((s) => s.intensity === undefined && s.watts !== undefined).length
+  const unscaledSteps = flat.filter(
+    (s) => s.intensity === undefined && s.watts !== undefined,
+  ).length
 
   const joules = firstNumber(raw, JOULE_KEYS)
   // Not every planned event carries `joules`, but a structured one carries
   // everything needed to work it out: watts × seconds. Verified against a real
   // response — the sum reproduced intervals.icu's own figure to the joule.
   const stepJoules = flat.reduce((sum, s) => sum + (s.watts ?? 0) * s.seconds, 0)
-  const kj =
-    joules !== undefined ? joules / 1000 : stepJoules > 0 ? stepJoules / 1000 : undefined
+  const kj = joules !== undefined ? joules / 1000 : stepJoules > 0 ? stepJoules / 1000 : undefined
   if (kj !== undefined && kj > IMPLAUSIBLE_KJ) {
     // Loud rather than silently 1000× wrong. The goals screen will show the
     // number, so it is better to see it flagged than to wonder at it.
@@ -250,10 +246,7 @@ export function normaliseEvent(raw: RawEvent, athleteFtp?: number): PlannedSessi
   }
 }
 
-export function normaliseEvents(
-  raw: readonly RawEvent[],
-  athleteFtp?: number,
-): PlannedSession[] {
+export function normaliseEvents(raw: readonly RawEvent[], athleteFtp?: number): PlannedSession[] {
   return raw
     .map((e) => normaliseEvent(e, athleteFtp))
     .filter((s): s is PlannedSession => s !== null)
@@ -394,24 +387,47 @@ export function clearIntervalsCache(): void {
   cache.clear()
 }
 
+export type PlannedWeek = {
+  sessions: PlannedSession[]
+  /**
+   * The FTP the watt targets were scaled against, if one was found.
+   *
+   * Handed back rather than kept private because the settings screen shows the
+   * coefficients applied to a real ride, and a ride's size is FTP × time. An
+   * invented FTP would make that preview a different athlete's.
+   */
+  ftp: number | undefined
+}
+
 export async function fetchPlannedSessions(
   creds: IntervalsCredentials,
   from: string,
   to: string,
   opts: { force?: boolean } = {},
-): Promise<PlannedSession[]> {
+): Promise<PlannedWeek> {
   const key = `${creds.athleteId}:${from}:${to}`
   if (opts.force) cache.delete(key)
 
   const hit = cache.get(key)
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return normaliseEvents(hit.events, hit.ftp)
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
+    return { sessions: normaliseEvents(hit.events, hit.ftp), ftp: hit.ftp }
+  }
 
   // Both in flight together: the FTP request cannot fail the sync, so there is
   // nothing to sequence and no reason to pay for two round trips.
-  const [events, ftp] = await Promise.all([
+  const [events, fetched] = await Promise.all([
     fetchRawEvents(creds, from, to),
     fetchAthleteFtp(creds),
   ])
-  cache.set(key, { at: Date.now(), events, ftp })
-  return normaliseEvents(events, ftp)
+  cache.set(key, { at: Date.now(), events, ftp: fetched })
+
+  const sessions = normaliseEvents(events, fetched)
+  // Failing the athlete lookup, the FTP recovered from an event is just as
+  // real — and on the recorded week it is the only one there was.
+  const ftp = fetched ?? resolveFtp(events[0] ?? {}, docOf(events[0]))
+  return { sessions, ftp }
+}
+
+function docOf(raw: RawEvent | undefined): Record<string, unknown> | null {
+  return (raw?.workout_doc ?? null) as Record<string, unknown> | null
 }

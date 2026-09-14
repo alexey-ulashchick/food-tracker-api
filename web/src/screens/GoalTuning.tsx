@@ -45,22 +45,45 @@ function fromDisplay(unit: TuningUnit, raw: string): number {
 }
 
 /**
- * Sessions the preview scores, chosen to land one in each band.
+ * Sessions the preview scores.
  *
- * Fixed kilojoules on purpose: the point is to see what a coefficient does to a
- * given amount of work, so the work must not move when the dial does.
+ * The work is not written down — it is computed from the athlete's own FTP,
+ * because a ride's size is FTP × time × how hard it was ridden. Fixed
+ * kilojoules would price the coefficients for somebody else.
+ *
+ * `intensity` is the whole session's average, not the interval target: a
+ * VO2max hour spends most of itself recovering, which is why its average sits
+ * near 0.75 rather than near 1.1.
  */
-const EXAMPLES: ReadonlyArray<{ name: string; kind: RideKind; minutes: number; kj: number }> = [
-  { name: 'Z2, 1 ч', kind: 'z2', minutes: 60, kj: 900 },
-  { name: 'Z2, 2 ч', kind: 'z2', minutes: 120, kj: 1800 },
-  { name: 'Z2, 4 ч', kind: 'z2', minutes: 240, kj: 3600 },
-  { name: 'SS / порог, 1 ч 15', kind: 'threshold', minutes: 75, kj: 1700 },
-  { name: 'VO₂max, 1 ч', kind: 'vo2max', minutes: 60, kj: 1200 },
-  // Deliberately not 1800: at the fallback coefficient that would print the
-  // same number as the two-hour Z2 row does once the short band is widened,
-  // and two identical figures in a preview are a preview you cannot read.
-  { name: 'Тип не определён', kind: 'unknown', minutes: 120, kj: 1500 },
+const EXAMPLES: ReadonlyArray<{
+  name: string
+  kind: RideKind
+  minutes: number
+  intensity: number
+}> = [
+  { name: 'Z2, 1 ч', kind: 'z2', minutes: 60, intensity: 0.65 },
+  { name: 'Z2, 2 ч', kind: 'z2', minutes: 120, intensity: 0.65 },
+  { name: 'Z2, 4 ч', kind: 'z2', minutes: 240, intensity: 0.6 },
+  { name: 'SS / порог, 1 ч 15', kind: 'threshold', minutes: 75, intensity: 0.8 },
+  { name: 'VO₂max, 1 ч', kind: 'vo2max', minutes: 60, intensity: 0.75 },
+  // 90 minutes rather than 120: at the fallback coefficient a two-hour example
+  // prints the same figure as the Z2 row above once the short band is widened,
+  // and two identical numbers in a preview are a preview you cannot read.
+  { name: 'Тип не определён, 1 ч 30', kind: 'unknown', minutes: 90, intensity: 0.65 },
 ]
+
+/**
+ * Used only until the first sync records the real one.
+ *
+ * Labelled as a stand-in wherever it is shown, because the whole point of the
+ * preview is that the numbers are the athlete's own.
+ */
+const FALLBACK_FTP = 250
+
+/** Planned mechanical work, kJ: watts × seconds / 1000. */
+function exampleKj(minutes: number, intensity: number, ftp: number): number {
+  return Math.round((intensity * ftp * minutes * 60) / 1000)
+}
 
 export function GoalTuningScreen() {
   const queryClient = useQueryClient()
@@ -132,7 +155,7 @@ export function GoalTuningScreen() {
       />
 
       <div className="settings-column">
-        <Preview tuning={draft} />
+        <Preview tuning={draft} ftp={query.data?.intervalsFtp ?? null} />
 
         {TUNING_GROUPS.map((group) => (
           <div className="card-block" key={group.title}>
@@ -207,13 +230,20 @@ export function GoalTuningScreen() {
 }
 
 /** What the current numbers would do to a fixed amount of work. */
-function Preview({ tuning }: { tuning: GoalTuning }) {
+function Preview({ tuning, ftp }: { tuning: GoalTuning; ftp: number | null }) {
+  const effective = ftp ?? FALLBACK_FTP
+
   return (
     <div className="card-block">
-      <SectionLabel>Что получится</SectionLabel>
+      <SectionLabel>
+        {ftp === null
+          ? `Что получится · FTP не определён, примеры при ${FALLBACK_FTP} Вт`
+          : `Что получится · при FTP ${Math.round(ftp)} Вт`}
+      </SectionLabel>
       <Card>
         {EXAMPLES.map((example, i) => {
           const coeff = rideCoefficient(example.kind, example.minutes, tuning)
+          const kj = exampleKj(example.minutes, example.intensity, effective)
           return (
             <div key={example.name}>
               <div
@@ -226,7 +256,7 @@ function Preview({ tuning }: { tuning: GoalTuning }) {
                   className="tnum"
                   style={{ fontSize: 'calc(12px * var(--type))', color: label.tertiary }}
                 >
-                  {example.kj} кДж × {Math.round(coeff * 100)}%
+                  {kj} кДж × {Math.round(coeff * 100)}%
                 </span>
                 <span
                   className="tnum"
@@ -237,7 +267,7 @@ function Preview({ tuning }: { tuning: GoalTuning }) {
                     textAlign: 'right',
                   }}
                 >
-                  {Math.round(example.kj * coeff)} ккал
+                  {Math.round(kj * coeff)} ккал
                 </span>
               </div>
               <Divider />

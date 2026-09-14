@@ -213,6 +213,18 @@ describe('a configured sync', () => {
     expect(body.today).toBe(today())
   })
 
+  test('records the FTP it scaled the plan against', async () => {
+    // Recorded, not configured: the tuning screen prices its examples at this
+    // number, and a figure typed in by hand would go stale upstream.
+    const { token, userId } = await seedUser()
+    await configure(userId)
+    stubEvents([], 265)
+
+    await sync(token)
+    const [row] = await db.select().from(userSettings).where(eq(userSettings.userId, userId))
+    expect(row?.intervalsFtp).toBe(265)
+  })
+
   test('stamps the sync time on the settings row', async () => {
     const { token, userId } = await seedUser()
     await configure(userId)

@@ -62,9 +62,9 @@ export const trainingRoute = new Hono<AuthEnv>()
     const from = addDays(today, -BACK_DAYS)
     const to = addDays(today, FORWARD_DAYS)
 
-    let sessions: Awaited<ReturnType<typeof fetchPlannedSessions>>
+    let week: Awaited<ReturnType<typeof fetchPlannedSessions>>
     try {
-      sessions = await fetchPlannedSessions(
+      week = await fetchPlannedSessions(
         { athleteId: settings.intervalsAthleteId, apiKey: settings.intervalsApiKey },
         from,
         to,
@@ -81,7 +81,7 @@ export const trainingRoute = new Hono<AuthEnv>()
 
     const days = computeDays(
       dateRange(from, to),
-      sessions,
+      week.sessions,
       {
         baseCalories: settings.baseCalories,
         proteinG: settings.proteinG,
@@ -149,7 +149,10 @@ export const trainingRoute = new Hono<AuthEnv>()
     const syncedAt = new Date()
     await db
       .update(userSettings)
-      .set({ intervalsSyncedAt: syncedAt })
+      // The FTP is recorded, not configured: it is whatever intervals.icu was
+      // scaling this plan against, and the tuning screen shows its examples at
+      // that number rather than at an invented one.
+      .set({ intervalsSyncedAt: syncedAt, ...(week.ftp ? { intervalsFtp: week.ftp } : {}) })
       .where(eq(userSettings.userId, userId))
 
     const result: TrainingSyncResult = {
@@ -158,7 +161,7 @@ export const trainingRoute = new Hono<AuthEnv>()
       to,
       today,
       syncedAt: syncedAt.toISOString(),
-      sessions: sessions.length,
+      sessions: week.sessions.length,
       written: written.length,
       skipped: ahead.length - written.length,
     }

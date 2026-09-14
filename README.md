@@ -354,8 +354,11 @@ the most time if none reaches that:
 
 Every number in that table is editable at **Профиль → Расчёт цели**, together
 with the band edges, the zone edges, the strength bonus and the defining-block
-threshold. The screen previews what the current values would do to a fixed
-amount of work, so the effect of a dial is visible before it is saved.
+threshold. The screen previews what the current values would do, live, before
+saving — and it prices those examples at the athlete's own FTP, recorded by the
+last sync (`user_settings.intervals_ftp`), because a ride's size is FTP × time ×
+how hard it was ridden. Until a first sync records one, the preview says so and
+falls back to 250 W rather than passing it off as yours.
 
 The table above is the default. Only the fields that differ from it are stored
 (`user_settings.goal_tuning`, overrides merged over `DEFAULT_TUNING` on read),

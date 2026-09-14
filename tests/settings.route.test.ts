@@ -17,6 +17,7 @@ function makeApp() {
 type Wire = {
   userId: string
   goalTuning: typeof DEFAULT_TUNING
+  intervalsFtp: number | null
   baseCalories: number | null
   proteinG: number | null
   fatG: number | null
@@ -60,6 +61,7 @@ describe('GET /settings', () => {
       intervalsAthleteId: null,
       intervalsKeyHint: null,
       intervalsSyncedAt: null,
+      intervalsFtp: null,
       // Complete, not null: the tuning is the one field with defaults.
       goalTuning: DEFAULT_TUNING,
       updatedAt: body.updatedAt,

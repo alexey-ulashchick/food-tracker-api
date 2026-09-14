@@ -59,6 +59,7 @@ export function toWire(row: SettingsRow): ServerSettings {
     intervalsAthleteId: row.intervalsAthleteId,
     intervalsKeyHint: keyHint(row.intervalsApiKey),
     intervalsSyncedAt: row.intervalsSyncedAt?.toISOString() ?? null,
+    intervalsFtp: row.intervalsFtp,
     // Merged, not raw: the client edits a whole tuning and should never have to
     // know which dials happen to be stored.
     goalTuning: tuningOf(row),

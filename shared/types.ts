@@ -131,6 +131,9 @@ export type ServerSettings = {
   intervalsAthleteId: string | null
   intervalsKeyHint: string | null
   intervalsSyncedAt: string | null
+  /** What intervals.icu scales this athlete's watt targets against, as of the
+   *  last sync. Read-only: recorded, not configured. */
+  intervalsFtp: number | null
   /**
    * Always complete, never null: the stored overrides merged over the
    * defaults. The client edits a whole tuning and the server keeps only the

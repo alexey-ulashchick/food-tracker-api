@@ -489,6 +489,13 @@ describe('the cache', () => {
     const first = await fetchPlannedSessions(creds, '2026-09-01', '2026-09-30')
     const second = await fetchPlannedSessions(creds, '2026-09-01', '2026-09-30')
     expect(second).toEqual(first)
-    expect(second[0]?.kj).toBe(1678)
+    expect(second.sessions[0]?.kj).toBe(1678)
+  })
+
+  test('hands back the FTP it scaled with, so the settings screen can show it', () => {
+    // Fixed example kilojoules would price the coefficients for someone else.
+    return fetchPlannedSessions(creds, '2026-09-01', '2026-09-30').then((week) => {
+      expect(week.ftp).toBe(250)
+    })
   })
 })

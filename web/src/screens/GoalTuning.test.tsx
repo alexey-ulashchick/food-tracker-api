@@ -21,7 +21,7 @@ vi.mock('@/api/endpoints', () => ({
   syncTraining: (force: boolean) => syncTraining(force),
 }))
 
-const settings = (tuning = DEFAULT_TUNING) => ({
+const settings = (tuning = DEFAULT_TUNING, intervalsFtp: number | null = null) => ({
   userId: 'u',
   baseCalories: 1450,
   proteinG: 140,
@@ -29,6 +29,7 @@ const settings = (tuning = DEFAULT_TUNING) => ({
   intervalsAthleteId: 'i1',
   intervalsKeyHint: '1234',
   intervalsSyncedAt: null,
+  intervalsFtp,
   goalTuning: tuning,
   updatedAt: '2026-09-14T00:00:00.000Z',
 })
@@ -91,21 +92,21 @@ describe('the form', () => {
 describe('the preview', () => {
   test('follows the field before anything is saved', async () => {
     renderScreen()
-    // 1200 kJ at the default 95%.
-    await waitFor(() => expect(screen.getByText('1140 ккал')).toBeInTheDocument())
+    // An hour of VO2max at 250 W FTP is 675 kJ, at the default 95%.
+    await waitFor(() => expect(screen.getByText('641 ккал')).toBeInTheDocument())
 
     fireEvent.change(field('VO₂max'), { target: { value: '50' } })
 
     // Same work, half the coefficient.
-    expect(await screen.findByText('600 ккал')).toBeInTheDocument()
-    expect(screen.queryByText('1140 ккал')).not.toBeInTheDocument()
+    expect(await screen.findByText('338 ккал')).toBeInTheDocument()
+    expect(screen.queryByText('641 ккал')).not.toBeInTheDocument()
     expect(updateSettings).not.toHaveBeenCalled()
   })
 
   test('follows a band edge, which reclassifies an example', async () => {
     renderScreen()
-    // The two-hour Z2 example is "medium" by default: 1800 × 80%.
-    await waitFor(() => expect(screen.getByText('1440 ккал')).toBeInTheDocument())
+    // The two-hour Z2 example is 1170 kJ, "medium" by default: × 80%.
+    await waitFor(() => expect(screen.getByText('936 ккал')).toBeInTheDocument())
 
     // Widen the short band past two hours; it becomes 1800 × 70%. 130 and not
     // 180, because the long edge is 150 and a short edge above it is the
@@ -113,8 +114,25 @@ describe('the preview', () => {
     // save is not what this test is for.
     fireEvent.change(field('Короткий до'), { target: { value: '130' } })
 
-    expect(await screen.findByText('1260 ккал')).toBeInTheDocument()
+    expect(await screen.findByText('819 ккал')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Сохранить/ })).toBeEnabled()
+  })
+
+  test('prices the examples at the athlete own FTP', async () => {
+    // The whole reason the work is computed rather than written down: fixed
+    // kilojoules would price the coefficients for somebody else.
+    getSettings.mockResolvedValue(settings(DEFAULT_TUNING, 300))
+    renderScreen()
+
+    // An hour of VO2max at 300 W is 810 kJ, not 675.
+    expect(await screen.findByText('770 ккал')).toBeInTheDocument()
+    expect(screen.getByText(/при FTP 300 Вт/)).toBeInTheDocument()
+  })
+
+  test('says the FTP is a stand-in when none has been recorded', async () => {
+    // Passing 250 off as the athlete's would make the preview a quiet lie.
+    renderScreen()
+    expect(await screen.findByText(/FTP не определён/)).toBeInTheDocument()
   })
 
   test('follows the strength bonus', async () => {
