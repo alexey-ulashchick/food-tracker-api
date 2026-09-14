@@ -328,11 +328,28 @@ the most time if none reaches that:
 | no structured plan | any | 0.70, shown as «без плана» |
 | watts with no FTP to scale them | any | 0.70, shown as «нет FTP» |
 
+Every number in that table is editable at **Профиль → Расчёт цели**, together
+with the band edges, the zone edges, the strength bonus and the defining-block
+threshold. The screen previews what the current values would do to a fixed
+amount of work, so the effect of a dial is visible before it is saved.
+
+The table above is the default. Only the fields that differ from it are stored
+(`user_settings.goal_tuning`, overrides merged over `DEFAULT_TUNING` on read),
+which is why a dial added later arrives at its default for everyone with no
+backfill, and why `NULL` means "all defaults". Bounds live in
+`shared/goalTuning.ts` and are enforced by both the form and `PATCH /settings`,
+so the screen cannot offer a value the server rejects.
+
+Saving changes the rules, not the goals already computed with the old ones —
+«Пересчитать цели» on the same screen is what re-syncs. Past days are still
+never recomputed.
+
 Ten minutes rather than "the longest step" because a 3×12 sweet-spot workout
 spends more time warming up and recovering than working, and longest-wins would
 file it as Z2. The same threshold stops one 2-minute surge from promoting a
-three-hour endurance ride to VO₂max. The numbers live in
-`src/lib/trainingLoad.ts` and nowhere else.
+three-hour endurance ride to VO₂max. The arithmetic lives in
+`src/lib/trainingLoad.ts`; the numbers it uses live in `shared/goalTuning.ts`,
+which both the server and the settings screen read.
 
 Steps are usually written in watts, so bands need an FTP to divide by. It is
 taken, most specific first, from the plan's own `ftp`, then the athlete's

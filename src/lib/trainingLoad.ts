@@ -1,3 +1,9 @@
+import {
+  DEFAULT_TUNING,
+  type GoalTuning,
+  bandOf,
+  rideCoefficient,
+} from '../../shared/goalTuning.ts'
 import type { DayTypeName, GoalBreakdown, RideContribution, RideKind } from '../../shared/types.ts'
 
 /**
@@ -7,56 +13,17 @@ import type { DayTypeName, GoalBreakdown, RideContribution, RideKind } from '../
  * normalises the wire shape into PlannedSession and POST /training/sync does
  * the writing, the same division of labour as src/lib/recommend.ts.
  *
- * ── Why the coefficients sit near 1.0 ──────────────────────────────────────
- * A kilojoule of mechanical work at the pedals costs roughly a kilocalorie of
- * metabolic energy: 4.184 kJ/kcal divided by ~24% gross efficiency lands at
- * 1.04. So the percentages below are not a conversion — the conversion is
- * already 1:1 — they are a deliberate discount on it, larger for the sessions
- * where the rule of thumb overshoots most.
+ * The numbers themselves are not here. They are a stored, user-editable
+ * tuning — see shared/goalTuning.ts, which both this module and the settings
+ * screen read. Every entry point takes one and defaults to DEFAULT_TUNING, so
+ * a caller that has no user context still computes something sensible.
  */
+
+export { DEFAULT_TUNING, type GoalTuning, rideCoefficient }
 
 // ── Constants ──────────────────────────────────────────────────────────────
-
-/** Flat bonus per planned strength session, kcal. */
-export const STRENGTH_KCAL = 250
-
-/**
- * How much time a block needs before it defines the session.
- *
- * "The dominant step" cannot mean "the longest step": a 3×12 sweet-spot
- * workout spends 40 minutes warming up, recovering and cooling down against
- * 36 minutes of actual work, so longest-wins would file it as Z2. The
- * defining block is instead the hardest one that lasts long enough to matter,
- * which is also what stops a single 2-minute surge inside a three-hour
- * endurance ride from promoting it to VO₂max.
- */
-export const DEFINING_BLOCK_SECONDS = 600
-
-/** Upper bound of endurance, as a fraction of FTP. */
-export const Z2_MAX_INTENSITY = 0.8
-/** Upper bound of sweet spot and threshold. Tempo (0.76–0.90) lands here too:
- *  the user's table has no tempo row, and both of its neighbours are 0.90. */
-export const THRESHOLD_MAX_INTENSITY = 1.05
-
-/** Z2 bands, minutes. Closed intervals — the source table left 75–90 min and
- *  anything past 5 h undefined, and a gap in a lookup table is a bug waiting. */
-export const Z2_SHORT_MAX_MINUTES = 75
-export const Z2_LONG_MIN_MINUTES = 150
-
-export const COEFFICIENTS = {
-  /** ≤ 75 min */
-  z2Short: 0.7,
-  /** 75 min – 2.5 h */
-  z2Medium: 0.8,
-  /** > 2.5 h */
-  z2Long: 0.9,
-  threshold: 0.9,
-  /** The source range was 90–100%; this is the single value picked from it. */
-  vo2max: 0.95,
-  /** Nothing readable to classify by, so the most conservative Z2 number. The
-   *  breakdown carries the reason so the screen can say which it was. */
-  unknown: 0.7,
-} as const
+// What is left here is arithmetic, not preference: these are the energy
+// densities of the macronutrients, and there is nothing to tune about them.
 
 export const KCAL_PER_G_PROTEIN = 4
 export const KCAL_PER_G_FAT = 9
@@ -112,37 +79,35 @@ export type ComputedDay = {
 
 // ── Classification ─────────────────────────────────────────────────────────
 
-/** Which band an intensity falls in. */
-function bandOf(intensity: number): Exclude<RideKind, 'unknown'> {
-  if (intensity <= Z2_MAX_INTENSITY) return 'z2'
-  if (intensity <= THRESHOLD_MAX_INTENSITY) return 'threshold'
-  return 'vo2max'
-}
+type Band = 'z2' | 'threshold' | 'vo2max'
 
 /** Hardest first — the order the defining block is searched in. */
-const BANDS_BY_INTENSITY = ['vo2max', 'threshold', 'z2'] as const
+const BANDS_BY_INTENSITY: readonly Band[] = ['vo2max', 'threshold', 'z2']
 
 /**
  * The session's character, from the time its steps spend in each band.
  *
  * Returns 'unknown' only when there are no steps to read at all.
  */
-export function classifyRide(steps: readonly PlannedStep[]): RideKind {
-  const seconds = new Map<Exclude<RideKind, 'unknown'>, number>()
+export function classifyRide(
+  steps: readonly PlannedStep[],
+  tuning: GoalTuning = DEFAULT_TUNING,
+): RideKind {
+  const seconds = new Map<Band, number>()
   for (const step of steps) {
     if (!(step.seconds > 0)) continue
-    const band = bandOf(step.intensity)
+    const band = bandOf(step.intensity, tuning)
     seconds.set(band, (seconds.get(band) ?? 0) + step.seconds)
   }
   if (seconds.size === 0) return 'unknown'
 
   for (const band of BANDS_BY_INTENSITY) {
-    if ((seconds.get(band) ?? 0) >= DEFINING_BLOCK_SECONDS) return band
+    if ((seconds.get(band) ?? 0) >= tuning.definingBlockSeconds) return band
   }
 
   // Nothing lasted long enough to be the defining block — a very short
   // session. Fall back to wherever most of it was spent.
-  let best: Exclude<RideKind, 'unknown'> = 'z2'
+  let best: Band = 'z2'
   let bestSeconds = -1
   for (const band of BANDS_BY_INTENSITY) {
     const s = seconds.get(band) ?? 0
@@ -154,33 +119,19 @@ export function classifyRide(steps: readonly PlannedStep[]): RideKind {
   return best
 }
 
-/** The multiplier applied to planned kilojoules. */
-export function rideCoefficient(kind: RideKind, minutes: number): number {
-  switch (kind) {
-    case 'z2':
-      if (minutes <= Z2_SHORT_MAX_MINUTES) return COEFFICIENTS.z2Short
-      if (minutes <= Z2_LONG_MIN_MINUTES) return COEFFICIENTS.z2Medium
-      return COEFFICIENTS.z2Long
-    case 'threshold':
-      return COEFFICIENTS.threshold
-    case 'vo2max':
-      return COEFFICIENTS.vo2max
-    case 'unknown':
-    case 'needs_ftp':
-      return COEFFICIENTS.unknown
-  }
-}
-
 /** One ride's contribution, ready to store in the breakdown. */
-export function scoreRide(session: PlannedSession): RideContribution {
+export function scoreRide(
+  session: PlannedSession,
+  tuning: GoalTuning = DEFAULT_TUNING,
+): RideContribution {
   // A plan that could not be scaled is not the same as no plan. Only when
   // nothing at all was usable does the reason become the classification —
   // if some steps scaled, they are enough to classify by.
   const kind =
     session.steps.length === 0 && (session.unscaledSteps ?? 0) > 0
       ? 'needs_ftp'
-      : classifyRide(session.steps)
-  const coeff = rideCoefficient(kind, session.minutes)
+      : classifyRide(session.steps, tuning)
+  const coeff = rideCoefficient(kind, session.minutes, tuning)
   const kj = session.kj ?? 0
   return {
     name: session.name,
@@ -201,9 +152,10 @@ export function computeDay(
   date: string,
   sessions: readonly PlannedSession[],
   settings: TargetSettings,
+  tuning: GoalTuning = DEFAULT_TUNING,
 ): ComputedDay {
-  const rides = sessions.filter((s) => s.kind === 'ride').map(scoreRide)
-  const strength = sessions.filter((s) => s.kind === 'strength').length * STRENGTH_KCAL
+  const rides = sessions.filter((s) => s.kind === 'ride').map((s) => scoreRide(s, tuning))
+  const strength = sessions.filter((s) => s.kind === 'strength').length * tuning.strengthKcal
 
   const calories = Math.round(
     settings.baseCalories + strength + rides.reduce((sum, r) => sum + r.kcal, 0),
@@ -242,6 +194,7 @@ export function computeDays(
   dates: readonly string[],
   sessions: readonly PlannedSession[],
   settings: TargetSettings,
+  tuning: GoalTuning = DEFAULT_TUNING,
 ): ComputedDay[] {
   const byDate = new Map<string, PlannedSession[]>()
   for (const s of sessions) {
@@ -249,5 +202,5 @@ export function computeDays(
     if (bucket) bucket.push(s)
     else byDate.set(s.date, [s])
   }
-  return dates.map((date) => computeDay(date, byDate.get(date) ?? [], settings))
+  return dates.map((date) => computeDay(date, byDate.get(date) ?? [], settings, tuning))
 }

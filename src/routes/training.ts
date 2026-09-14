@@ -5,7 +5,7 @@ import { db } from '../db/client.ts'
 import { dailyGoals, userSettings } from '../db/schema.ts'
 import { IntervalsError, fetchPlannedSessions } from '../integrations/intervals.ts'
 import { addDays, clientTzOffsetMin, dateRange, todayInOffset } from '../lib/clientDate.ts'
-import { isConfigured, missingSetup, readSettings } from '../lib/settings.ts'
+import { isConfigured, missingSetup, readSettings, tuningOf } from '../lib/settings.ts'
 import { computeDays } from '../lib/trainingLoad.ts'
 import { type AuthEnv, auth } from '../middleware/auth.ts'
 
@@ -79,11 +79,18 @@ export const trainingRoute = new Hono<AuthEnv>()
       throw err
     }
 
-    const days = computeDays(dateRange(from, to), sessions, {
-      baseCalories: settings.baseCalories,
-      proteinG: settings.proteinG,
-      fatG: settings.fatG,
-    })
+    const days = computeDays(
+      dateRange(from, to),
+      sessions,
+      {
+        baseCalories: settings.baseCalories,
+        proteinG: settings.proteinG,
+        fatG: settings.fatG,
+      },
+      // The user's own coefficients. Changing one and re-syncing is the whole
+      // point of the tuning screen, so this must not fall back to the defaults.
+      tuningOf(settings),
+    )
 
     const rows = days.map((d) => ({
       userId,

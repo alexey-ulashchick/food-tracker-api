@@ -1,6 +1,7 @@
 import { AppLayout } from '@/components/AppLayout'
 import { RequireToken } from '@/components/RequireToken'
 import { Chat } from '@/screens/Chat'
+import { GoalTuningScreen } from '@/screens/GoalTuning'
 import { Goals } from '@/screens/Goals'
 import { History } from '@/screens/History'
 import { Kitchen } from '@/screens/Kitchen'
@@ -33,6 +34,10 @@ export function AppRoutes() {
         <Route path="history" element={<History />} />
         <Route path="you" element={<You />} />
         <Route path="you/goals" element={<Goals />} />
+        {/* Deep settings, reachable from Профиль. Deliberately absent from
+            nav.ts: the sidebar lists sections, and a form you touch twice a
+            year is not one. */}
+        <Route path="you/tuning" element={<GoalTuningScreen />} />
         <Route path="you/memories" element={<Memories />} />
         <Route path="you/weight" element={<Weight />} />
       </Route>

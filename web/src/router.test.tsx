@@ -76,6 +76,7 @@ describe('routing with a token', () => {
     ['/history', 'История'],
     ['/you', 'Профиль'],
     ['/you/goals', 'Цели'],
+    ['/you/tuning', 'Расчёт цели'],
     ['/you/memories', 'Память'],
     ['/you/weight', 'Вес'],
   ])('%s renders its own screen', (path, heading) => {

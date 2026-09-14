@@ -393,6 +393,16 @@ export function DollarIcon(props: IconProps) {
 }
 
 /** key.fill */
+/** slider.horizontal.3 */
+export function SlidersIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      {/* Three tracks with a knob on each, at descending positions. */}
+      <path d="M3 6h4.2a2.8 2.8 0 0 1 5.6 0H21a1 1 0 1 1 0 2h-8.2a2.8 2.8 0 0 1-5.6 0H3a1 1 0 1 1 0-2Zm0 5h10.2a2.8 2.8 0 0 1 5.6 0H21a1 1 0 1 1 0 2h-2.2a2.8 2.8 0 0 1-5.6 0H3a1 1 0 1 1 0-2Zm0 5h2.2a2.8 2.8 0 0 1 5.6 0H21a1 1 0 1 1 0 2H10.8a2.8 2.8 0 0 1-5.6 0H3a1 1 0 1 1 0-2Z" />
+    </Svg>
+  )
+}
+
 export function KeyIcon(props: IconProps) {
   return (
     <Svg {...props}>

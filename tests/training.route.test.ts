@@ -6,6 +6,7 @@ import { dailyGoals, userSettings } from '../src/db/schema.ts'
 import { clearIntervalsCache } from '../src/integrations/intervals.ts'
 import { addDays, todayInOffset } from '../src/lib/clientDate.ts'
 import { trainingRoute } from '../src/routes/training.ts'
+import { DEFAULT_TUNING } from '../shared/goalTuning.ts'
 import { authHeaders, seedGoal, seedUser, truncateAll } from './helpers.ts'
 
 // The rule this suite exists for: a manual goal is never recomputed, and a
@@ -220,6 +221,59 @@ describe('a configured sync', () => {
     await sync(token)
     const [row] = await db.select().from(userSettings).where(eq(userSettings.userId, userId))
     expect(row?.intervalsSyncedAt).not.toBeNull()
+  })
+})
+
+describe('the stored tuning drives the numbers', () => {
+  test('a changed coefficient changes the goal', async () => {
+    // The whole point of the tuning screen: change a dial, re-sync, see it.
+    const { token, userId } = await seedUser()
+    await configure(userId, { goalTuning: { z2Medium: 0.4 } })
+    const date = addDays(today(), 2)
+    stubEvents([rideOn(date)])
+
+    await sync(token)
+    // 2000 kJ of 2 h endurance at 40% rather than the default 80%.
+    expect((await goalOn(userId, date))?.calorieGoal).toBe(1450 + 800)
+    expect((await goalOn(userId, date))?.breakdown).toMatchObject({
+      rides: [{ coeff: 0.4, kcal: 800 }],
+    })
+  })
+
+  test('a changed strength bonus changes the goal', async () => {
+    const { token, userId } = await seedUser()
+    await configure(userId, { goalTuning: { strengthKcal: 400 } })
+    const date = addDays(today(), 1)
+    stubEvents([rideOn(date, { type: 'WeightTraining', joules: undefined })])
+
+    await sync(token)
+    expect((await goalOn(userId, date))?.calorieGoal).toBe(1450 + 400)
+  })
+
+  test('moved band edges reclassify the same ride', async () => {
+    // A two-hour ride is "medium" by default; widen the short band past it and
+    // it becomes short.
+    const { token, userId } = await seedUser()
+    await configure(userId, { goalTuning: { z2ShortMaxMinutes: 180 } })
+    const date = addDays(today(), 2)
+    stubEvents([rideOn(date)])
+
+    await sync(token)
+    expect((await goalOn(userId, date))?.breakdown).toMatchObject({
+      rides: [{ coeff: DEFAULT_TUNING.z2Short }],
+    })
+  })
+
+  test('no stored tuning means the defaults', async () => {
+    const { token, userId } = await seedUser()
+    await configure(userId)
+    const date = addDays(today(), 2)
+    stubEvents([rideOn(date)])
+
+    await sync(token)
+    expect((await goalOn(userId, date))?.breakdown).toMatchObject({
+      rides: [{ coeff: DEFAULT_TUNING.z2Medium }],
+    })
   })
 })
 

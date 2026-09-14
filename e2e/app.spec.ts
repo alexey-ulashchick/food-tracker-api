@@ -160,6 +160,21 @@ test('the goals screen lists days and is reachable from Профиль', async (
   await expect(page.getByRole('button', { name: 'Обновить план' })).toBeVisible()
 })
 
+test('the goal tuning screen previews a coefficient before it is saved', async ({ page }) => {
+  await authenticate(page)
+  await page.goto('/you/tuning')
+  await expect(page.getByRole('heading', { name: 'Расчёт цели' })).toBeVisible()
+
+  // 1200 kJ at the default 95%.
+  await expect(page.getByText('1140 ккал')).toBeVisible()
+
+  await page.getByRole('textbox', { name: 'VO₂max' }).fill('50')
+
+  // Same work, half the coefficient, and nothing saved yet.
+  await expect(page.getByText('600 ккал')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Сохранить' })).toBeEnabled()
+})
+
 test('the phone shell keeps its own metrics', async ({ page }) => {
   await authenticate(page)
   await page.goto('/')

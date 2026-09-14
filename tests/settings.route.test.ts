@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 import { db } from '../src/db/client.ts'
 import { userSettings } from '../src/db/schema.ts'
 import { settingsRoute } from '../src/routes/settings.ts'
+import { DEFAULT_TUNING } from '../shared/goalTuning.ts'
 import { authHeaders, seedUser, truncateAll } from './helpers.ts'
 
 // `user_settings` is not named in truncateAll's TRUNCATE, but it FKs to users
@@ -15,6 +16,7 @@ function makeApp() {
 
 type Wire = {
   userId: string
+  goalTuning: typeof DEFAULT_TUNING
   baseCalories: number | null
   proteinG: number | null
   fatG: number | null
@@ -58,6 +60,8 @@ describe('GET /settings', () => {
       intervalsAthleteId: null,
       intervalsKeyHint: null,
       intervalsSyncedAt: null,
+      // Complete, not null: the tuning is the one field with defaults.
+      goalTuning: DEFAULT_TUNING,
       updatedAt: body.updatedAt,
     })
   })
@@ -179,6 +183,83 @@ describe('PATCH /settings', () => {
     const after = (await (await patch(token, { fatG: 60 })).json()) as Wire
 
     expect(Date.parse(after.updatedAt)).toBeGreaterThan(Date.parse(before.updatedAt))
+  })
+})
+
+describe('the goal tuning', () => {
+  test('comes back complete before anything is set', async () => {
+    // The client edits a whole tuning; it should never have to reason about
+    // which dials happen to be stored.
+    const { token } = await seedUser()
+    const body = (await (await get(token)).json()) as Wire
+    expect(body.goalTuning).toEqual(DEFAULT_TUNING)
+  })
+
+  test('stores only what differs from the defaults', async () => {
+    // So a dial added later arrives at its default for everyone instead of
+    // needing a backfill.
+    const { token, userId } = await seedUser()
+    await patch(token, { goalTuning: { ...DEFAULT_TUNING, vo2max: 1 } })
+
+    const [row] = await db.select().from(userSettings).where(eq(userSettings.userId, userId))
+    expect(row?.goalTuning).toEqual({ vo2max: 1 })
+  })
+
+  test('reads back merged over the defaults', async () => {
+    const { token } = await seedUser()
+    const body = (await (
+      await patch(token, { goalTuning: { ...DEFAULT_TUNING, vo2max: 1 } })
+    ).json()) as Wire
+
+    expect(body.goalTuning.vo2max).toBe(1)
+    expect(body.goalTuning.z2Short).toBe(DEFAULT_TUNING.z2Short)
+  })
+
+  test('a tuning identical to the defaults stores nothing at all', async () => {
+    const { token, userId } = await seedUser()
+    await patch(token, { goalTuning: DEFAULT_TUNING })
+
+    const [row] = await db.select().from(userSettings).where(eq(userSettings.userId, userId))
+    expect(row?.goalTuning).toBeNull()
+  })
+
+  test('null resets every dial', async () => {
+    const { token, userId } = await seedUser()
+    await patch(token, { goalTuning: { ...DEFAULT_TUNING, vo2max: 1, strengthKcal: 400 } })
+
+    const body = (await (await patch(token, { goalTuning: null })).json()) as Wire
+    expect(body.goalTuning).toEqual(DEFAULT_TUNING)
+
+    const [row] = await db.select().from(userSettings).where(eq(userSettings.userId, userId))
+    expect(row?.goalTuning).toBeNull()
+  })
+
+  test('survives a patch that does not mention it', async () => {
+    const { token } = await seedUser()
+    await patch(token, { goalTuning: { ...DEFAULT_TUNING, vo2max: 1 } })
+
+    const body = (await (await patch(token, { proteinG: 140 })).json()) as Wire
+    expect(body.goalTuning.vo2max).toBe(1)
+  })
+
+  test('rejects a value outside the bounds the form shows', async () => {
+    const { token } = await seedUser()
+    expect((await patch(token, { goalTuning: { vo2max: 50 } })).status).toBe(400)
+    expect((await patch(token, { goalTuning: { strengthKcal: -1 } })).status).toBe(400)
+    expect((await patch(token, { goalTuning: { definingBlockSeconds: 1 } })).status).toBe(400)
+  })
+
+  test('rejects inverted band edges rather than storing a dead band', async () => {
+    const { token } = await seedUser()
+    const res = await patch(token, {
+      goalTuning: { z2ShortMaxMinutes: 200, z2LongMinMinutes: 100 },
+    })
+    expect(res.status).toBe(400)
+  })
+
+  test('rejects a dial that does not exist', async () => {
+    const { token } = await seedUser()
+    expect((await patch(token, { goalTuning: { z2Shorter: 0.5 } })).status).toBe(400)
   })
 })
 

@@ -1,4 +1,5 @@
 import type { NewMeal } from '@/lib/copyMeal'
+import type { GoalTuning } from '@shared/goalTuning.ts'
 import type {
   ChatPostResponse,
   DeleteAck,
@@ -75,6 +76,8 @@ export type SettingsPatch = Partial<{
   fatG: number | null
   intervalsAthleteId: string | null
   intervalsApiKey: string | null
+  /** A whole tuning; null resets every dial to its default. */
+  goalTuning: GoalTuning | null
 }>
 
 export function updateSettings(patch: SettingsPatch): Promise<ServerSettings> {

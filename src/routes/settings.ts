@@ -2,6 +2,13 @@ import { zValidator } from '@hono/zod-validator'
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { z } from 'zod'
+import {
+  DEFAULT_TUNING,
+  type GoalTuning,
+  TUNING_FIELDS,
+  tuningOrderError,
+  tuningOverrides,
+} from '../../shared/goalTuning.ts'
 import { db } from '../db/client.ts'
 import { userSettings } from '../db/schema.ts'
 import { ensureSettings, toWire } from '../lib/settings.ts'
@@ -29,6 +36,24 @@ const apiKey = z
   .regex(/^\S+$/, 'Key must not contain whitespace')
 
 /**
+ * Every dial, bounded by the same numbers the form shows.
+ *
+ * Built from TUNING_FIELDS rather than spelled out, so a dial added there is
+ * validated here without a second edit — the failure mode being a field the
+ * server silently drops while the screen claims it saved.
+ */
+const tuningSchema = z
+  .object(
+    Object.fromEntries(
+      TUNING_FIELDS.map((f) => [f.key, z.number().min(f.min).max(f.max).optional()]),
+    ) as Record<keyof GoalTuning, z.ZodOptional<z.ZodNumber>>,
+  )
+  .strict()
+  .refine((t) => tuningOrderError(t) === null, {
+    message: 'Границы полос перевёрнуты',
+  })
+
+/**
  * Partial on purpose, unlike PATCH /goals which demands all six fields: the
  * key is write-only, so requiring a full body would mean re-pasting it to
  * change the protein target.
@@ -45,6 +70,9 @@ const patchSchema = z
     fatG: z.number().nonnegative().max(1000).nullable(),
     intervalsAthleteId: athleteId.nullable(),
     intervalsApiKey: apiKey.nullable(),
+    // A whole tuning in, only the differences from the defaults stored. Null
+    // resets every dial, which is what the screen's "Сбросить" sends.
+    goalTuning: tuningSchema.nullable(),
   })
   .partial()
   .strict()
@@ -63,13 +91,28 @@ export const settingsRoute = new Hono<AuthEnv>()
     const body = c.req.valid('json')
 
     await ensureSettings(userId)
+
+    // Stored as overrides: a dial left at its default is absent, so adding a
+    // dial later arrives at its default for everyone rather than needing a
+    // backfill. An empty object and null both mean "all defaults".
+    const goalTuning =
+      body.goalTuning === undefined
+        ? undefined
+        : body.goalTuning === null
+          ? null
+          : nullIfEmpty(tuningOverrides({ ...DEFAULT_TUNING, ...body.goalTuning }))
+
     const [row] = await db
       .update(userSettings)
       // Spreading the validated body is safe precisely because the schema is
       // strict: an unknown key cannot reach this object.
-      .set({ ...body, updatedAt: new Date() })
+      .set({ ...body, ...(goalTuning === undefined ? {} : { goalTuning }), updatedAt: new Date() })
       .where(eq(userSettings.userId, userId))
       .returning()
 
     return c.json(toWire(row!))
   })
+
+function nullIfEmpty(overrides: Partial<GoalTuning>): Partial<GoalTuning> | null {
+  return Object.keys(overrides).length === 0 ? null : overrides
+}

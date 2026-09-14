@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
+import type { GoalTuning } from '../../shared/goalTuning.ts'
 import type { GoalBreakdown } from '../../shared/types.ts'
 
 export const dayTypeEnum = pgEnum('day_type', ['training', 'rest'])
@@ -71,6 +72,10 @@ export const userSettings = pgTable('user_settings', {
   // secrets, which is the same secret one level down.
   intervalsApiKey: text('intervals_api_key'),
   intervalsSyncedAt: timestamp('intervals_synced_at', { withTimezone: true }),
+  // Overrides only, merged over DEFAULT_TUNING on read. Null means "all
+  // defaults", and storing just the differences means a dial added later
+  // arrives at its default for everyone instead of needing a backfill.
+  goalTuning: jsonb('goal_tuning').$type<Partial<GoalTuning>>(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

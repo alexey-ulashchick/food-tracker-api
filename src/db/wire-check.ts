@@ -6,6 +6,7 @@
 // This file emits no runtime code — it is types only. `bun run typecheck`
 // fails the moment a row type and its wire twin disagree.
 
+import type { GoalTuning } from '../../shared/goalTuning.ts'
 import type {
   ServerChatMessage,
   ServerGoal,
@@ -14,14 +15,7 @@ import type {
   ServerSettings,
   ServerWeight,
 } from '../../shared/types.ts'
-import type {
-  chatMessages,
-  dailyGoals,
-  meals,
-  memories,
-  userSettings,
-  weights,
-} from './schema.ts'
+import type { chatMessages, dailyGoals, meals, memories, userSettings, weights } from './schema.ts'
 
 /**
  * Hono's c.json() serialises Date to an ISO string; model that here.
@@ -63,19 +57,20 @@ type Expect<T extends true> = T
 // `localDate` is bolted on by decorateLocalDate / fetchMealsByLocalDateRange
 // in src/lib/mealLocalDate.ts, so it is not part of the row type.
 export type WireChecks = [
-  Expect<
-    Equals<Flatten<Jsonified<typeof meals.$inferSelect> & { localDate: string }>, ServerMeal>
-  >,
+  Expect<Equals<Flatten<Jsonified<typeof meals.$inferSelect> & { localDate: string }>, ServerMeal>>,
   Expect<Equals<Flatten<Jsonified<typeof dailyGoals.$inferSelect>>, ServerGoal>>,
-  // Settings are the one row that is NOT projected verbatim: the intervals.icu
-  // key is swapped for a four-character hint. Spelling both halves of that
-  // swap here is the point — an added secret column that someone forgets to
-  // strip fails this check instead of shipping to the browser.
+  // Settings are the one row that is NOT projected verbatim, in two places:
+  // the intervals.icu key is swapped for a four-character hint, and the stored
+  // tuning overrides come back merged over the defaults, so the wire field is
+  // complete where the column is partial and nullable. Spelling both swaps out
+  // here is the point — an added secret column that someone forgets to strip
+  // fails this check instead of shipping to the browser.
   Expect<
     Equals<
       Flatten<
-        Omit<Jsonified<typeof userSettings.$inferSelect>, 'intervalsApiKey'> & {
+        Omit<Jsonified<typeof userSettings.$inferSelect>, 'intervalsApiKey' | 'goalTuning'> & {
           intervalsKeyHint: string | null
+          goalTuning: GoalTuning
         }
       >,
       ServerSettings

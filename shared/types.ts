@@ -8,6 +8,8 @@
  *  imported so the browser bundle does not reach into server code. */
 export type DietDayColor = 'gray' | 'blue' | 'green' | 'light_green' | 'yellow' | 'orange' | 'red'
 
+import type { GoalTuning } from './goalTuning.ts'
+
 export type DayTypeName = 'training' | 'rest'
 export type MealTypeName = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snack'
 export type ChatRole = 'user' | 'ai'
@@ -129,6 +131,12 @@ export type ServerSettings = {
   intervalsAthleteId: string | null
   intervalsKeyHint: string | null
   intervalsSyncedAt: string | null
+  /**
+   * Always complete, never null: the stored overrides merged over the
+   * defaults. The client edits a whole tuning and the server keeps only the
+   * differences, so neither side has to reason about which dials are set.
+   */
+  goalTuning: GoalTuning
   updatedAt: string
 }
 

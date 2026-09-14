@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import { type GoalTuning, mergeTuning } from '../../shared/goalTuning.ts'
 import type { ServerSettings, TrainingSetupField } from '../../shared/types.ts'
 import { db } from '../db/client.ts'
 import { userSettings } from '../db/schema.ts'
@@ -58,8 +59,16 @@ export function toWire(row: SettingsRow): ServerSettings {
     intervalsAthleteId: row.intervalsAthleteId,
     intervalsKeyHint: keyHint(row.intervalsApiKey),
     intervalsSyncedAt: row.intervalsSyncedAt?.toISOString() ?? null,
+    // Merged, not raw: the client edits a whole tuning and should never have to
+    // know which dials happen to be stored.
+    goalTuning: tuningOf(row),
     updatedAt: row.updatedAt.toISOString(),
   }
+}
+
+/** The tuning this user computes with. */
+export function tuningOf(row: SettingsRow | null): GoalTuning {
+  return mergeTuning(row?.goalTuning ?? null)
 }
 
 /** Whether an automatic goal can be computed at all. */

@@ -13,10 +13,20 @@ import {
   DollarIcon,
   KeyIcon,
   ScaleIcon,
+  SlidersIcon,
   Spinner,
   TargetIcon,
 } from '@/theme/icons'
-import { accent, danger, label, radius, surface, systemBlue, withAlpha } from '@/theme/tokens'
+import {
+  accent,
+  danger,
+  label,
+  memoryTint,
+  radius,
+  surface,
+  systemBlue,
+  withAlpha,
+} from '@/theme/tokens'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
 
@@ -92,6 +102,13 @@ export function You() {
             tint={systemBlue}
             title="Цели"
             subtitle="Что стоит на каждый день и откуда взялось"
+          />
+          <NavCard
+            to="/you/tuning"
+            icon={<SlidersIcon size={15} />}
+            tint={memoryTint}
+            title="Расчёт цели"
+            subtitle="Коэффициенты и границы зон"
           />
           <TrainingSettingsCard />
         </div>

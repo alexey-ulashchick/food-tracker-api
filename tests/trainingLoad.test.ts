@@ -1,10 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
-  COEFFICIENTS,
-  DEFINING_BLOCK_SECONDS,
   type PlannedSession,
   type PlannedStep,
-  STRENGTH_KCAL,
   type TargetSettings,
   classifyRide,
   computeDay,
@@ -12,6 +9,14 @@ import {
   rideCoefficient,
   scoreRide,
 } from '../src/lib/trainingLoad.ts'
+import { DEFAULT_TUNING } from '../shared/goalTuning.ts'
+
+// The numbers are a stored, user-editable tuning now — see
+// tests/goalTuning.test.ts for the dials themselves. What these assert is that
+// the DEFAULTS behave as specified, which is what an unconfigured user gets.
+const COEFFICIENTS = DEFAULT_TUNING
+const DEFINING_BLOCK_SECONDS = DEFAULT_TUNING.definingBlockSeconds
+const STRENGTH_KCAL = DEFAULT_TUNING.strengthKcal
 
 // Pure unit tests — no database, no HTTP, no fixture. The intervals.icu wire
 // shape is normalised into PlannedSession by src/integrations/intervals.ts and

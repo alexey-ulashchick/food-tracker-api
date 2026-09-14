@@ -23,6 +23,7 @@ CREATE TABLE user_settings (
   intervals_athlete_id text,
   intervals_api_key text,
   intervals_synced_at timestamptz,
+  goal_tuning jsonb,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
