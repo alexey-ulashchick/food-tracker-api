@@ -1,13 +1,14 @@
-import { daySummaries, getGoal, listMeals } from '@/api/endpoints'
+import { createMeal, daySummaries, getGoal, listMeals } from '@/api/endpoints'
 import { qk } from '@/api/keys'
 import { CalorieMeter } from '@/components/CalorieMeter'
 import { MacroPie } from '@/components/MacroPie'
 import { Page } from '@/components/Page'
 import { RingStack } from '@/components/ring/RingStack'
+import { mealCopy } from '@/lib/copyMeal'
 import { addDays, relativeDayTitle, todayIso, weekdayShortDate } from '@/lib/dates'
 import { formatLocalTime } from '@/lib/formatLocalTime'
 import { useUi } from '@/store/ui'
-import { ChevronIcon, ForkKnifeIcon, Spinner, TickIcon } from '@/theme/icons'
+import { ChevronIcon, CopyIcon, ForkKnifeIcon, Spinner, TickIcon } from '@/theme/icons'
 import {
   CHIP_BG_ALPHA,
   accent,
@@ -26,7 +27,8 @@ import {
 } from '@/theme/tokens'
 import { DIET_DAY_TITLES } from '@shared/dietDayTitles.ts'
 import type { DayTypeName, ServerDaySummary, ServerGoal, ServerMeal } from '@shared/types.ts'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 
 // Port of CalTracker/TodayView.swift. Structure top to bottom: day header,
 // calorie card with the day verdict, rings beside the macro rows, meals log.
@@ -37,6 +39,11 @@ const MEAL_RU: Record<string, string> = {
   Dinner: 'Ужин',
   Snack: 'Перекус',
 }
+
+/** A primed copy button gives up on its own rather than waiting to be fired. */
+const ARM_TIMEOUT_MS = 4000
+/** How long the confirmation stays before the row is copyable again. */
+const DONE_TIMEOUT_MS = 2500
 
 const DAY_TYPE_LABEL: Record<DayTypeName, string> = {
   training: 'Тренировочный день',
@@ -161,7 +168,14 @@ export function Today() {
         </section>
       </div>
 
-      <MealsLog meals={meals} loading={mealsQuery.isLoading} />
+      <MealsLog
+        meals={meals}
+        loading={mealsQuery.isLoading}
+        // Copying is offered only while looking at another day. On today the
+        // action would read "add to today" from inside today, which says
+        // nothing, and it would clutter the screen's main job.
+        copyToToday={viewingDate === today ? null : today}
+      />
     </Page>
   )
 }
@@ -510,7 +524,16 @@ function MacroStatRow({ row, hasGoal }: { row: MacroRow; hasGoal: boolean }) {
   )
 }
 
-function MealsLog({ meals, loading }: { meals: ServerMeal[]; loading: boolean }) {
+function MealsLog({
+  meals,
+  loading,
+  copyToToday,
+}: {
+  meals: ServerMeal[]
+  loading: boolean
+  /** Today's date when a copy action should be offered, null otherwise. */
+  copyToToday: string | null
+}) {
   return (
     <section
       style={{
@@ -581,7 +604,7 @@ function MealsLog({ meals, loading }: { meals: ServerMeal[]; loading: boolean })
       ) : (
         meals.map((meal, i) => (
           <div key={meal.id}>
-            <MealRow meal={meal} />
+            <MealRow meal={meal} copyToToday={copyToToday} />
             {i < meals.length - 1 ? (
               <hr
                 style={{
@@ -599,7 +622,7 @@ function MealsLog({ meals, loading }: { meals: ServerMeal[]; loading: boolean })
   )
 }
 
-function MealRow({ meal }: { meal: ServerMeal }) {
+function MealRow({ meal, copyToToday }: { meal: ServerMeal; copyToToday: string | null }) {
   return (
     <div
       // Lets the end-to-end suite address a logged meal without matching on
@@ -696,8 +719,117 @@ function MealRow({ meal }: { meal: ServerMeal }) {
         >
           {Math.round(meal.calories)}
         </span>
+        {copyToToday ? <CopyToToday meal={meal} today={copyToToday} /> : null}
       </span>
     </div>
+  )
+}
+
+/**
+ * Repeats a logged meal on today.
+ *
+ * Two taps rather than one, and not because tapping is cheap: nothing in this
+ * client can delete a meal — only the chat can — so an accidental log is
+ * annoying to undo. The second tap is also the only chance to give feedback,
+ * since the row being copied is on a day the user is not looking at the total
+ * of.
+ *
+ * A visible button rather than a swipe. The same choice was made for Memories,
+ * whose header notes that the Swift original's .swipeActions inside a
+ * ScrollView were a no-op: an invisible affordance nobody finds is worse than a
+ * small button, and this one only appears on days that are not today.
+ */
+function CopyToToday({ meal, today }: { meal: ServerMeal; today: string }) {
+  const queryClient = useQueryClient()
+  const setError = useUi((s) => s.setError)
+  const [phase, setPhase] = useState<'idle' | 'armed' | 'done'>('idle')
+
+  const copy = useMutation({
+    mutationFn: () => createMeal(mealCopy(meal, today)),
+    onSuccess: () => {
+      setPhase('done')
+      // Today's list and its verdict both move; the day being viewed does not.
+      void queryClient.invalidateQueries({ queryKey: ['meals'] })
+      void queryClient.invalidateQueries({ queryKey: ['day-summary'] })
+    },
+    onError: (err) => {
+      setPhase('idle')
+      setError(err instanceof Error ? err.message : String(err))
+    },
+  })
+
+  // Armed disarms itself, so a tap that was a mis-tap leaves nothing primed to
+  // fire later; done reverts so the row can be copied again.
+  useEffect(() => {
+    if (phase === 'idle') return
+    const ms = phase === 'armed' ? ARM_TIMEOUT_MS : DONE_TIMEOUT_MS
+    const timer = setTimeout(() => setPhase('idle'), ms)
+    return () => clearTimeout(timer)
+  }, [phase])
+
+  if (phase === 'done') {
+    return (
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          color: positive,
+          fontWeight: 600,
+          fontSize: 'calc(11px * var(--type))',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <TickIcon size={13} />В сегодня
+      </span>
+    )
+  }
+
+  if (phase === 'armed') {
+    return (
+      <button
+        type="button"
+        onClick={() => copy.mutate()}
+        disabled={copy.isPending}
+        style={{
+          border: 0,
+          borderRadius: 999,
+          background: withAlpha(accent, CHIP_BG_ALPHA),
+          color: accent,
+          fontWeight: 600,
+          fontSize: 'calc(11px * var(--type))',
+          padding: '4px 9px',
+          cursor: 'pointer',
+          whiteSpace: 'nowrap',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 5,
+        }}
+      >
+        {copy.isPending ? <Spinner size={11} /> : null}
+        {copy.isPending ? 'Добавляю…' : 'В сегодня?'}
+      </button>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setPhase('armed')}
+      // Names the food, because a screen reader hears this once per row.
+      aria-label={`Добавить «${meal.foodName}» в сегодня`}
+      style={{
+        border: 0,
+        background: 'transparent',
+        color: label.tertiary,
+        padding: 2,
+        cursor: 'pointer',
+        display: 'flex',
+        flexShrink: 0,
+      }}
+    >
+      <CopyIcon size={15} />
+    </button>
   )
 }
 

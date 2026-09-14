@@ -1,3 +1,4 @@
+import type { NewMeal } from '@/lib/copyMeal'
 import type {
   ChatPostResponse,
   DeleteAck,
@@ -97,6 +98,20 @@ export function syncTraining(force = false): Promise<TrainingSyncResult> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ force }),
+  })
+}
+
+/**
+ * Logs a meal. The server stamps tz_offset_min from the request header, so the
+ * timestamp is interpreted in the caller's current zone.
+ *
+ * Used by "copy to today" on the Today screen; the chat is the other writer.
+ */
+export function createMeal(meal: NewMeal): Promise<ServerMeal> {
+  return api<ServerMeal>('/meals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(meal),
   })
 }
 

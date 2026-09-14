@@ -280,6 +280,22 @@ app.
 There is no in-app entry UI. Weight arrives through `POST /weights`, which the
 user's own sync script drives; the web client only reads it.
 
+## Repeating a meal
+
+Today's day header steps back a day at a time. On any day that is not today,
+each logged meal grows a copy button that repeats it on today — for the case of
+finding last Tuesday's breakfast and eating it again.
+
+It takes two taps: the first arms the button, the second logs. Nothing in this
+client can delete a meal — only the chat can — so an accidental log is annoying
+to undo, and the second tap is also the only chance to confirm, since the total
+that changed belongs to a day not on screen. A primed button disarms itself
+after a few seconds rather than waiting to be fired by a stray tap.
+
+The copy lands at the clock time the original row displays, not at the current
+minute, so a breakfast copied in the evening still sits at breakfast time and
+the day's log stays in the order it was eaten in.
+
 ## Daily goals: computed, unless asked otherwise
 
 A day's nutrition goal comes from one of two places, and `daily_goals.source`
