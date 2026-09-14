@@ -178,6 +178,10 @@
   --c-spinner-track: rgba(235, 235, 245, 0.35);
   --c-spinner-head: rgba(235, 235, 245, 0.9);
   --c-code-bg: rgba(255, 255, 255, 0.1);
+  /* Drop shadows under floating things — the attach menu, the chart tooltip.
+     Heavy on black; the light theme needs far less, or a popover reads as a
+     hole punched in the page. */
+  --c-shadow: rgba(0, 0, 0, 0.5);
 }
 
 @media (prefers-color-scheme: light) {
@@ -240,6 +244,7 @@
     --c-spinner-track: rgba(60, 60, 67, 0.25);
     --c-spinner-head: rgba(60, 60, 67, 0.7);
     --c-code-bg: rgba(60, 60, 67, 0.08);
+    --c-shadow: rgba(0, 0, 0, 0.16);
   }
 }
 

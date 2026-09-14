@@ -2,7 +2,7 @@ import type { CalorieDay } from '@/lib/calorieMetrics'
 import { CHART_VISIBLE_DAYS, calorieYDomain, goalExtension } from '@/lib/calorieMetrics'
 import { dayMonth } from '@/lib/dates'
 import { useElementWidth } from '@/lib/useElementWidth'
-import { dietDayColor, label, palette, radius, surface, withAlpha } from '@/theme/tokens'
+import { dietDayColor, label, palette, radius, shadow, surface, withAlpha } from '@/theme/tokens'
 import type { DietDayColor } from '@shared/types.ts'
 import { curveMonotoneX, line } from 'd3-shape'
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
@@ -312,7 +312,7 @@ export function CalorieChart({ days, onLoadOlder, loadingOlder, onViewChange, ap
               <path
                 d={goalPath(extensionPoints) ?? ''}
                 fill="none"
-                stroke="rgba(142,142,147,0.55)"
+                stroke={surface.projection}
                 strokeWidth={1.2}
               />
             ) : null}
@@ -324,7 +324,7 @@ export function CalorieChart({ days, onLoadOlder, loadingOlder, onViewChange, ap
                 x2={bandX(selectedIndex)}
                 y1={PAD.top}
                 y2={PAD.top + plotH}
-                stroke="rgba(255,255,255,0.22)"
+                stroke={surface.scrub}
                 strokeWidth={1}
               />
             ) : null}
@@ -390,7 +390,7 @@ function Tooltip({ day, x, width }: { day: ChartDay; x: number; width: number })
         width: W,
         background: surface.elevated,
         borderRadius: radius.tooltip,
-        boxShadow: `0 2px 6px rgba(0,0,0,0.5), inset 0 0 0 0.5px ${surface.subtle}`,
+        boxShadow: `0 2px 6px ${shadow}, inset 0 0 0 0.5px ${surface.subtle}`,
         padding: '6px 8px',
         display: 'flex',
         flexDirection: 'column',

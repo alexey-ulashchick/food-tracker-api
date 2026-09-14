@@ -6,7 +6,7 @@ import {
   PencilCircleIcon,
   TargetIcon,
 } from '@/theme/icons'
-import { label, palette, systemBlue } from '@/theme/tokens'
+import { accent, label, memoryTint, palette, positive, systemBlue } from '@/theme/tokens'
 import { ActionCard, Kcal, MacroChip, StatusBadge } from './ActionCard'
 
 // Ports of the four action cards in CalTracker/FoodCard.swift. Labels are
@@ -42,7 +42,7 @@ export function FoodCard({ item, action }: { item: Food; action: 'added' | 'remo
       {removed ? (
         <StatusBadge icon={<MinusCircleIcon />} text="Удалено" color={label.secondary} />
       ) : (
-        <StatusBadge icon={<CheckCircleIcon />} text="Добавлено" color="#34C759" />
+        <StatusBadge icon={<CheckCircleIcon />} text="Добавлено" color={positive} />
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -168,7 +168,7 @@ function DiffRow({
 export function GoalCard({ item }: { item: Goal }) {
   return (
     <ActionCard pad="even">
-      <StatusBadge icon={<TargetIcon />} text="Цель установлена" color="#FF9500" />
+      <StatusBadge icon={<TargetIcon />} text="Цель установлена" color={accent} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <span
@@ -206,7 +206,7 @@ export function MemoryCard({ content, action }: { content: string; action: Memor
   return (
     <ActionCard>
       {action.kind === 'added' ? (
-        <StatusBadge icon={<BrainIcon />} text="Запомнил" color="#BF5AF2" />
+        <StatusBadge icon={<BrainIcon />} text="Запомнил" color={memoryTint} />
       ) : action.kind === 'updated' ? (
         <StatusBadge icon={<PencilCircleIcon />} text="Память обновлена" color={systemBlue} />
       ) : (

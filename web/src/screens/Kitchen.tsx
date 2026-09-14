@@ -396,7 +396,7 @@ export function Kitchen() {
                   height: 10,
                   borderRadius: 999,
                   background: hex,
-                  boxShadow: '0 0 0 0.5px rgba(255,255,255,0.14)',
+                  boxShadow: `0 0 0 0.5px ${surface.subtle}`,
                 }}
               />
               <span style={{ font: '500 12px system-ui', color: label.secondary }}>{name}</span>
@@ -408,11 +408,14 @@ export function Kitchen() {
       <Card title="Поверхности">
         {(
           [
-            ['card #1C1C1C', surface.card],
-            ['input #121212', surface.input],
-            ['bubble #2E2E2E', surface.bubble],
-            ['elevated #292929', surface.elevated],
-            ['track systemGray 16%', surface.track],
+            // Named by token, not by hex: the swatch beside each one already
+            // shows the colour, and a hex here would only ever be half the
+            // answer now that there are two themes.
+            ['card', surface.card],
+            ['input', surface.input],
+            ['bubble', surface.bubble],
+            ['elevated', surface.elevated],
+            ['track', surface.track],
           ] as const
         ).map(([name, value]) => (
           <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
@@ -422,7 +425,7 @@ export function Kitchen() {
                 height: 24,
                 borderRadius: 6,
                 background: value,
-                outline: '0.5px solid rgba(255,255,255,0.08)',
+                outline: `0.5px solid ${surface.subtle}`,
               }}
             />
             <span style={{ font: '400 12px ui-monospace, monospace' }}>{name}</span>

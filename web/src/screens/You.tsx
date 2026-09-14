@@ -22,6 +22,7 @@ import {
   danger,
   label,
   memoryTint,
+  positive,
   radius,
   surface,
   systemBlue,
@@ -84,7 +85,7 @@ export function You() {
           <NavCard
             to="/you/memories"
             icon={<BrainIcon size={15} />}
-            tint="#BF5AF2"
+            tint={memoryTint}
             title="Память"
             subtitle={
               memoriesQuery.isLoading
@@ -117,7 +118,7 @@ export function You() {
           <Card>
             <Row
               icon={<DollarIcon size={15} />}
-              tint="#30D158"
+              tint={positive}
               title="Стоимость запросов"
               subtitle="Показывать над ответами ассистента"
             />

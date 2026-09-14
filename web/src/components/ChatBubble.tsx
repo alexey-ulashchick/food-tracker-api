@@ -63,7 +63,11 @@ export function ChatBubble({ text, isUser }: { text: string; isUser: boolean }) 
           padding: '9px 14px',
           fontSize: 'calc(16px * var(--type))',
           lineHeight: 1.35,
-          color: label.primary,
+          // onTint, not label.primary: the user bubble is a saturated blue in
+          // both themes, so its text has to be white in both. label.primary
+          // follows the theme and turned black on blue as soon as the light
+          // theme landed. The link inside already knew this.
+          color: isUser ? onTint : label.primary,
           background: isUser ? systemBlue : surface.bubble,
           borderRadius: `${RADIUS}px ${RADIUS}px ${isUser ? TAIL : RADIUS}px ${
             isUser ? RADIUS : TAIL

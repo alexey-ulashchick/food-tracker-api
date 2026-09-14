@@ -354,7 +354,10 @@ function Verdict({ verdict }: { verdict: ServerDaySummary }) {
             height: 10,
             borderRadius: 999,
             background: tint,
-            boxShadow: '0 0 0 0.5px rgba(255,255,255,0.14)',
+            // Separates a saturated dot from the card behind it, so it has
+            // to darken when the card turns white — a fixed white ring simply
+            // vanishes in the light theme.
+            boxShadow: `0 0 0 0.5px ${surface.subtle}`,
             flexShrink: 0,
           }}
         />

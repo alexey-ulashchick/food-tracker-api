@@ -14,7 +14,16 @@ import { todayIso } from '@/lib/dates'
 import { makeThumb } from '@/lib/thumbnail'
 import { useUi } from '@/store/ui'
 import { ArrowUpIcon, CloseCircleIcon, PlusIcon, SparklesIcon, Spinner } from '@/theme/icons'
-import { accent, label, onAccent, palette, radius, singleRingSpec, surface } from '@/theme/tokens'
+import {
+  accent,
+  label,
+  onAccent,
+  palette,
+  radius,
+  shadow,
+  singleRingSpec,
+  surface,
+} from '@/theme/tokens'
 import type { ServerGoal, ServerMeal } from '@shared/types.ts'
 import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -519,7 +528,7 @@ function Composer({
                   left: 0,
                   background: surface.elevated,
                   borderRadius: radius.field,
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+                  boxShadow: `0 4px 16px ${shadow}`,
                   overflow: 'hidden',
                   zIndex: 20,
                   minWidth: 150,

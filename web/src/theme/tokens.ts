@@ -35,7 +35,20 @@ export const surface = {
   control: 'var(--c-control)',
   /** A row held down, and the same wash a pointer hovers with. */
   pressed: 'var(--c-pressed)',
+  /** The line that follows a finger across the calorie chart. */
+  scrub: 'var(--c-scrub)',
+  /** The dashed goal line drawn ahead of today. */
+  projection: 'var(--c-projection)',
 } as const
+
+/**
+ * Drop shadow under a floating element.
+ *
+ * A token rather than a literal because the weight has to change with the
+ * theme: half-opaque black under a popover looks right on a black page and
+ * like a hole on a white one.
+ */
+export const shadow = 'var(--c-shadow)'
 
 export const label = {
   primary: 'var(--c-label)',

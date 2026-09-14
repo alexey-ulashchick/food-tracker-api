@@ -14,8 +14,32 @@ import { describe, expect, test } from 'vitest'
 // plugin rewrites CSS imports to an empty string, so a `?raw` import of it would
 // be permanently, silently blank.
 
-/** `'#fff'`, `'#FF9500'`, `'rgba(…)'`, `'rgb(…)'` — a colour spelled out. */
-const LITERAL = /'#[0-9A-Fa-f]{3,8}'|'rgba?\([^')]*\)'/g
+/**
+ * Any quoted string or template literal, which is where a colour can hide.
+ *
+ * The first version of this scan required the colour to BE the whole quoted
+ * string. Four kinds of literal walked straight past it, and every one of them
+ * was a real light-theme bug:
+ *
+ *   boxShadow: '0 0 0 0.5px rgba(255,255,255,0.14)'   — colour inside a value
+ *   stroke="rgba(255,255,255,0.22)"                    — double quotes
+ *   tint="#BF5AF2"                                     — double quotes
+ *   `0 2px 6px rgba(0,0,0,0.5)`                        — template literal
+ *
+ * A white ring on a card that turns white draws nothing, and a white scrub line
+ * on a white page draws nothing. Both shipped. Comments are exempt for free,
+ * because a comment is not a quoted string — which is what lets the values be
+ * documented where they are defined.
+ */
+const STRINGS = /'[^'\n]*'|"[^"\n]*"|`[^`]*`/g
+
+/** `#fff`, `#FF9500`, `rgb(…)`, `rgba(…)` — a colour spelled out. */
+const COLOUR = /#[0-9A-Fa-f]{3,8}\b|\brgba?\([^)]*\)/
+
+/** Every colour hiding in a string in this source. */
+function literalsIn(text: string): string[] {
+  return (text.match(STRINGS) ?? []).filter((s) => COLOUR.test(s))
+}
 
 /**
  * Files allowed to name a colour, each for a stated reason.
@@ -27,6 +51,9 @@ const ALLOWED: Record<string, string> = {
   'components/ring/MacroRing.test.tsx': 'stubs the dark literals jsdom has no stylesheet for',
   'components/ring/ringColor.test.ts': 'colour maths fixtures, deliberately not theme tokens',
   'theme/tokens.test.ts': 'asserts on literal inputs and outputs',
+  'components/ring/ringColor.ts': 'builds a CSS colour out of computed numbers; that IS its job',
+  'components/ring/MacroRing.tsx':
+    'canvas cannot read a custom property, and the head shadow alpha is computed per frame',
 }
 
 // This file quotes the offending forms to explain them and is not on the list,
@@ -51,18 +78,35 @@ describe('colour literals', () => {
   })
 
   test('the scan recognises the forms it is looking for', () => {
-    expect("background: '#1C1C1C'".match(LITERAL)).toEqual(["'#1C1C1C'"])
-    expect("color: 'rgba(255,255,255,0.06)'".match(LITERAL)).toEqual(["'rgba(255,255,255,0.06)'"])
-    expect("color: 'rgb(0, 145, 234)'".match(LITERAL)).toEqual(["'rgb(0, 145, 234)'"])
-    // What the app should say instead.
-    expect('background: surface.card'.match(LITERAL)).toBeNull()
-    expect("background: 'var(--c-card)'".match(LITERAL)).toBeNull()
+    expect(literalsIn("background: '#1C1C1C'")).toEqual(["'#1C1C1C'"])
+    expect(literalsIn("color: 'rgba(255,255,255,0.06)'")).toEqual(["'rgba(255,255,255,0.06)'"])
+    expect(literalsIn("color: 'rgb(0, 145, 234)'")).toEqual(["'rgb(0, 145, 234)'"])
+  })
+
+  test('it catches the four forms that used to walk past it', () => {
+    // Each of these shipped a colour that cannot follow the theme.
+    expect(literalsIn("boxShadow: '0 0 0 0.5px rgba(255,255,255,0.14)'")).toHaveLength(1)
+    expect(literalsIn('stroke="rgba(255,255,255,0.22)"')).toHaveLength(1)
+    expect(literalsIn('tint="#BF5AF2"')).toHaveLength(1)
+    expect(literalsIn('boxShadow: `0 2px 6px rgba(0,0,0,0.5)`')).toHaveLength(1)
+  })
+
+  test('it leaves alone what the app should say instead', () => {
+    expect(literalsIn('background: surface.card')).toEqual([])
+    expect(literalsIn("background: 'var(--c-card)'")).toEqual([])
+    expect(literalsIn('boxShadow: `0 4px 16px ${shadow}`')).toEqual([])
+    expect(literalsIn('tint={memoryTint}')).toEqual([])
+  })
+
+  test('a comment may name the value it is explaining', () => {
+    // Otherwise the tokens could not be documented where they are defined.
+    expect(literalsIn('// iOS teal is #30b0c7 in the dark variant')).toEqual([])
   })
 
   test('no component spells a colour out', () => {
     const offenders = Object.entries(sources)
       .filter(([path]) => !(rel(path) in ALLOWED))
-      .flatMap(([path, text]) => (text.match(LITERAL) ?? []).map((m) => `${rel(path)}: ${m}`))
+      .flatMap(([path, text]) => literalsIn(text).map((m) => `${rel(path)}: ${m}`))
 
     expect(offenders).toEqual([])
   })
@@ -72,7 +116,7 @@ describe('colour literals', () => {
     for (const [path, reason] of Object.entries(ALLOWED)) {
       const text = sources[`/src/${path}`]
       expect(text, `${path} is listed but does not exist`).toBeDefined()
-      expect(text?.match(LITERAL), `${path}: ${reason}`).not.toBeNull()
+      expect(literalsIn(text ?? ''), `${path}: ${reason}`).not.toEqual([])
     }
   })
 })

@@ -746,7 +746,7 @@ function PastDayRow({ row, onOpen }: { row: DaySummaryRow; onOpen: () => void })
             height: 9,
             borderRadius: 999,
             background: dietDayColor[row.color as keyof typeof dietDayColor] ?? dietDayColor.gray,
-            boxShadow: '0 0 0 0.5px rgba(255,255,255,0.12)',
+            boxShadow: `0 0 0 0.5px ${surface.subtle}`,
           }}
         />
         <span
