@@ -1,5 +1,17 @@
 import { INCOMPLETE_RATIO, ON_TARGET_MAX, ON_TARGET_MIN } from '@/lib/calorieMetrics'
-import { FONT, PAGE, type Rgb, buildPdf, fillRect, line, monoRight, text } from '@/lib/pdf'
+import { isoWeek } from '@/lib/dates'
+import {
+  FONT,
+  PAGE,
+  type Rgb,
+  buildPdf,
+  fillRect,
+  line,
+  monoRight,
+  monoWidth,
+  pieSlice,
+  text,
+} from '@/lib/pdf'
 import type { ServerDaySummary, ServerWeight } from '@shared/types.ts'
 
 // One line per day for the whole observed period: the target, what was eaten,
@@ -33,6 +45,35 @@ export type ReportDay = {
   status: DayStatus
 }
 
+/**
+ * How a week reads at a glance.
+ *
+ * The precedence is deliberate and grey wins. A bar's height is the sum over
+ * that week's COMPLETE days, so a week with a gap is drawn shorter than it
+ * really was — and that is a fact about the bar, not about the eating. Colouring
+ * it red for an overshoot would assert something about a total that is known to
+ * be missing days.
+ */
+export type WeekStatus = 'clean' | 'over' | 'incomplete'
+
+export type WeekBar = {
+  /** ISO week, labelled the way the standard numbers it. */
+  label: string
+  /**
+   * Planned minus eaten across the week's complete days.
+   *
+   * Named for its sign rather than called a "balance": positive is under plan,
+   * which for someone in a deficit is the direction progress goes, so the chart
+   * reads with good weeks pointing up.
+   */
+  deficit: number
+  /** Complete days the deficit is summed over. Zero when the whole week is a gap. */
+  completeDays: number
+  /** The deficit per complete day, which is what makes short weeks comparable. */
+  perDay: number
+  status: WeekStatus
+}
+
 export type CalorieReport = {
   from: string
   to: string
@@ -47,6 +88,7 @@ export type CalorieReport = {
   avgFat: number | null
   avgCarbs: number | null
   weight: { first: number; last: number; delta: number } | null
+  weeks: WeekBar[]
 }
 
 /** A day nobody logged anything on and set no goal for is not an observation. */
@@ -67,6 +109,58 @@ export function trimToObserved(summaries: readonly ServerDaySummary[]): ServerDa
   let last = summaries.length - 1
   while (last > first && !hasData(summaries[last]!)) last--
   return summaries.slice(first, last + 1)
+}
+
+/**
+ * One bar per ISO week the period touches.
+ *
+ * Keyed by week AND year: an ISO week belongs to whichever year holds its
+ * Thursday, so a report spanning New Year would otherwise merge two different
+ * week 1s into one bar.
+ */
+export function weekBars(days: readonly ReportDay[]): WeekBar[] {
+  type Bucket = { label: string; goal: number; eaten: number; days: number; incomplete: boolean }
+  const byWeek = new Map<string, Bucket>()
+
+  for (const day of days) {
+    const { year, week } = isoWeek(day.date)
+    const key = `${year}-${String(week).padStart(2, '0')}`
+    const bucket = byWeek.get(key) ?? {
+      label: `W${week}`,
+      goal: 0,
+      eaten: 0,
+      days: 0,
+      incomplete: false,
+    }
+
+    // Incomplete days are dropped from both sums before either is taken, so the
+    // two sides always cover exactly the same days.
+    if (day.status === 'incomplete') {
+      bucket.incomplete = true
+    } else {
+      bucket.goal += day.goal ?? 0
+      bucket.eaten += day.eaten
+      bucket.days++
+    }
+    byWeek.set(key, bucket)
+  }
+
+  return [...byWeek.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, b]) => {
+      const deficit = b.goal - b.eaten
+      return {
+        label: b.label,
+        deficit,
+        completeDays: b.days,
+        perDay: b.days === 0 ? 0 : deficit / b.days,
+        // Grey wins: the height is a sum over the days that counted, so a week
+        // with a gap is drawn shorter than it was. That is a fact about the bar,
+        // and colouring it by that height would assert something about a total
+        // known to be missing days.
+        status: b.incomplete ? 'incomplete' : deficit < 0 ? 'over' : 'clean',
+      }
+    })
 }
 
 export function buildCalorieReport(
@@ -124,6 +218,7 @@ export function buildCalorieReport(
     avgProtein: mean((d) => d.protein),
     avgFat: mean((d) => d.fat),
     avgCarbs: mean((d) => d.carbs),
+    weeks: weekBars(days),
     weight:
       firstWeight && lastWeight && firstWeight !== lastWeight
         ? {
@@ -154,9 +249,50 @@ const TINT: Record<DayStatus, Rgb> = {
   incomplete: [0.92, 0.92, 0.92],
 }
 
+/**
+ * The same three hues, saturated.
+ *
+ * The row tints have to sit under black 8pt text, which puts them within a
+ * shade of white — a pie of near-white slices would be unreadable. These are the
+ * same colours at full strength, so the association between a slice, a bar and a
+ * row still holds.
+ */
+const SOLID: Record<DayStatus, Rgb> = {
+  onTarget: [0.3, 0.69, 0.31],
+  offTarget: [0.85, 0.3, 0.28],
+  incomplete: [0.62, 0.62, 0.62],
+}
+
+const WEEK_COLOUR: Record<WeekStatus, Rgb> = {
+  clean: SOLID.onTarget,
+  over: SOLID.offTarget,
+  incomplete: SOLID.incomplete,
+}
+
 /** The band spans the columns, not the whole page — empty tint reads as a bug. */
 const BAND_LEFT = MARGIN - 4
 const BAND_RIGHT = 440
+
+const MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+]
+
+/** "September 2026" from a YYYY-MM-DD, without going through Date. */
+function monthLabel(iso: string): string {
+  const [year, month] = iso.split('-')
+  return `${MONTHS[Number(month) - 1] ?? month} ${year}`
+}
 /** Right edges of the numeric columns. Left edge of the date is MARGIN. */
 const COL = { goal: 168, eaten: 226, diff: 288, protein: 340, fat: 386, carbs: 432 } as const
 
@@ -245,6 +381,134 @@ function summary(report: CalorieReport, y: number): { content: string; y: number
 }
 
 /**
+ * The three counts as a pie, beside the summary that lists them.
+ *
+ * No legend of its own: the slices use the row colours, which the footer already
+ * names, and the numbers are in the summary a few centimetres to the left.
+ */
+function pie(report: CalorieReport, cx: number, cy: number, r: number): string {
+  const slices: Array<[DayStatus, number]> = [
+    ['onTarget', report.onTarget],
+    ['offTarget', report.offTarget],
+    ['incomplete', report.incomplete],
+  ]
+  const total = slices.reduce((sum, [, n]) => sum + n, 0)
+  if (total === 0) return ''
+
+  let out = ''
+  // From twelve o'clock, clockwise — how a pie is read. PDF's y axis points up,
+  // so clockwise means decreasing angle.
+  let angle = Math.PI / 2
+  for (const [status, n] of slices) {
+    if (n === 0) continue
+    const sweep = (n / total) * Math.PI * 2
+    out += pieSlice(cx, cy, r, angle - sweep, angle, SOLID[status])
+    angle -= sweep
+  }
+  return out
+}
+
+/** Two charts stacked; the second carries the week labels for both. */
+const CHART_HEIGHT = 52
+/** Room for the axis figures, so none of them sits in the page margin. */
+const AXIS_WIDTH = 26
+const CHART_CAPTION_GAP = 12
+const CHART_LABEL_GAP = 11
+const CHARTS_TOTAL_HEIGHT = (CHART_HEIGHT + CHART_CAPTION_GAP) * 2 + CHART_LABEL_GAP
+
+/**
+ * A bar per ISO week: planned minus eaten, over that week's complete days.
+ *
+ * The zero line is placed to fit the data rather than centred, because a period
+ * spent in deficit has almost nothing below it and a centred axis would spend
+ * half the chart on empty paper.
+ */
+function weekChart(
+  weeks: readonly WeekBar[],
+  top: number,
+  caption: string,
+  value: (w: WeekBar) => number,
+  withLabels: boolean,
+): string {
+  // A gutter for the axis figures rather than letting them hang into the page
+  // margin, where a printer may well cut them off.
+  const axis = MARGIN + AXIS_WIDTH
+  const left = MARGIN
+  const right = PAGE.width - MARGIN
+  if (weeks.length === 0) return ''
+
+  const values = weeks.map(value)
+  const up = Math.max(0, ...values)
+  const down = Math.max(0, ...values.map((v) => -v))
+  const span = up + down
+  const plotBottom = top - CHART_HEIGHT
+  const zeroY = span === 0 ? plotBottom : plotBottom + (down / span) * CHART_HEIGHT
+
+  const slot = (right - axis) / weeks.length
+  const barWidth = Math.min(18, slot * 0.7)
+
+  let out = text(left, top + 4, 7, FONT.sans, caption)
+
+  for (const [i, week] of weeks.entries()) {
+    const v = values[i] ?? 0
+    const x = axis + slot * i + (slot - barWidth) / 2
+    const height = span === 0 ? 0 : (Math.abs(v) / span) * CHART_HEIGHT
+    const y = v >= 0 ? zeroY : zeroY - height
+    // A week that came out exactly level still gets a mark, or it reads as a
+    // week with no data.
+    out += fillRect(x, y, barWidth, Math.max(height, 0.8), WEEK_COLOUR[week.status])
+  }
+
+  // After the bars, so it stays visible across them.
+  out += line(axis, zeroY, right, zeroY, 0.5, 0.55)
+  const tick = axis - 3
+  out += monoRight(tick, zeroY - 2, 6, FONT.mono, '0')
+  // The extremes, so a bar's height means something without a full axis.
+  if (up > 0) out += monoRight(tick, top - 4, 6, FONT.mono, `+${Math.round(up)}`)
+  if (down > 0) out += monoRight(tick, plotBottom, 6, FONT.mono, `-${Math.round(down)}`)
+
+  if (withLabels) {
+    // Every label if they fit, otherwise every other and so on: overlapping week
+    // numbers are worse than fewer of them.
+    const every = Math.max(1, Math.ceil((weeks.length * 16) / (right - left)))
+    for (const [i, week] of weeks.entries()) {
+      if (i % every !== 0) continue
+      const x = axis + slot * i + (slot - monoWidth(week.label, 6)) / 2
+      out += text(x, plotBottom - CHART_LABEL_GAP + 3, 6, FONT.mono, week.label)
+    }
+  }
+
+  return out
+}
+
+/** Both series: the week's total, then the same divided by its complete days. */
+function weekCharts(weeks: readonly WeekBar[], top: number): string {
+  return (
+    weekChart(
+      weeks,
+      top,
+      'Weekly deficit, kcal: planned minus eaten, complete days only',
+      (w) => w.deficit,
+      false,
+    ) +
+    weekChart(
+      weeks,
+      top - CHART_HEIGHT - CHART_CAPTION_GAP,
+      'Per complete day, kcal',
+      (w) => w.perDay,
+      true,
+    )
+  )
+}
+
+function monthHeading(label: string, y: number): string {
+  return (
+    text(MARGIN, y, 9, FONT.sansBold, label) +
+    line(MARGIN, y - 3.5, PAGE.width - MARGIN, y - 3.5, 0.5, 0.6)
+  )
+}
+
+/**
  * The report as PDF bytes.
  *
  * Paginated because one line per day over a year is 365 lines; the summary only
@@ -256,24 +520,52 @@ export function renderCalorieReportPdf(report: CalorieReport): Uint8Array {
 
   let page = ''
   let y = PAGE.height - MARGIN
+  // Re-emitted at the top of every page, so a row is never orphaned from the
+  // month it belongs to.
+  let month = ''
 
-  // First page only: title, then the summary, then the table under it.
   page += text(MARGIN, y, 16, FONT.sansBold, 'Calorie report')
   y -= 26
+
   const block = summary(report, y)
   page += block.content
-  y = block.y - 10
-  page += header(y)
-  y -= LINE + 3
+  // Beside the summary, not below it: the two say the same thing and reading
+  // them together is the point.
+  page += pie(report, PAGE.width - MARGIN - 52, y - 34, 46)
+  y = block.y - 14
+
+  if (report.weeks.length > 0) {
+    page += weekCharts(report.weeks, y)
+    y -= CHARTS_TOTAL_HEIGHT + 10
+  }
+
+  const openTable = () => {
+    page += header(y)
+    y -= LINE + 3
+  }
+  openTable()
 
   for (const day of report.days) {
-    if (y < bottom) {
+    const label = monthLabel(day.date)
+    // A heading needs its own line plus at least one row under it; breaking
+    // between the two would strand it at the foot of a page.
+    const needed = label === month ? LINE : LINE * 2 + 8
+
+    if (y - needed < bottom) {
       bodies.push(page)
       page = ''
       y = PAGE.height - MARGIN
-      page += header(y)
-      y -= LINE + 3
+      month = ''
+      openTable()
     }
+
+    if (label !== month) {
+      month = label
+      y -= 6
+      page += monthHeading(label, y)
+      y -= LINE + 2
+    }
+
     page += row(day, y)
     y -= LINE
   }

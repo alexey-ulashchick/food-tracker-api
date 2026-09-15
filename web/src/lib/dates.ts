@@ -35,6 +35,29 @@ export function diffDays(a: string, b: string): number {
   return Math.round(ms / 86_400_000)
 }
 
+/**
+ * ISO 8601 week number, and the year that week belongs to.
+ *
+ * Not simply "days since 1 January divided by seven": an ISO week belongs to
+ * whichever year holds its Thursday, so 1 January can fall in week 52 or 53 of
+ * the previous year and 31 December in week 1 of the next. The year is returned
+ * alongside because a report spanning New Year would otherwise collapse two
+ * different week 1s into one.
+ */
+export function isoWeek(iso: string): { year: number; week: number } {
+  // Anchored to UTC midnight: the only question is which calendar week the date
+  // falls in, and a local reading could answer with the neighbouring day.
+  const d = new Date(`${iso}T00:00:00Z`)
+  // Monday = 1 … Sunday = 7.
+  const weekday = d.getUTCDay() || 7
+  // Step to the Thursday of this week; that Thursday's year is the ISO year.
+  d.setUTCDate(d.getUTCDate() + 4 - weekday)
+  const year = d.getUTCFullYear()
+  const jan1 = Date.UTC(year, 0, 1)
+  const week = Math.ceil(((d.getTime() - jan1) / 86_400_000 + 1) / 7)
+  return { year, week }
+}
+
 /** Inclusive on both ends, ascending. */
 export function dateRange(from: string, to: string): string[] {
   const out: string[] = []

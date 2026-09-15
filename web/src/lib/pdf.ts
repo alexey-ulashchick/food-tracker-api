@@ -105,6 +105,55 @@ export function fillRect(x: number, y: number, w: number, h: number, [r, g, b]: 
 }
 
 /**
+ * A filled pie slice.
+ *
+ * PDF has no arc operator, so the arc is approximated with cubic Beziers — the
+ * standard construction, control points at 4/3·tan(θ/4)·r along the tangents.
+ * It is exact at both ends and within about a thousandth of the radius in
+ * between, and the sweep is split so no segment exceeds a quarter turn, where
+ * the approximation starts to show.
+ */
+export function pieSlice(
+  cx: number,
+  cy: number,
+  r: number,
+  from: number,
+  to: number,
+  [red, green, blue]: Rgb,
+): string {
+  const sweep = to - from
+  if (sweep <= 0) return ''
+
+  const segments = Math.max(1, Math.ceil(sweep / (Math.PI / 2)))
+  const step = sweep / segments
+
+  const at = (a: number) => [cx + r * Math.cos(a), cy + r * Math.sin(a)] as const
+  const [x0, y0] = at(from)
+
+  // A full turn is a circle, not a wedge: closing through the centre would draw
+  // a seam across it.
+  let path =
+    sweep >= Math.PI * 2 - 1e-9
+      ? `${round(x0)} ${round(y0)} m\n`
+      : `${round(cx)} ${round(cy)} m ${round(x0)} ${round(y0)} l\n`
+
+  for (let i = 0; i < segments; i++) {
+    const a0 = from + step * i
+    const a1 = a0 + step
+    const k = (4 / 3) * Math.tan(step / 4) * r
+    const [sx, sy] = at(a0)
+    const [ex, ey] = at(a1)
+    const c1x = sx - k * Math.sin(a0)
+    const c1y = sy + k * Math.cos(a0)
+    const c2x = ex + k * Math.sin(a1)
+    const c2y = ey - k * Math.cos(a1)
+    path += `${round(c1x)} ${round(c1y)} ${round(c2x)} ${round(c2y)} ${round(ex)} ${round(ey)} c\n`
+  }
+
+  return `q ${round(red)} ${round(green)} ${round(blue)} rg\n${path}h f Q\n`
+}
+
+/**
  * Assembles the file.
  *
  * Object numbering is positional and has to stay that way: the catalog is 1,

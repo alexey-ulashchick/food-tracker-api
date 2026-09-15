@@ -239,6 +239,90 @@ describe('a day that was not finished being logged', () => {
   })
 })
 
+describe('weekBars', () => {
+  const built = (summaries: Parameters<typeof buildCalorieReport>[0]) =>
+    buildCalorieReport(summaries, []).weeks
+
+  test('one bar per ISO week, in order', () => {
+    // 14-20 September 2026 is week 38; the 21st opens week 39.
+    const weeks = built([
+      day('2026-09-14', { calories: 2000 }, 2000),
+      day('2026-09-20', { calories: 2000 }, 2000),
+      day('2026-09-21', { calories: 2000 }, 2000),
+    ])
+    expect(weeks.map((w) => w.label)).toEqual(['W38', 'W39'])
+  })
+
+  test('the bar is planned minus eaten, so a deficit points up', () => {
+    // Sign named deliberately: 4000 planned against 4100 eaten is -100, an
+    // overshoot, and it hangs below the axis.
+    const weeks = built([
+      day('2026-09-14', { calories: 2200 }, 2000),
+      day('2026-09-15', { calories: 1900 }, 2000),
+    ])
+    expect(weeks[0]?.deficit).toBe(-100)
+    expect(weeks[0]?.completeDays).toBe(2)
+    expect(weeks[0]?.perDay).toBe(-50)
+  })
+
+  test('both sides drop the same days, so the difference is comparable', () => {
+    // An incomplete day leaves neither its goal nor its intake in the sums; if
+    // only its intake went, the deficit would grow by the whole missing goal.
+    const weeks = built([
+      day('2026-09-14', { calories: 1800 }, 2000),
+      day('2026-09-15', { calories: 200 }, 2000),
+    ])
+    expect(weeks[0]?.deficit).toBe(200)
+    expect(weeks[0]?.completeDays).toBe(1)
+  })
+
+  test('the per-day figure is what makes a short week comparable', () => {
+    // Two days at -200 each and five days at -200 each are the same behaviour;
+    // only the per-day series says so.
+    const two = built([
+      day('2026-09-14', { calories: 1800 }, 2000),
+      day('2026-09-15', { calories: 1800 }, 2000),
+    ])
+    expect(two[0]?.deficit).toBe(400)
+    expect(two[0]?.perDay).toBe(200)
+  })
+
+  test('over the week is red, under is green', () => {
+    expect(built([day('2026-09-14', { calories: 2200 }, 2000)])[0]?.status).toBe('over')
+    expect(built([day('2026-09-14', { calories: 1900 }, 2000)])[0]?.status).toBe('clean')
+  })
+
+  test('a week that came out exactly level is not an overshoot', () => {
+    expect(built([day('2026-09-14', { calories: 2000 }, 2000)])[0]?.status).toBe('clean')
+  })
+
+  test('a week that is nothing but gaps has no per-day figure to divide', () => {
+    const weeks = built([day('2026-09-14', null, 2000)])
+    expect(weeks[0]).toMatchObject({ completeDays: 0, deficit: 0, perDay: 0, status: 'incomplete' })
+  })
+
+  test('a gap makes the week grey, whatever the balance says', () => {
+    // The height is short by a missing day, so colouring it by that height would
+    // assert something about a total known to be incomplete.
+    const weeks = built([
+      day('2026-09-14', { calories: 2600 }, 2000),
+      day('2026-09-15', null, 2000),
+    ])
+    expect(weeks[0]?.status).toBe('incomplete')
+    expect(weeks[0]?.deficit).toBe(-600)
+  })
+
+  test('weeks either side of New Year stay separate', () => {
+    // 31 December 2026 is week 53 of 2026; 4 January 2027 is week 1 of 2027.
+    // Keyed by number alone they would merge, or sort wrongly.
+    const weeks = built([
+      day('2026-12-31', { calories: 2000 }, 2000),
+      day('2027-01-04', { calories: 2000 }, 2000),
+    ])
+    expect(weeks.map((w) => w.label)).toEqual(['W53', 'W1'])
+  })
+})
+
 describe('the rendered PDF', () => {
   const decode = (b: Uint8Array) => new TextDecoder().decode(b)
 
@@ -300,14 +384,13 @@ describe('the rendered PDF', () => {
         ),
       ),
     )
-    // Three distinct fills, one per status, plus the three legend swatches.
-    const fills = [...pdf.matchAll(/q ([\d.]+ [\d.]+ [\d.]+) rg/g)].map((m) => m[1])
-    expect(new Set(fills).size).toBe(3)
-    // Each appears twice: once as a row, once in the legend.
-    for (const colour of new Set(fills)) {
-      expect(fills.filter((f) => f === colour)).toHaveLength(2)
-    }
-    // And no symbols are appended to the dates any more.
+    // Six fills: three pale row tints, and the same three hues saturated for the
+    // pie and the bars. A pie of near-white slices would be unreadable, and a
+    // row tint dark enough for a pie would swallow the text on it.
+    const fills = new Set([...pdf.matchAll(/q ([\d.]+ [\d.]+ [\d.]+) rg/g)].map((m) => m[1]))
+    expect(fills.size).toBe(6)
+
+    // And no symbol is appended to a date any more.
     expect(pdf).toContain('(2026-09-01)')
     expect(pdf).not.toMatch(/\(2026-09-0\d [*?]\)/)
   })
@@ -320,6 +403,79 @@ describe('the rendered PDF', () => {
     )
     expect(pdf).toContain('(2400)')
     expect(pdf).not.toContain('(-2400)')
+  })
+
+  test('draws a pie of the three counts', () => {
+    const pdf = decode(
+      renderCalorieReportPdf(
+        buildCalorieReport(
+          [
+            day('2026-09-01', { calories: 1900 }, 2000),
+            day('2026-09-02', { calories: 2600 }, 2000),
+            day('2026-09-03', { calories: 900 }, 2000),
+          ],
+          [],
+        ),
+      ),
+    )
+    // Curved paths, one per slice: `h f` closes a pie, `re f` fills a rectangle.
+    expect(pdf.match(/h f/g)).toHaveLength(3)
+    // Each cuts to the centre, which is what makes it a wedge and not a ring.
+    const wedges = [...pdf.matchAll(/rg\n[\d.]+ [\d.]+ m [\d.]+ [\d.]+ l/g)]
+    expect(wedges).toHaveLength(3)
+  })
+
+  test('a status with no days gets no slice', () => {
+    // A zero-width wedge is invisible but still a path, and one that closes on
+    // itself is the sort of thing a renderer may draw oddly.
+    const pdf = decode(
+      renderCalorieReportPdf(buildCalorieReport([day('2026-09-01', { calories: 1900 }, 2000)], [])),
+    )
+    expect(pdf.match(/h f/g)).toHaveLength(1)
+    // One slice is the whole circle, and a circle must not be cut to the centre
+    // or the seam shows.
+    expect(pdf).not.toMatch(/rg\n[\d.]+ [\d.]+ m [\d.]+ [\d.]+ l/)
+  })
+
+  test('groups the days under calendar months', () => {
+    const pdf = decode(
+      renderCalorieReportPdf(
+        buildCalorieReport(
+          [
+            day('2026-09-30', { calories: 1900 }, 2000),
+            day('2026-10-01', { calories: 1900 }, 2000),
+          ],
+          [],
+        ),
+      ),
+    )
+    expect(pdf).toContain('(September 2026)')
+    expect(pdf).toContain('(October 2026)')
+  })
+
+  test('nothing is drawn outside the page margins', () => {
+    // The charts, the pie and the table all place themselves by arithmetic, and
+    // a printer will cut off whatever strays. Cheap to check, invisible to
+    // review.
+    const long = Array.from({ length: 60 }, (_, i) => {
+      const d = new Date(Date.UTC(2026, 7, 3) + i * 86_400_000).toISOString().slice(0, 10)
+      return day(d, { calories: i % 9 === 0 ? 0 : 2600 }, 2400)
+    })
+    const pdf = decode(renderCalorieReportPdf(buildCalorieReport(long, [])))
+    const body = pdf.slice(pdf.indexOf('stream\n') + 7, pdf.indexOf('\nendstream'))
+
+    const xs = [...body.matchAll(/(-?[\d.]+) (-?[\d.]+) Td/g)].map((m) => Number(m[1]))
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(36)
+    expect(Math.max(...xs)).toBeLessThanOrEqual(555)
+
+    const rects = [...body.matchAll(/rg (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) re f/g)]
+    for (const r of rects) {
+      const [x, y, w, h] = r.slice(1).map(Number) as [number, number, number, number]
+      expect(x).toBeGreaterThanOrEqual(36)
+      expect(x + w).toBeLessThanOrEqual(555)
+      expect(y).toBeGreaterThanOrEqual(20)
+      expect(y + h).toBeLessThanOrEqual(822)
+    }
   })
 
   test('the legend names all three colours', () => {

@@ -312,7 +312,41 @@ their Diff column is left blank — the arithmetic is well defined and the figur
 is exactly the deficit the report just declined to believe.
 
 The summary is four counts (total, on target, off target, incomplete) and two
-averages, and the averages say how many complete days they are over.
+averages, and the averages say how many complete days they are over. Beside it, a
+pie of the three counts in the same three colours.
+
+Under that, two bar charts, a bar per ISO week:
+
+```
+deficit = Σ goal − Σ eaten,  over that week's complete days only
+per day = deficit ÷ complete days
+```
+
+Incomplete days leave **both** sums before either is taken, so the two sides
+always cover exactly the same days — dropping only the intake would inflate the
+deficit by the whole missing goal. The sign is named rather than implied: planned
+minus eaten, so a deficit is positive and points up.
+
+Green when the week came out at or under plan, red when it came out over, **grey
+when any day in it was incomplete**. Grey wins over red on purpose: the height is
+a sum over the days that counted, so a week with a gap is drawn shorter than it
+was. That is a fact about the bar rather than about the eating, and colouring it
+by that height would assert something about a total known to be missing days.
+
+The second chart is why the first is not enough. A six-day week and a seven-day
+week are not comparable by total; per complete day they are, so a week that lost
+a day to a gap can still be read against its neighbours.
+
+Weeks are keyed by ISO week *and* year, or a report spanning New Year would merge
+two different week 1s into one bar.
+
+The day rows are grouped under calendar-month headings, re-emitted at the top of
+each page so a row is never orphaned from its month.
+
+PDF has no arc operator, so the pie is cubic Béziers — control points at
+4/3·tan(θ/4)·r along the tangents, split so no segment exceeds a quarter turn.
+Sampled against a true circle it is within 0.012 pt at r = 50, and the test does
+exactly that rather than trusting the formula.
 
 History's weekly metrics apply the same rule from the same constant
 (`INCOMPLETE_RATIO`), so the two surfaces cannot disagree about which days
