@@ -2,16 +2,36 @@ import { addDays, dateRange, diffDays, fromIsoDate, toIsoDate } from './dates'
 
 // Port of loadCalorieMetrics + WeekRollup in HistoryView.swift:493-750.
 //
-// The missing-data rules are the whole substance of this file and come straight
-// from the original spec:
+// The missing-data rules are the whole substance of this file:
 //   * no goal on a day → the mean of explicit goals within ±7 days; if that
 //     window is empty too, the day is skipped entirely;
-//   * no meals on a day → treated as a perfect match (eaten = goal), so blank
-//     days do not drag compliance down;
+//   * a day with less than SUSPECT_RATIO of its goal logged is not counted
+//     either, and is reported separately;
 //   * "on target" is a ratio inside [0.9, 1.1], inclusive at both ends.
+//
+// The second rule replaces the original spec's, which treated a day with no
+// meals as a perfect match — "so blank days do not drag compliance down". That
+// is exactly backwards: it scored silence as success, so a week nobody logged
+// read as a flawless week. The compliance figure was the one thing this file
+// computes, and forgetting to log made it go up.
+//
+// Removing the fiction is not enough on its own, though: with blank days simply
+// skipped, a week with two logged days would report "2 / 2, 100%". That is a
+// different lie in the same direction, which is why the rollup counts the days
+// it refused and the screen shows them.
 
 export const ON_TARGET_MIN = 0.9
 export const ON_TARGET_MAX = 1.1
+
+/**
+ * Below this share of the goal, a day was not eaten lightly — it was left
+ * half-logged.
+ *
+ * Nobody hits 55% of their target and stops; they forget dinner. The PDF report
+ * reads the same constant, so the two surfaces cannot disagree about which days
+ * count.
+ */
+export const SUSPECT_RATIO = 0.6
 
 /** Fat energy density. The UI is Russian, so kg only — the Swift version
  *  branched on Locale and its two screens disagreed as a result. */
@@ -19,8 +39,15 @@ export const KCAL_PER_KG_FAT = 7700
 
 export type WeekRollup = {
   onTargetDays: number
-  /** Days that had a usable goal; days without one are excluded. */
+  /** Days counted: a usable goal, and enough logged against it to be believed. */
   totalDays: number
+  /**
+   * Days left out — no usable goal, or under SUSPECT_RATIO of it logged.
+   *
+   * Reported rather than merely skipped, because a small denominator flatters:
+   * one logged day out of seven would otherwise read as a perfect week.
+   */
+  suspectDays: number
   totalEaten: number
   totalGoal: number
 }
@@ -33,6 +60,7 @@ export type CalorieMetrics = {
 export const EMPTY_ROLLUP: WeekRollup = {
   onTargetDays: 0,
   totalDays: 0,
+  suspectDays: 0,
   totalEaten: 0,
   totalGoal: 0,
 }
@@ -81,25 +109,39 @@ export function effectiveGoal(iso: string, goalByDay: Map<string, number>): numb
 export function rollup(from: string, days: number, totals: DayTotals): WeekRollup {
   let onTargetDays = 0
   let totalDays = 0
+  let suspectDays = 0
   let totalEaten = 0
   let totalGoal = 0
 
   for (let i = 0; i < days; i++) {
     const iso = addDays(from, i)
     const goal = effectiveGoal(iso, totals.goalByDay)
-    if (goal == null || goal <= 0) continue
+    if (goal == null || goal <= 0) {
+      suspectDays++
+      continue
+    }
 
-    // A day with no meals counts as a perfect match rather than a zero.
-    const eaten = totals.eatenByDay.get(iso) ?? goal
+    // Absent means nothing was logged, and nothing logged means zero eaten. It
+    // used to mean "eaten = goal", which scored a forgotten day as a perfect
+    // one; see the header.
+    const eaten = totals.eatenByDay.get(iso) ?? 0
+    const ratio = eaten / goal
+
+    if (ratio < SUSPECT_RATIO) {
+      suspectDays++
+      continue
+    }
+
     totalDays++
     totalEaten += eaten
     totalGoal += goal
-
-    const ratio = eaten / goal
+    // The full band, both ends. The suspicion threshold is 0.6 and the band
+    // opens at 0.9, so the guard above does NOT stand in for the lower bound —
+    // a day at 0.75 is counted and is not on target.
     if (ratio >= ON_TARGET_MIN && ratio <= ON_TARGET_MAX) onTargetDays++
   }
 
-  return { onTargetDays, totalDays, totalEaten, totalGoal }
+  return { onTargetDays, totalDays, suspectDays, totalEaten, totalGoal }
 }
 
 /**

@@ -310,11 +310,17 @@ that never happened, and a deficit is the number the report exists to get right.
 The summary's "On target" is measured against the counted days for the same
 reason.
 
-Note this differs on purpose from the History screen, whose `rollup()` counts a
-day with no meals as a perfect match ("no meals → eaten = goal", straight from
-the original spec). The on-target band is identical; only the treatment of
-silence differs. A streak may be forgiving; a monthly report that scores silence
-as success is worse than useless.
+History's weekly metrics apply the same rule from the same constants, so the two
+surfaces cannot disagree about which days count. That replaced the original
+spec's rule, which treated a day with no meals as a perfect match "so blank days
+do not drag compliance down" — exactly backwards: it scored silence as success,
+so a week nobody logged read as flawless and forgetting to log pushed compliance
+up.
+
+Removing the fiction is not enough on its own. With blank days simply skipped, a
+week with two logged days reports "2 / 2 · 100%", which is the same lie in the
+same direction, so the rollup counts the days it refused and the metrics row
+shows them: `2 / 2 в цели · 0 ккал · 100% попаданий · 3 без данных`.
 
 It is **in English**, and that is the whole design decision. The PDF format has
 fourteen fonts every reader carries built in, and not one of them has a single

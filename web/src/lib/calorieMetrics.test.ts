@@ -81,15 +81,43 @@ describe('effectiveGoal', () => {
 })
 
 describe('rollup', () => {
-  test('a day with no usable goal is skipped entirely', () => {
-    expect(rollup('2026-09-01', 3, totals([]))).toEqual(EMPTY_ROLLUP)
+  test('a day with no usable goal is not counted, and is reported', () => {
+    expect(rollup('2026-09-01', 3, totals([]))).toEqual({ ...EMPTY_ROLLUP, suspectDays: 3 })
   })
 
-  test('a day with no meals counts as a perfect match', () => {
+  test('a day with no meals is not a perfect match', () => {
+    // It used to be. That scored silence as success, so a week nobody logged
+    // read as flawless and forgetting to log pushed compliance up.
     const r = rollup('2026-09-01', 1, totals([['2026-09-01', 2000]]))
-    expect(r).toEqual({ onTargetDays: 1, totalDays: 1, totalEaten: 2000, totalGoal: 2000 })
+    expect(r).toEqual({
+      onTargetDays: 0,
+      totalDays: 0,
+      suspectDays: 1,
+      totalEaten: 0,
+      totalGoal: 0,
+    })
+    expect(compliance(r)).toBe(0)
     expect(balanceKcal(r)).toBe(0)
-    expect(compliance(r)).toBe(1)
+  })
+
+  test('a half-logged day is not counted either', () => {
+    // Under 60% of the goal is a forgotten dinner, not a light day.
+    const r = rollup('2026-09-01', 1, totals([['2026-09-01', 2000]], [['2026-09-01', 1100]]))
+    expect([r.totalDays, r.suspectDays, r.totalEaten]).toEqual([0, 1, 0])
+  })
+
+  test('exactly at the threshold it counts', () => {
+    const r = rollup('2026-09-01', 1, totals([['2026-09-01', 2000]], [['2026-09-01', 1200]]))
+    expect([r.totalDays, r.suspectDays]).toEqual([1, 0])
+    expect(r.onTargetDays).toBe(0)
+  })
+
+  test('counted but off target is a real state, distinct from suspect', () => {
+    // 0.75 of the goal: believable as a light day, and not on target. The
+    // suspicion threshold is 0.6 and the band opens at 0.9 — one does not stand
+    // in for the other.
+    const r = rollup('2026-09-01', 1, totals([['2026-09-01', 2000]], [['2026-09-01', 1500]]))
+    expect([r.totalDays, r.suspectDays, r.onTargetDays]).toEqual([1, 0, 0])
   })
 
   test('on-target is inclusive at both 0.9 and 1.1', () => {
@@ -103,8 +131,9 @@ describe('rollup', () => {
   })
 
   test('a zero or negative goal is not usable', () => {
-    expect(rollup('2026-09-01', 1, totals([['2026-09-01', 0]]))).toEqual(EMPTY_ROLLUP)
-    expect(rollup('2026-09-01', 1, totals([['2026-09-01', -100]]))).toEqual(EMPTY_ROLLUP)
+    const suspect = { ...EMPTY_ROLLUP, suspectDays: 1 }
+    expect(rollup('2026-09-01', 1, totals([['2026-09-01', 0]]))).toEqual(suspect)
+    expect(rollup('2026-09-01', 1, totals([['2026-09-01', -100]]))).toEqual(suspect)
   })
 
   test('accumulates eaten and goal across the window', () => {
@@ -120,21 +149,25 @@ describe('rollup', () => {
         [
           ['2026-09-01', 2100],
           ['2026-09-02', 1500],
-          // third day has no meals → counts as 2000
+          // third day has no meals → not counted at all
         ],
       ),
     )
-    expect(r.totalDays).toBe(3)
-    expect(r.totalEaten).toBe(2100 + 1500 + 2000)
-    expect(r.totalGoal).toBe(6000)
-    // 2100/2000 = 1.05 on target; 1500/2000 = 0.75 off; blank day on target.
-    expect(r.onTargetDays).toBe(2)
+    expect(r.totalDays).toBe(2)
+    expect(r.suspectDays).toBe(1)
+    expect(r.totalEaten).toBe(2100 + 1500)
+    expect(r.totalGoal).toBe(4000)
+    // 2100/2000 = 1.05 on target; 1500/2000 = 0.75 counted but off.
+    expect(r.onTargetDays).toBe(1)
   })
 
-  test('an explicitly zero intake is a real zero, not a blank day', () => {
-    const r = rollup('2026-09-01', 1, totals([['2026-09-01', 2000]], [['2026-09-01', 0]]))
-    expect(r.totalEaten).toBe(0)
-    expect(r.onTargetDays).toBe(0)
+  test('an explicitly zero intake and a blank day now agree', () => {
+    // They used to disagree: a blank day scored perfectly and an explicit zero
+    // scored nothing, for the same absence of food.
+    const blank = rollup('2026-09-01', 1, totals([['2026-09-01', 2000]]))
+    const zero = rollup('2026-09-01', 1, totals([['2026-09-01', 2000]], [['2026-09-01', 0]]))
+    expect(zero).toEqual(blank)
+    expect(zero.suspectDays).toBe(1)
   })
 })
 
@@ -149,19 +182,25 @@ describe('calorieMetrics', () => {
       return [iso, goal] as [string, number]
     })
 
+  // These pin the window boundaries, so every day in them must be countable —
+  // goals AND meals. Goals alone would leave every day suspect and every
+  // totalDays zero, which satisfies nothing.
+  const loggedDays = (from: string, days: number, goal: number) =>
+    totals(everyDay(from, days, goal), everyDay(from, days, goal))
+
   test('this week spans Monday to today inclusive', () => {
     // Friday 2026-09-04 → Mon..Fri is five days.
-    const m = calorieMetrics(totals(everyDay('2026-08-31', 60, 2000)), '2026-09-04')
+    const m = calorieMetrics(loggedDays('2026-08-31', 60, 2000), '2026-09-04')
     expect(m.thisWeek.totalDays).toBe(5)
   })
 
   test('a Monday still counts one day, not zero', () => {
-    const m = calorieMetrics(totals(everyDay('2026-08-31', 60, 2000)), '2026-08-31')
+    const m = calorieMetrics(loggedDays('2026-08-31', 60, 2000), '2026-08-31')
     expect(m.thisWeek.totalDays).toBe(1)
   })
 
   test('the long window is the 42 days before this Monday', () => {
-    const m = calorieMetrics(totals(everyDay('2026-07-01', 120, 2000)), '2026-09-04')
+    const m = calorieMetrics(loggedDays('2026-07-01', 120, 2000), '2026-09-04')
     expect(m.lastSixWeeks.totalDays).toBe(42)
   })
 
@@ -172,16 +211,25 @@ describe('calorieMetrics', () => {
     expect(range.to).toBe('2026-09-04')
     // 42 days back from Monday, and the rollup covers [start, Monday).
     expect(range.from).toBe('2026-07-20')
-    const m = calorieMetrics(totals([[monday, 2000]]), '2026-09-04')
+    // Meals everywhere, so the assertion is about the goal window rather than
+    // about which days happen to be countable.
+    const m = calorieMetrics(
+      {
+        goalByDay: new Map([[monday, 2000]]),
+        eatenByDay: new Map(everyDay('2026-07-01', 120, 2000)),
+      },
+      '2026-09-04',
+    )
     // Only this Monday has a goal, so the six-week window sees it only via the
     // ±7-day average — never as the day itself.
+    expect(m.lastSixWeeks.totalDays).toBeGreaterThan(0)
     expect(m.lastSixWeeks.totalDays).toBeLessThanOrEqual(7)
   })
 
-  test('no data at all yields empty rollups rather than throwing', () => {
+  test('no data at all yields no counted days rather than throwing', () => {
     const m = calorieMetrics(totals([]), '2026-09-04')
-    expect(m.thisWeek).toEqual(EMPTY_ROLLUP)
-    expect(m.lastSixWeeks).toEqual(EMPTY_ROLLUP)
+    expect(m.thisWeek).toEqual({ ...EMPTY_ROLLUP, suspectDays: 5 })
+    expect(m.lastSixWeeks).toEqual({ ...EMPTY_ROLLUP, suspectDays: 42 })
     expect(compliance(m.thisWeek)).toBe(0)
   })
 })

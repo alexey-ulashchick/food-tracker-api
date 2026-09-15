@@ -1,4 +1,4 @@
-import { ON_TARGET_MAX, ON_TARGET_MIN } from '@/lib/calorieMetrics'
+import { ON_TARGET_MAX, ON_TARGET_MIN, SUSPECT_RATIO } from '@/lib/calorieMetrics'
 import { FONT, PAGE, buildPdf, line, monoRight, text } from '@/lib/pdf'
 import type { ServerDaySummary, ServerWeight } from '@shared/types.ts'
 
@@ -8,15 +8,10 @@ import type { ServerDaySummary, ServerWeight } from '@shared/types.ts'
 // English, because the report is a hand-written PDF with no embedded font —
 // see the header of lib/pdf.ts for why that trade was made.
 
-/**
- * Below this share of the goal, a day is not a day of eating very little — it
- * is a day that was not finished being logged.
- *
- * Nobody hits 55% of their target and stops; they forget dinner. Averaging such
- * a day in reports a deficit that never happened, which is the one number a
- * calorie report exists to get right.
- */
-export const SUSPECT_RATIO = 0.6
+// SUSPECT_RATIO lives with the other thresholds in lib/calorieMetrics.ts, which
+// the History metrics read too — so the two surfaces cannot disagree about which
+// days count. Re-exported here because this is where the rule is described.
+export { SUSPECT_RATIO }
 
 export type ReportDay = {
   date: string
@@ -93,13 +88,9 @@ export function buildCalorieReport(
       fat: d.eaten.fats,
       carbs: d.eaten.carbs,
       suspect,
-      // The same band the History metrics use — but not the same treatment of a
-      // day with nothing logged. rollup() in lib/calorieMetrics.ts counts such a
-      // day as a perfect match ("no meals → eaten = goal", straight from the
-      // original spec), so History will report it as on target where this
-      // reports it as suspect. Deliberate: a monthly report that scores silence
-      // as success is worse than useless, while the History streak is allowed
-      // to be forgiving.
+      // The same band and the same suspicion threshold the History metrics use,
+      // from the same constants — so a day the report refuses to judge is a day
+      // History refuses too.
       onTarget: !suspect && ratio !== null && ratio >= ON_TARGET_MIN && ratio <= ON_TARGET_MAX,
     }
   })

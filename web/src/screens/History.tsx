@@ -364,6 +364,17 @@ function MetricsRow({
             <span className="tnum" style={{ color: label.secondary }}>
               {Math.round(compliance(stat) * 100)}% попаданий
             </span>
+            {/* Without this, a week with two logged days reads "2 / 2 · 100%".
+                Dropping the old "a blank day is a perfect day" fiction only
+                helps if the days it dropped are visible. */}
+            {stat.suspectDays > 0 ? (
+              <>
+                <span style={{ color: label.secondary }}>·</span>
+                <span className="tnum" style={{ color: label.tertiary }}>
+                  {stat.suspectDays} без данных
+                </span>
+              </>
+            ) : null}
           </span>
           {fat ? (
             <span
