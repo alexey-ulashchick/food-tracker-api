@@ -321,8 +321,14 @@ is exactly the deficit the report just declined to believe.
 Four blocks down the page, each behind a wide-tracked small-caps label and a
 hairline rule, so it reads as a report rather than as a wall:
 
-**Days** and **Intake** side by side — the four counts with their share of the
-period, against the averages over complete days only. **Outcome** puts two
+**Days** and **Intake** side by side, with the pie in a lane of its own to the
+right — the four counts with their share of the period, against the averages
+over complete days only. The lane is reserved rather than the circle nudged,
+because "top right, level with the figures" put the pie exactly on top of the
+Intake column: everything in it is right-aligned to the content edge, which is
+where the pie was centred, so all four values were drawn underneath it.
+
+**Outcome** puts two
 numbers next to each other that are worth comparing and are nowhere else in the
 app:
 
@@ -363,8 +369,15 @@ a day to a gap can still be read against its neighbours.
 Weeks are keyed by ISO week *and* year, or a report spanning New Year would merge
 two different week 1s into one bar.
 
-**The vertical axis follows the 85th percentile of the magnitudes, not the
-maximum.** One catastrophic week against nineteen ordinary ones sets a scale on
+**The height is divided between the two directions by gridline count, not in
+half.** Both sides share one scale — a +100 bar and a −100 bar have to come out
+the same height or the chart lies — but a series that is almost entirely negative
+was spending the whole upper half of the plot on blank paper, and the bars it did
+have paid for that in height. Each direction now gets as many steps as its own
+data needs, so a set of weeks that all overshot puts zero at the top and uses the
+full drop.
+
+**The axis follows the 85th percentile of the magnitudes, not the maximum.** One catastrophic week against nineteen ordinary ones sets a scale on
 which the ordinary nineteen are slivers, which is the same as not drawing them.
 Anything past the limit is drawn clipped — two pale notches across the tip, the
 conventional break — with its real figure printed beyond it. Nothing is hidden;

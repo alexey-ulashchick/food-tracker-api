@@ -446,8 +446,26 @@ function figure(x: number, y: number, label: string, value: string, valueRight: 
   return text(x, y, 8.5, FONT.sans, label) + monoRight(valueRight, y, 8.5, FONT.mono, value)
 }
 
-const COLUMN_GAP = 26
-const HALF = (CONTENT_WIDTH - COLUMN_GAP) / 2
+const COLUMN_GAP = 22
+
+/**
+ * The pie gets its own lane, and the figure columns end before it starts.
+ *
+ * Placing it "top right, level with the figures" put it straight on top of the
+ * Intake column's right-aligned values: everything in that column is aligned to
+ * CONTENT_RIGHT, which is exactly where the pie was centred. Reserving the width
+ * rather than nudging the circle is what makes that impossible rather than
+ * unlikely.
+ */
+const PIE_R = 38
+const PIE_GAP = 22
+/** Right edge of the Intake values — clear of the pie by construction. */
+const FIGURES_RIGHT = CONTENT_RIGHT - (PIE_R * 2 + PIE_GAP)
+const PIE_CX = FIGURES_RIGHT + PIE_GAP + PIE_R
+const HALF = (FIGURES_RIGHT - MARGIN - COLUMN_GAP) / 2
+
+/** Outcome has no pie beside it, so its values get a column of their own. */
+const OUTCOME_VALUE_RIGHT = MARGIN + 300
 
 /**
  * Two columns of figures under the title: how the days went, and what was eaten.
@@ -486,7 +504,7 @@ function dashboard(report: CalorieReport, top: number): { content: string; y: nu
     out += monoRight(MARGIN + HALF - 46, y, 8.5, FONT.mono, leftValue)
     if (isCount)
       out += monoRight(MARGIN + HALF - 8, y, 8, FONT.mono, share(countOf(report, leftLabel)))
-    out += figure(rightColumn, y, rightLabel, rightValue, CONTENT_RIGHT)
+    out += figure(rightColumn, y, rightLabel, rightValue, FIGURES_RIGHT)
     y -= 13
   }
 
@@ -517,7 +535,7 @@ function outcome(report: CalorieReport, top: number): { content: string; y: numb
     y,
     `Cumulative deficit, ${plural(report.completeDays, 'complete day')}`,
     `${signed(report.totalDeficit)} kcal`,
-    MARGIN + HALF + 60,
+    OUTCOME_VALUE_RIGHT,
   )
   y -= 13
   out += figure(
@@ -525,7 +543,7 @@ function outcome(report: CalorieReport, top: number): { content: string; y: numb
     y,
     'Predicted fat change',
     `${kg(-report.predictedFatKg)} kg`,
-    MARGIN + HALF + 60,
+    OUTCOME_VALUE_RIGHT,
   )
   y -= 13
   out += figure(
@@ -533,11 +551,11 @@ function outcome(report: CalorieReport, top: number): { content: string; y: numb
     y,
     'Measured weight change',
     report.weight === null ? 'no readings' : `${kg(report.weight.delta)} kg`,
-    MARGIN + HALF + 60,
+    OUTCOME_VALUE_RIGHT,
   )
   if (report.weight) {
     out += text(
-      MARGIN + HALF + 70,
+      OUTCOME_VALUE_RIGHT + 10,
       y,
       8,
       FONT.mono,
@@ -602,6 +620,25 @@ function niceCeil(v: number): number {
 }
 
 /**
+ * The gridline spacing: the smallest 1/2/2.5/5 x 10^n that covers `extent` in at
+ * most `maxSteps` of them.
+ *
+ * Sizing the band as a nice multiple of a step, rather than as the extent
+ * itself, is what keeps the axis labels round numbers. It costs up to a quarter
+ * of one step in empty paper at the top, which is the usual price of a readable
+ * axis and a fifth of what splitting the height in half was costing.
+ */
+function niceStep(extent: number, maxSteps: number): number {
+  if (extent <= 0) return 1
+  const raw = extent / maxSteps
+  const magnitude = 10 ** Math.floor(Math.log10(raw))
+  for (const m of [1, 2, 2.5, 5]) {
+    if (m * magnitude >= raw) return m * magnitude
+  }
+  return 10 * magnitude
+}
+
+/**
  * How tall the axis is, in data units.
  *
  * Not the largest value: one week four times worse than the rest flattens every
@@ -631,34 +668,42 @@ function weekChart(
 
   const axis = MARGIN + AXIS_WIDTH
   const values = weeks.map(value)
-  const limit = axisLimit(values)
+  const bulk = axisLimit(values)
 
-  const hasUp = values.some((v) => v > 0)
-  const hasDown = values.some((v) => v < 0)
-  // Half the height each way when the data goes both ways; all of it otherwise,
-  // rather than spending half the chart on empty paper.
-  const upHeight = hasUp ? (hasDown ? CHART_HEIGHT / 2 : CHART_HEIGHT) : 0
-  const downHeight = hasDown ? (hasUp ? CHART_HEIGHT / 2 : CHART_HEIGHT) : 0
+  // Each direction gets the room its own data needs — but both are drawn to ONE
+  // scale, because a +100 bar and a -100 bar have to be the same height or the
+  // chart lies. So the height is divided by gridline count rather than in half:
+  // a series that is almost entirely negative was spending the whole upper half
+  // of the plot on blank paper, and the bars it did have paid for it.
+  const extentUp = Math.min(bulk, Math.max(0, ...values))
+  const extentDown = Math.min(bulk, Math.max(0, ...values.map((v) => -v)))
+  const step = niceStep(Math.max(extentUp, extentDown), 3)
+  const stepsUp = extentUp > 0 ? Math.ceil(extentUp / step) : 0
+  const stepsDown = extentDown > 0 ? Math.ceil(extentDown / step) : 0
+
+  // One point per calorie, shared by both directions.
+  const unit = CHART_HEIGHT / (step * Math.max(1, stepsUp + stepsDown))
+  const upHeight = step * stepsUp * unit
+  const downHeight = step * stepsDown * unit
+  // Past its own side's top gridline a bar is drawn broken and labelled.
+  const ceiling = (v: number) => (v >= 0 ? step * stepsUp : step * stepsDown)
 
   const plotBottom = top - CAPTION_DROP - CHART_HEIGHT
   const zeroY = plotBottom + downHeight
-  const scale = (v: number) =>
-    (Math.min(Math.abs(v), limit) / limit) * (v >= 0 ? upHeight : downHeight)
+  const scale = (v: number) => Math.min(Math.abs(v), ceiling(v)) * unit
 
   let out = sectionLabel(MARGIN, top, caption)
 
-  // Gridlines behind the bars, at the axis limit and at half of it.
-  for (const fraction of [1, 0.5]) {
-    if (hasUp) {
-      const gy = zeroY + upHeight * fraction
-      out += line(axis, gy, CONTENT_RIGHT, gy, 0.25, 0.88)
-      out += monoRight(axis - 4, gy - 2, 6, FONT.mono, `+${int(limit * fraction)}`)
-    }
-    if (hasDown) {
-      const gy = zeroY - downHeight * fraction
-      out += line(axis, gy, CONTENT_RIGHT, gy, 0.25, 0.88)
-      out += monoRight(axis - 4, gy - 2, 6, FONT.mono, `-${int(limit * fraction)}`)
-    }
+  // Gridlines behind the bars, one per step in each direction.
+  for (let k = 1; k <= stepsUp; k++) {
+    const gy = zeroY + step * k * unit
+    out += line(axis, gy, CONTENT_RIGHT, gy, 0.25, 0.88)
+    out += monoRight(axis - 4, gy - 2, 6, FONT.mono, `+${int(step * k)}`)
+  }
+  for (let k = 1; k <= stepsDown; k++) {
+    const gy = zeroY - step * k * unit
+    out += line(axis, gy, CONTENT_RIGHT, gy, 0.25, 0.88)
+    out += monoRight(axis - 4, gy - 2, 6, FONT.mono, `-${int(step * k)}`)
   }
 
   const slot = (CONTENT_RIGHT - axis) / weeks.length
@@ -673,7 +718,7 @@ function weekChart(
     // week with no data at all.
     out += fillRect(x, y, barWidth, Math.max(height, 0.7), WEEK_COLOUR[week.status])
 
-    if (Math.abs(v) > limit) {
+    if (Math.abs(v) > ceiling(v)) {
       // The conventional break: two pale notches across the bar near its tip,
       // and the real figure printed beyond it. A silently truncated bar would
       // be a lie told in a chart's own language.
@@ -804,8 +849,8 @@ export function renderCalorieReportPdf(report: CalorieReport): Uint8Array {
 
   const figures = dashboard(report, topOfPage - 42)
   page += figures.content
-  // Top right, level with the figures it summarises.
-  page += pie(report, CONTENT_RIGHT - 44, topOfPage - 66, 40)
+  // In its own lane, level with the figures it summarises.
+  page += pie(report, PIE_CX, topOfPage - 66, PIE_R)
 
   let y = figures.y - 12
   page += rule(y)
@@ -884,10 +929,12 @@ function footer(pageNumber: number, total: number): string {
   let out = line(MARGIN, MARGIN, PAGE.width - MARGIN, MARGIN)
 
   // Swatches rather than words, so the legend is read in the same way the table
-  // is — by colour.
+  // is — by colour. Saturated, not the row tint: a 8x7pt patch of a colour built
+  // to sit behind black text is very nearly white, and the legend was the one
+  // place on the page where the three colours could not be told apart.
   let x = MARGIN
   for (const [status, caption] of LEGEND) {
-    out += fillRect(x, y - 1.5, 8, 7, TINT[status])
+    out += fillRect(x, y - 1.5, 8, 7, SOLID[status])
     out += text(x + 11, y, 7, FONT.sans, caption)
     x += 11 + caption.length * 3.4 + 10
   }

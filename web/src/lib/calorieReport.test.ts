@@ -555,6 +555,89 @@ describe('the rendered PDF', () => {
     expect(notches.length).toBeGreaterThan(0)
   })
 
+  test('the pie does not land on the figures beside it', () => {
+    // It did. The Intake column is right-aligned to the content edge and the pie
+    // was centred there, so every value in it — average eaten, goal, deficit,
+    // macros — was drawn underneath the circle and unreadable.
+    const days = Array.from({ length: 40 }, (_, i) => {
+      const d = new Date(Date.UTC(2026, 5, 1) + i * 86_400_000).toISOString().slice(0, 10)
+      return day(d, { calories: i % 7 === 0 ? 0 : 2600 }, 2400)
+    })
+    const pdf = decode(renderCalorieReportPdf(buildCalorieReport(days, [])))
+    const dashboard = pdf.slice(pdf.indexOf('stream\n') + 7, pdf.indexOf('\nendstream'))
+
+    // Bounded by the Bezier control points, which only the pie emits and which
+    // lie outside the arc they draw — so the box is a superset of the circle and
+    // the test cannot pass by measuring something smaller than what was drawn.
+    const curves = [
+      ...dashboard.matchAll(/([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+) c/g),
+    ]
+    expect(curves.length).toBeGreaterThan(0)
+    const points = curves.flatMap((m) => [
+      [Number(m[1]), Number(m[2])],
+      [Number(m[3]), Number(m[4])],
+      [Number(m[5]), Number(m[6])],
+    ])
+    const disc = {
+      left: Math.min(...points.map((q) => q[0] ?? 0)),
+      right: Math.max(...points.map((q) => q[0] ?? 0)),
+      bottom: Math.min(...points.map((q) => q[1] ?? 0)),
+      top: Math.max(...points.map((q) => q[1] ?? 0)),
+    }
+
+    const ops = [...dashboard.matchAll(/\/(F\d) ([\d.]+) Tf ([\d.-]+) ([\d.-]+) Td \((.*?)\) Tj/g)]
+    expect(ops.length).toBeGreaterThan(10)
+    for (const op of ops) {
+      const font = op[1]
+      const size = Number(op[2])
+      const x = Number(op[3])
+      const y = Number(op[4])
+      const literal = op[5] ?? ''
+      // Courier is exactly 0.6 em; 0.62 is above Helvetica's average, and the
+      // sans strings here are labels far to the left of the pie in any case.
+      const em = font === 'F3' || font === 'F4' ? 0.6 : 0.62
+      const width = literal.replace(/\\/g, '').length * em * size
+      const hits = x + width > disc.left && x < disc.right && y + size > disc.bottom && y < disc.top
+      expect(hits, `"${literal}" sits under the pie`).toBe(false)
+    }
+  })
+
+  /** The gridline labels of every chart, in the order drawn. Size 6 mono, only. */
+  const gridlines = (pdf: string): number[] =>
+    [...pdf.matchAll(/\/F3 6 Tf [\d.-]+ [\d.-]+ Td \((\+?-?\d+)\) Tj/g)].map((m) =>
+      Number(m[1]?.replace('+', '')),
+    )
+
+  test('an almost entirely negative series does not spend half the chart on blank paper', () => {
+    // Every week over plan bar the first. Splitting the height in half put zero
+    // in the middle of the plot and left the whole upper half empty.
+    const days = Array.from({ length: 56 }, (_, i) => {
+      const d = new Date(Date.UTC(2026, 5, 1) + i * 86_400_000).toISOString().slice(0, 10)
+      return day(d, { calories: i < 7 ? 2300 : 2700 }, 2400)
+    })
+    const marks = gridlines(decode(renderCalorieReportPdf(buildCalorieReport(days, []))))
+
+    expect(marks.length).toBeGreaterThan(0)
+    // Both charts: at most one line above zero, and more than one below it.
+    expect(marks.filter((v) => v > 0).length).toBeLessThanOrEqual(2)
+    expect(marks.filter((v) => v < 0).length).toBeGreaterThan(2)
+  })
+
+  test('a symmetric series is given symmetric room, and one scale for both ways', () => {
+    // The scale has to be shared: a +200 bar and a -200 bar must come out the
+    // same height, which is why the height is split by gridline count rather
+    // than each side being fitted to its own extent.
+    const days = Array.from({ length: 28 }, (_, i) => {
+      const d = new Date(Date.UTC(2026, 5, 1) + i * 86_400_000).toISOString().slice(0, 10)
+      return day(d, { calories: i % 14 < 7 ? 2200 : 2600 }, 2400)
+    })
+    const marks = gridlines(decode(renderCalorieReportPdf(buildCalorieReport(days, []))))
+    const up = marks.filter((v) => v > 0)
+    const down = marks.filter((v) => v < 0)
+    expect(up.length).toBe(down.length)
+    expect(up.map((v) => -v).sort()).toEqual(down.sort())
+  })
+
   test('nothing is drawn outside the page margins', () => {
     // The charts, the pie and the table all place themselves by arithmetic, and
     // a printer will cut off whatever strays. Cheap to check, invisible to
