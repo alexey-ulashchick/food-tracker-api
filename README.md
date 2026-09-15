@@ -298,11 +298,16 @@ the day's log stays in the order it was eaten in.
 
 ## The PDF export
 
-**История → PDF** downloads one line per observed day: the date, the goal, what
-was eaten, the difference and the macros as they actually were, under a summary
-of the period. Paginated, A4, a few tens of kilobytes.
+**История → PDF** downloads the whole observation period as A4, a few tens of
+kilobytes: **page one is a dashboard, page two onward is the daily log** — one
+line per day with the date, the goal, what was eaten, the difference and the
+macros as they actually were.
 
-Every day is exactly one of three, and the row is tinted accordingly rather than
+The split is the answer to a first draft that put everything on one sheet. A
+figure worth reading and a hundred and twenty-eight rows of evidence are two
+different documents, and the reader who wants the second will turn the page.
+
+Every day is exactly one of three, and its row is tinted accordingly rather than
 marked with a symbol — green on target, red off target, grey **incomplete**. A
 day is incomplete when it has no goal, or when under 60% of the goal was logged
 against it: nobody eats 55% of their target and stops, they forget dinner.
@@ -311,11 +316,29 @@ Incomplete days are counted in the summary but kept out of the averages, and
 their Diff column is left blank — the arithmetic is well defined and the figure
 is exactly the deficit the report just declined to believe.
 
-The summary is four counts (total, on target, off target, incomplete) and two
-averages, and the averages say how many complete days they are over. Beside it, a
-pie of the three counts in the same three colours.
+### The dashboard
 
-Under that, two bar charts, a bar per ISO week:
+Four blocks down the page, each behind a wide-tracked small-caps label and a
+hairline rule, so it reads as a report rather than as a wall:
+
+**Days** and **Intake** side by side — the four counts with their share of the
+period, against the averages over complete days only. **Outcome** puts two
+numbers next to each other that are worth comparing and are nowhere else in the
+app:
+
+```
+Cumulative deficit, 118 complete days   +6175 kcal
+Predicted fat change                    -0.8 kg      ← deficit ÷ 7700
+Measured weight change                  -2.3 kg      78.4 -> 76.1
+```
+
+7700 kcal per kilogram of fat is the usual figure. The two lines disagreeing is
+the point of printing them together: a measured loss well past the predicted one
+says the base expenditure in the tuning screen is set too low, or that some of
+the drop is water and glycogen rather than fat. Neither reading is available from
+either number alone.
+
+Then two bar charts, a bar per ISO week:
 
 ```
 deficit = Σ goal − Σ eaten,  over that week's complete days only
@@ -340,8 +363,23 @@ a day to a gap can still be read against its neighbours.
 Weeks are keyed by ISO week *and* year, or a report spanning New Year would merge
 two different week 1s into one bar.
 
-The day rows are grouped under calendar-month headings, re-emitted at the top of
-each page so a row is never orphaned from its month.
+**The vertical axis follows the 85th percentile of the magnitudes, not the
+maximum.** One catastrophic week against nineteen ordinary ones sets a scale on
+which the ordinary nineteen are slivers, which is the same as not drawing them.
+Anything past the limit is drawn clipped — two pale notches across the tip, the
+conventional break — with its real figure printed beyond it. Nothing is hidden;
+the common range simply gets the height.
+
+Last, **By month**: a row per calendar month with its day counts, its deficit and
+its deficit per day. Twenty weekly bars answer a finer question than a
+four-month report is usually asked, and five lines answer the coarse one.
+
+The white space below it is deliberate. Filling it is what the first draft did.
+
+### The daily log
+
+Grouped under calendar-month headings, re-emitted at the top of each page so a
+row is never orphaned from its month.
 
 PDF has no arc operator, so the pie is cubic Béziers — control points at
 4/3·tan(θ/4)·r along the tangents, split so no segment exceeds a quarter turn.

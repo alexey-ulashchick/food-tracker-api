@@ -323,6 +323,52 @@ describe('weekBars', () => {
   })
 })
 
+describe('monthSummaries', () => {
+  const built = (summaries: Parameters<typeof buildCalorieReport>[0]) =>
+    buildCalorieReport(summaries, []).months
+
+  test('one row per calendar month, in order', () => {
+    const months = built([
+      day('2026-08-31', { calories: 1900 }, 2000),
+      day('2026-09-01', { calories: 1900 }, 2000),
+      day('2026-10-01', { calories: 1900 }, 2000),
+    ])
+    expect(months.map((m) => m.label)).toEqual(['August 2026', 'September 2026', 'October 2026'])
+  })
+
+  test('counts the days and how they went', () => {
+    const months = built([
+      day('2026-09-01', { calories: 1900 }, 2000),
+      day('2026-09-02', { calories: 2600 }, 2000),
+      day('2026-09-03', null, 2000),
+    ])
+    expect(months[0]).toMatchObject({ days: 3, onTarget: 1, incomplete: 1 })
+  })
+
+  test('the deficit drops incomplete days from both sides', () => {
+    // Same rule as the weekly bars, so a month and its weeks agree.
+    const months = built([
+      day('2026-09-01', { calories: 1800 }, 2000),
+      day('2026-09-02', null, 2000),
+    ])
+    expect(months[0]?.deficit).toBe(200)
+    expect(months[0]?.perDay).toBe(200)
+  })
+
+  test('a month with nothing complete has no per-day figure', () => {
+    const months = built([day('2026-09-01', null, 2000)])
+    expect(months[0]).toMatchObject({ deficit: 0, perDay: null })
+  })
+
+  test('months in different years do not merge', () => {
+    const months = built([
+      day('2025-09-01', { calories: 1900 }, 2000),
+      day('2026-09-01', { calories: 1900 }, 2000),
+    ])
+    expect(months.map((m) => m.label)).toEqual(['September 2025', 'September 2026'])
+  })
+})
+
 describe('the rendered PDF', () => {
   const decode = (b: Uint8Array) => new TextDecoder().decode(b)
 
@@ -342,16 +388,18 @@ describe('the rendered PDF', () => {
     )
     expect(pdf).toContain('Calorie report')
     expect(pdf).toContain('2026-09-01 - 2026-09-01')
-    expect(pdf).toContain('1800 eaten / 2000 goal, over 1 complete day)')
-    expect(pdf).toContain('(P 150   F 60   C 200)')
-    for (const heading of ['(Total days)', '(On target)', '(Off target)', '(Incomplete data)']) {
-      expect(pdf, heading).toContain(heading)
+    expect(pdf).toContain('(1800 kcal)')
+    expect(pdf).toContain('(2000 kcal)')
+    expect(pdf).toContain('(+200 kcal)')
+    expect(pdf).toContain('(150 / 60 / 200)')
+    for (const label of ['(DAYS)', '(INTAKE)', '(OUTCOME)', '(On target)', '(Incomplete)']) {
+      expect(pdf, label).toContain(label)
     }
   })
 
-  test('says how many complete days the averages are over', () => {
-    // An average that silently skipped a third of the period would be the most
-    // misleading figure on the page.
+  test('says how many complete days the cumulative figure is over', () => {
+    // A kilocalorie total over an unstated span is the number that got the
+    // previous version's "total balance" deleted.
     const pdf = decode(
       renderCalorieReportPdf(
         buildCalorieReport(
@@ -361,7 +409,23 @@ describe('the rendered PDF', () => {
       ),
     )
     // Singular, not "1 complete days".
-    expect(pdf).toContain('over 1 complete day)')
+    expect(pdf).toContain('Cumulative deficit, 1 complete day)')
+  })
+
+  test('turns the deficit into kilograms beside the measured change', () => {
+    // The one figure that checks the whole model: 7700 kcal to a kilogram of
+    // fat, against what the scale actually said.
+    const report = buildCalorieReport(
+      Array.from({ length: 9 }, (_, i) => day(`2026-09-0${i + 1}`, { calories: 1230 }, 2000)),
+      [weight('2026-09-01', 78.4), weight('2026-09-09', 77.4)],
+    )
+    expect(report.totalDeficit).toBeGreaterThan(0)
+    expect(report.predictedFatKg).toBeCloseTo(report.totalDeficit / 7700, 6)
+
+    const pdf = decode(renderCalorieReportPdf(report))
+    expect(pdf).toContain('(Predicted fat change)')
+    expect(pdf).toContain('(Measured weight change)')
+    expect(pdf).toContain('(-1.0 kg)')
   })
 
   test('drops the total balance, which measured an arbitrary span', () => {
@@ -453,6 +517,44 @@ describe('the rendered PDF', () => {
     expect(pdf).toContain('(October 2026)')
   })
 
+  test('the dashboard carries the monthly rollup', () => {
+    const pdf = decode(
+      renderCalorieReportPdf(
+        buildCalorieReport(
+          [
+            day('2026-08-31', { calories: 1800 }, 2000),
+            day('2026-09-01', { calories: 1800 }, 2000),
+          ],
+          [],
+        ),
+      ),
+    )
+    expect(pdf).toContain('(BY MONTH)')
+    expect(pdf).toContain('(August 2026)')
+    expect(pdf).toContain('(September 2026)')
+  })
+
+  test('sizes the axis to the bulk of the data and marks what it clips', () => {
+    // One week four times worse than the rest used to flatten every other bar
+    // into a sliver. The axis now follows the 85th percentile, and anything past
+    // it is drawn clipped with its real figure printed.
+    // Twelve weeks, so the 85th percentile sits below the outlier rather than on
+    // it — with only a handful of bars the percentile IS the outlier and nothing
+    // would be clipped.
+    const days = Array.from({ length: 84 }, (_, i) => {
+      const d = new Date(Date.UTC(2026, 8, 7) + i * 86_400_000).toISOString().slice(0, 10)
+      const eaten = i >= 14 && i < 21 ? 4000 : 1900
+      return day(d, { calories: eaten }, 2000)
+    })
+    const pdf = decode(renderCalorieReportPdf(buildCalorieReport(days, [])))
+
+    // The clipped bar prints its own value, well past any gridline label.
+    expect(pdf).toContain('(-14000)')
+    // And it is broken by pale notches rather than silently truncated.
+    const notches = [...pdf.matchAll(/q 1 1 1 rg [\d.]+ [\d.]+ [\d.]+ 1\.2 re f Q/g)]
+    expect(notches.length).toBeGreaterThan(0)
+  })
+
   test('nothing is drawn outside the page margins', () => {
     // The charts, the pie and the table all place themselves by arithmetic, and
     // a printer will cut off whatever strays. Cheap to check, invisible to
@@ -510,10 +612,12 @@ describe('the rendered PDF', () => {
     expect(pdf).toContain('(2026-09-01)')
   })
 
-  test('one short period is one page', () => {
+  test('the dashboard gets a page of its own, the log the next', () => {
+    // Both on one sheet is what made the report read as a pile.
     const pdf = decode(renderCalorieReportPdf(buildCalorieReport(range(20), [])))
-    expect(pdf).toContain('/Count 1')
-    expect(pdf).toContain('(Page 1 of 1)')
+    expect(pdf).toContain('/Count 2')
+    expect(pdf).toContain('(Daily log)')
+    expect(pdf).toContain('(Page 1 of 2)')
   })
 
   test('a long period paginates, and every page repeats the column header', () => {
@@ -524,16 +628,16 @@ describe('the rendered PDF', () => {
     })
     const pdf = decode(renderCalorieReportPdf(buildCalorieReport(long, [])))
     const pages = Number(/\/Count (\d+)/.exec(pdf)?.[1])
-    expect(pages).toBeGreaterThan(1)
-    // One "Date" heading per page, and the count agrees with the page tree.
-    expect(pdf.match(/\(Date\)/g)).toHaveLength(pages)
+    expect(pages).toBeGreaterThan(2)
+    // One column header per log page — every page except the dashboard.
+    expect(pdf.match(/\(Date\)/g)).toHaveLength(pages - 1)
     expect(pdf).toContain(`(Page 1 of ${pages})`)
   })
 
   test('a period with no days still produces a readable page', () => {
     // Pressing the button before logging anything must not throw.
     const pdf = decode(renderCalorieReportPdf(buildCalorieReport([], [])))
-    expect(pdf).toContain('/Count 1')
     expect(pdf).toContain('Calorie report')
+    expect(pdf).toContain('(no data)')
   })
 })

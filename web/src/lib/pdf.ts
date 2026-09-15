@@ -63,9 +63,29 @@ function literal(text: string): string {
 
 const round = (n: number) => Math.round(n * 100) / 100
 
-/** Left-aligned text. The only form the proportional fonts are used in. */
-export function text(x: number, y: number, size: number, font: FontName, s: string): string {
-  return `BT /${font} ${size} Tf ${round(x)} ${round(y)} Td (${literal(s)}) Tj ET\n`
+/**
+ * Left-aligned text. The only form the proportional fonts are used in.
+ *
+ * `tracking` is extra space between characters, in points. Wide-tracked small
+ * capitals are how a section label reads as a label rather than as more prose,
+ * and PDF spells it Tc — which is set inside the BT/ET pair, so it cannot leak
+ * into the next string.
+ */
+export function text(
+  x: number,
+  y: number,
+  size: number,
+  font: FontName,
+  s: string,
+  tracking = 0,
+): string {
+  const tc = tracking === 0 ? '' : `${round(tracking)} Tc `
+  return `BT ${tc}/${font} ${size} Tf ${round(x)} ${round(y)} Td (${literal(s)}) Tj ET\n`
+}
+
+/** Advance of a tracked string, for right-aligning one. */
+export function trackedWidth(s: string, size: number, tracking: number, em: number): number {
+  return s.length * (em * size + tracking)
 }
 
 /** Right-aligned text. Monospace only — see FONT. */
