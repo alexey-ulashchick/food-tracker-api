@@ -1,6 +1,11 @@
 import type { ServerDaySummary, ServerWeight } from '@shared/types.ts'
 import { describe, expect, test } from 'vitest'
-import { buildCalorieReport, renderCalorieReportPdf, trimToObserved } from './calorieReport'
+import {
+  SUSPECT_RATIO,
+  buildCalorieReport,
+  renderCalorieReportPdf,
+  trimToObserved,
+} from './calorieReport'
 
 // The model first, then that the PDF actually carries its numbers. The PDF
 // cannot be looked at here, so "carries" means the figures appear in the
@@ -82,7 +87,7 @@ describe('buildCalorieReport', () => {
     expect([report.from, report.to]).toEqual(['2026-09-02', '2026-09-02'])
   })
 
-  test('averages over the days that have a goal, not over every day', () => {
+  test('averages over the counted days, not over every day', () => {
     // A day with no goal has no target to average against; including it would
     // drag the average goal towards zero.
     const report = buildCalorieReport(
@@ -94,7 +99,8 @@ describe('buildCalorieReport', () => {
       [],
     )
     expect(report.days).toHaveLength(3)
-    expect(report.daysWithGoal).toBe(2)
+    expect(report.counted).toBe(2)
+    expect(report.suspect).toBe(1)
     expect(report.avgGoal).toBe(2500)
     expect(report.avgEaten).toBe(2500)
     expect(report.avgBalance).toBe(0)
@@ -124,10 +130,12 @@ describe('buildCalorieReport', () => {
     expect(report.days.map((d) => d.onTarget)).toEqual([true, true, false, false])
   })
 
-  test('a day with no goal is neither on target nor off it', () => {
+  test('a day with no goal is suspect, not merely off target', () => {
     const report = buildCalorieReport([day('2026-09-01', { calories: 2000 }, null)], [])
-    expect(report.days[0]?.onTarget).toBeNull()
+    expect(report.days[0]?.suspect).toBe(true)
+    expect(report.days[0]?.onTarget).toBe(false)
     expect(report.onTarget).toBe(0)
+    expect(report.counted).toBe(0)
   })
 
   test('carries the macros as they actually were', () => {
@@ -171,6 +179,79 @@ describe('buildCalorieReport', () => {
   })
 })
 
+describe('a day that was not finished being logged', () => {
+  test('under the threshold it is suspect', () => {
+    // Nobody eats 55% of their target and stops; they forget dinner.
+    const report = buildCalorieReport([day('2026-09-01', { calories: 1100 }, 2000)], [])
+    expect(report.days[0]?.suspect).toBe(true)
+    expect(report.suspect).toBe(1)
+    expect(report.counted).toBe(0)
+  })
+
+  test('exactly at the threshold it counts', () => {
+    const report = buildCalorieReport(
+      [day('2026-09-01', { calories: 2000 * SUSPECT_RATIO }, 2000)],
+      [],
+    )
+    expect(report.days[0]?.suspect).toBe(false)
+    expect(report.counted).toBe(1)
+  })
+
+  test('it is kept out of the averages', () => {
+    // Two honest days at target, one unfinished. The average must read 2000,
+    // not the 1633 that including the gap would produce.
+    const report = buildCalorieReport(
+      [
+        day('2026-09-01', { calories: 2000 }, 2000),
+        day('2026-09-02', { calories: 900 }, 2000),
+        day('2026-09-03', { calories: 2000 }, 2000),
+      ],
+      [],
+    )
+    expect(report.counted).toBe(2)
+    expect(report.avgEaten).toBe(2000)
+    expect(report.avgBalance).toBe(0)
+  })
+
+  test('and out of the total, which is the figure it distorted most', () => {
+    // Left in, the unfinished day alone reports an 1100 kcal deficit that never
+    // happened — and a report of deficits is what this document is for.
+    const report = buildCalorieReport(
+      [day('2026-09-01', { calories: 2000 }, 2000), day('2026-09-02', { calories: 900 }, 2000)],
+      [],
+    )
+    expect(report.totalBalance).toBe(0)
+  })
+
+  test('a day logged as nothing at all is the common case', () => {
+    const report = buildCalorieReport([day('2026-09-01', null, 2000)], [])
+    expect(report.days[0]?.suspect).toBe(true)
+  })
+
+  test('suspect and on target cannot both apply', () => {
+    // The band opens at 0.9 and suspicion closes at 0.6, so the two are
+    // disjoint by construction rather than by a check.
+    const report = buildCalorieReport(
+      [day('2026-09-01', { calories: 1100 }, 2000), day('2026-09-02', { calories: 1900 }, 2000)],
+      [],
+    )
+    expect(report.days.map((d) => [d.suspect, d.onTarget])).toEqual([
+      [true, false],
+      [false, true],
+    ])
+  })
+
+  test('on target is measured against the counted days', () => {
+    // A diluted denominator would let unfinished days lower a percentage they
+    // were explicitly excluded from judging.
+    const report = buildCalorieReport(
+      [day('2026-09-01', { calories: 1900 }, 2000), day('2026-09-02', { calories: 900 }, 2000)],
+      [],
+    )
+    expect([report.onTarget, report.counted]).toEqual([1, 1])
+  })
+})
+
 describe('the rendered PDF', () => {
   const decode = (b: Uint8Array) => new TextDecoder().decode(b)
 
@@ -192,6 +273,22 @@ describe('the rendered PDF', () => {
     expect(pdf).toContain('2026-09-01 - 2026-09-01')
     expect(pdf).toContain('(1800 eaten / 2000 goal   -200)')
     expect(pdf).toContain('(P 150   F 60   C 200)')
+    expect(pdf).toContain('(Counted)')
+    expect(pdf).toContain('(Suspect)')
+  })
+
+  test('marks a suspect day and explains the mark', () => {
+    const pdf = decode(
+      renderCalorieReportPdf(
+        buildCalorieReport(
+          [day('2026-09-01', { calories: 900 }, 2000), day('2026-09-02', { calories: 1900 }, 2000)],
+          [],
+        ),
+      ),
+    )
+    expect(pdf).toContain('(2026-09-01 ?)')
+    expect(pdf).toContain('(2026-09-02 *)')
+    expect(pdf).toContain('under 60% of it')
   })
 
   test('carries one row per day, with the target and the macros', () => {
@@ -215,7 +312,8 @@ describe('the rendered PDF', () => {
       renderCalorieReportPdf(buildCalorieReport([day('2026-09-01', { calories: 1900 }, null)], [])),
     )
     expect(pdf).toContain('(-)')
-    expect(pdf).not.toContain('(2026-09-01 *)')
+    // No goal is suspect, not on target.
+    expect(pdf).toContain('(2026-09-01 ?)')
   })
 
   test('one short period is one page', () => {

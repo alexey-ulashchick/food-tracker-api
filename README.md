@@ -302,6 +302,20 @@ the day's log stays in the order it was eaten in.
 was eaten, the difference and the macros as they actually were, under a summary
 of the period. Paginated, A4, a few tens of kilobytes.
 
+A day is **suspect** — marked `?` — when it has no goal, or when under 60% of
+the goal was logged against it. Nobody eats 55% of their target and stops; they
+forget dinner. Suspect days are counted and reported but kept out of every
+average and out of the total balance, because leaving one in reports a deficit
+that never happened, and a deficit is the number the report exists to get right.
+The summary's "On target" is measured against the counted days for the same
+reason.
+
+Note this differs on purpose from the History screen, whose `rollup()` counts a
+day with no meals as a perfect match ("no meals → eaten = goal", straight from
+the original spec). The on-target band is identical; only the treatment of
+silence differs. A streak may be forgiving; a monthly report that scores silence
+as success is worse than useless.
+
 It is **in English**, and that is the whole design decision. The PDF format has
 fourteen fonts every reader carries built in, and not one of them has a single
 Cyrillic glyph — there is no encoding trick that adds them. Russian labels would

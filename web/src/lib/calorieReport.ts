@@ -8,6 +8,16 @@ import type { ServerDaySummary, ServerWeight } from '@shared/types.ts'
 // English, because the report is a hand-written PDF with no embedded font —
 // see the header of lib/pdf.ts for why that trade was made.
 
+/**
+ * Below this share of the goal, a day is not a day of eating very little — it
+ * is a day that was not finished being logged.
+ *
+ * Nobody hits 55% of their target and stops; they forget dinner. Averaging such
+ * a day in reports a deficit that never happened, which is the one number a
+ * calorie report exists to get right.
+ */
+export const SUSPECT_RATIO = 0.6
+
 export type ReportDay = {
   date: string
   goal: number | null
@@ -15,17 +25,26 @@ export type ReportDay = {
   protein: number
   fat: number
   carbs: number
-  /** Null when the day has no goal to be on target with. */
-  onTarget: boolean | null
+  /**
+   * No goal at all, or so far under it that the log is probably incomplete.
+   * Excluded from every average and from the total.
+   */
+  suspect: boolean
+  /** Within the on-target band. False on a suspect day by construction — the
+   *  band starts at 0.9 and suspicion starts below 0.6. */
+  onTarget: boolean
 }
 
 export type CalorieReport = {
   from: string
   to: string
   days: ReportDay[]
-  daysWithGoal: number
+  /** Days with a goal and enough logged against it to be trusted. */
+  counted: number
+  /** The rest: no goal, or under SUSPECT_RATIO of it. */
+  suspect: number
   onTarget: number
-  /** Averages over the days that have a goal; null when there are none. */
+  /** Averages over the counted days; null when there are none. */
   avgGoal: number | null
   avgEaten: number | null
   avgBalance: number | null
@@ -65,6 +84,7 @@ export function buildCalorieReport(
   const days: ReportDay[] = observed.map((d) => {
     const goal = d.goal?.calorieGoal ?? null
     const ratio = goal && goal > 0 ? d.eaten.calories / goal : null
+    const suspect = ratio === null || ratio < SUSPECT_RATIO
     return {
       date: d.date,
       goal,
@@ -72,16 +92,26 @@ export function buildCalorieReport(
       protein: d.eaten.protein,
       fat: d.eaten.fats,
       carbs: d.eaten.carbs,
-      // The same band the History metrics use, so the two cannot disagree.
-      onTarget: ratio === null ? null : ratio >= ON_TARGET_MIN && ratio <= ON_TARGET_MAX,
+      suspect,
+      // The same band the History metrics use — but not the same treatment of a
+      // day with nothing logged. rollup() in lib/calorieMetrics.ts counts such a
+      // day as a perfect match ("no meals → eaten = goal", straight from the
+      // original spec), so History will report it as on target where this
+      // reports it as suspect. Deliberate: a monthly report that scores silence
+      // as success is worse than useless, while the History streak is allowed
+      // to be forgiving.
+      onTarget: !suspect && ratio !== null && ratio >= ON_TARGET_MIN && ratio <= ON_TARGET_MAX,
     }
   })
 
-  const withGoal = days.filter((d) => d.goal !== null && d.goal > 0)
+  // Averages and the total run over the counted days only. Including a day
+  // whose log is unfinished does not make the figure more informed, it makes it
+  // wrong in a direction that looks like progress.
+  const counted = days.filter((d) => !d.suspect)
   const mean = (pick: (d: ReportDay) => number) =>
-    withGoal.length === 0 ? null : withGoal.reduce((s, d) => s + pick(d), 0) / withGoal.length
+    counted.length === 0 ? null : counted.reduce((s, d) => s + pick(d), 0) / counted.length
 
-  const totalBalance = withGoal.reduce((s, d) => s + (d.eaten - (d.goal ?? 0)), 0)
+  const totalBalance = counted.reduce((s, d) => s + (d.eaten - (d.goal ?? 0)), 0)
 
   const dated = [...weights]
     .filter((w) => (observed.length === 0 ? true : w.date >= days[0]!.date))
@@ -93,8 +123,9 @@ export function buildCalorieReport(
     from: days[0]?.date ?? '',
     to: days[days.length - 1]?.date ?? '',
     days,
-    daysWithGoal: withGoal.length,
-    onTarget: days.filter((d) => d.onTarget === true).length,
+    counted: counted.length,
+    suspect: days.filter((d) => d.suspect).length,
+    onTarget: days.filter((d) => d.onTarget).length,
     avgGoal: mean((d) => d.goal ?? 0),
     avgEaten: mean((d) => d.eaten),
     avgBalance: mean((d) => d.eaten - (d.goal ?? 0)),
@@ -141,9 +172,9 @@ function header(y: number): string {
 function row(day: ReportDay, y: number): string {
   const goal = day.goal === null ? '-' : int(day.goal)
   const diff = day.goal === null ? '-' : signed(day.eaten - day.goal)
-  // A dot rather than a word: it is one column of noise either way, and the
-  // legend at the foot says what it means.
-  const mark = day.onTarget === true ? ' *' : ''
+  // One character rather than a word: it is a column of noise either way, and
+  // the legend at the foot says what each means. They cannot both apply.
+  const mark = day.onTarget ? ' *' : day.suspect ? ' ?' : ''
 
   return (
     text(MARGIN, y, BODY_SIZE, FONT.mono, `${day.date}${mark}`) +
@@ -159,12 +190,13 @@ function row(day: ReportDay, y: number): string {
 function summary(report: CalorieReport, y: number): { content: string; y: number } {
   const lines: Array<[string, string]> = [
     ['Period', `${report.from} - ${report.to}   ${report.days.length} days`],
-    ['Days with a goal', `${report.daysWithGoal}`],
+    ['Counted', `${report.counted}`],
+    ['Suspect', `${report.suspect}`],
     [
       'On target',
-      report.daysWithGoal === 0
+      report.counted === 0
         ? '-'
-        : `${report.onTarget} of ${report.daysWithGoal}   ${Math.round((report.onTarget / report.daysWithGoal) * 100)}%`,
+        : `${report.onTarget} of ${report.counted}   ${Math.round((report.onTarget / report.counted) * 100)}%`,
     ],
     [
       'Average per day',
@@ -241,7 +273,13 @@ function footer(pageNumber: number, total: number): string {
   const y = MARGIN - 12
   return (
     line(MARGIN, MARGIN, PAGE.width - MARGIN, MARGIN) +
-    text(MARGIN, y, 7, FONT.sans, '* within the on-target band') +
+    text(
+      MARGIN,
+      y,
+      7,
+      FONT.sans,
+      `* within the on-target band    ? no goal, or under ${Math.round(SUSPECT_RATIO * 100)}% of it - excluded from the averages and the total`,
+    ) +
     text(PAGE.width - MARGIN - 70, y, 7, FONT.sans, `Page ${pageNumber} of ${total}`)
   )
 }
