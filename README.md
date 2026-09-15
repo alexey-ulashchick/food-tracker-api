@@ -302,16 +302,21 @@ the day's log stays in the order it was eaten in.
 was eaten, the difference and the macros as they actually were, under a summary
 of the period. Paginated, A4, a few tens of kilobytes.
 
-A day is **suspect** — marked `?` — when it has no goal, or when under 60% of
-the goal was logged against it. Nobody eats 55% of their target and stops; they
-forget dinner. Suspect days are counted and reported but kept out of every
-average and out of the total balance, because leaving one in reports a deficit
-that never happened, and a deficit is the number the report exists to get right.
-The summary's "On target" is measured against the counted days for the same
-reason.
+Every day is exactly one of three, and the row is tinted accordingly rather than
+marked with a symbol — green on target, red off target, grey **incomplete**. A
+day is incomplete when it has no goal, or when under 60% of the goal was logged
+against it: nobody eats 55% of their target and stops, they forget dinner.
 
-History's weekly metrics apply the same rule from the same constants, so the two
-surfaces cannot disagree about which days count. That replaced the original
+Incomplete days are counted in the summary but kept out of the averages, and
+their Diff column is left blank — the arithmetic is well defined and the figure
+is exactly the deficit the report just declined to believe.
+
+The summary is four counts (total, on target, off target, incomplete) and two
+averages, and the averages say how many complete days they are over.
+
+History's weekly metrics apply the same rule from the same constant
+(`INCOMPLETE_RATIO`), so the two surfaces cannot disagree about which days
+count. That replaced the original
 spec's rule, which treated a day with no meals as a perfect match "so blank days
 do not drag compliance down" — exactly backwards: it scored silence as success,
 so a week nobody logged read as flawless and forgetting to log pushed compliance
@@ -320,7 +325,7 @@ up.
 Removing the fiction is not enough on its own. With blank days simply skipped, a
 week with two logged days reports "2 / 2 · 100%", which is the same lie in the
 same direction, so the rollup counts the days it refused and the metrics row
-shows them: `2 / 2 в цели · 0 ккал · 100% попаданий · 3 без данных`.
+shows them: `2 / 2 в цели · 100% попаданий · 3 без данных`.
 
 It is **in English**, and that is the whole design decision. The PDF format has
 fourteen fonts every reader carries built in, and not one of them has a single

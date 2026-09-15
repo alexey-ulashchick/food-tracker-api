@@ -5,7 +5,7 @@ import { addDays, dateRange, diffDays, fromIsoDate, toIsoDate } from './dates'
 // The missing-data rules are the whole substance of this file:
 //   * no goal on a day → the mean of explicit goals within ±7 days; if that
 //     window is empty too, the day is skipped entirely;
-//   * a day with less than SUSPECT_RATIO of its goal logged is not counted
+//   * a day with less than INCOMPLETE_RATIO of its goal logged is not counted
 //     either, and is reported separately;
 //   * "on target" is a ratio inside [0.9, 1.1], inclusive at both ends.
 //
@@ -25,13 +25,13 @@ export const ON_TARGET_MAX = 1.1
 
 /**
  * Below this share of the goal, a day was not eaten lightly — it was left
- * half-logged.
+ * half-logged, and there is not enough of it to judge.
  *
  * Nobody hits 55% of their target and stops; they forget dinner. The PDF report
  * reads the same constant, so the two surfaces cannot disagree about which days
  * count.
  */
-export const SUSPECT_RATIO = 0.6
+export const INCOMPLETE_RATIO = 0.6
 
 /** Fat energy density. The UI is Russian, so kg only — the Swift version
  *  branched on Locale and its two screens disagreed as a result. */
@@ -42,12 +42,12 @@ export type WeekRollup = {
   /** Days counted: a usable goal, and enough logged against it to be believed. */
   totalDays: number
   /**
-   * Days left out — no usable goal, or under SUSPECT_RATIO of it logged.
+   * Days left out — no usable goal, or under INCOMPLETE_RATIO of it logged.
    *
    * Reported rather than merely skipped, because a small denominator flatters:
    * one logged day out of seven would otherwise read as a perfect week.
    */
-  suspectDays: number
+  incompleteDays: number
   totalEaten: number
   totalGoal: number
 }
@@ -60,7 +60,7 @@ export type CalorieMetrics = {
 export const EMPTY_ROLLUP: WeekRollup = {
   onTargetDays: 0,
   totalDays: 0,
-  suspectDays: 0,
+  incompleteDays: 0,
   totalEaten: 0,
   totalGoal: 0,
 }
@@ -109,7 +109,7 @@ export function effectiveGoal(iso: string, goalByDay: Map<string, number>): numb
 export function rollup(from: string, days: number, totals: DayTotals): WeekRollup {
   let onTargetDays = 0
   let totalDays = 0
-  let suspectDays = 0
+  let incompleteDays = 0
   let totalEaten = 0
   let totalGoal = 0
 
@@ -117,7 +117,7 @@ export function rollup(from: string, days: number, totals: DayTotals): WeekRollu
     const iso = addDays(from, i)
     const goal = effectiveGoal(iso, totals.goalByDay)
     if (goal == null || goal <= 0) {
-      suspectDays++
+      incompleteDays++
       continue
     }
 
@@ -127,8 +127,8 @@ export function rollup(from: string, days: number, totals: DayTotals): WeekRollu
     const eaten = totals.eatenByDay.get(iso) ?? 0
     const ratio = eaten / goal
 
-    if (ratio < SUSPECT_RATIO) {
-      suspectDays++
+    if (ratio < INCOMPLETE_RATIO) {
+      incompleteDays++
       continue
     }
 
@@ -141,7 +141,7 @@ export function rollup(from: string, days: number, totals: DayTotals): WeekRollu
     if (ratio >= ON_TARGET_MIN && ratio <= ON_TARGET_MAX) onTargetDays++
   }
 
-  return { onTargetDays, totalDays, suspectDays, totalEaten, totalGoal }
+  return { onTargetDays, totalDays, incompleteDays, totalEaten, totalGoal }
 }
 
 /**

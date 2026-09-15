@@ -1,5 +1,5 @@
-import { ON_TARGET_MAX, ON_TARGET_MIN, SUSPECT_RATIO } from '@/lib/calorieMetrics'
-import { FONT, PAGE, buildPdf, line, monoRight, text } from '@/lib/pdf'
+import { INCOMPLETE_RATIO, ON_TARGET_MAX, ON_TARGET_MIN } from '@/lib/calorieMetrics'
+import { FONT, PAGE, type Rgb, buildPdf, fillRect, line, monoRight, text } from '@/lib/pdf'
 import type { ServerDaySummary, ServerWeight } from '@shared/types.ts'
 
 // One line per day for the whole observed period: the target, what was eaten,
@@ -8,10 +8,20 @@ import type { ServerDaySummary, ServerWeight } from '@shared/types.ts'
 // English, because the report is a hand-written PDF with no embedded font —
 // see the header of lib/pdf.ts for why that trade was made.
 
-// SUSPECT_RATIO lives with the other thresholds in lib/calorieMetrics.ts, which
-// the History metrics read too — so the two surfaces cannot disagree about which
-// days count. Re-exported here because this is where the rule is described.
-export { SUSPECT_RATIO }
+// INCOMPLETE_RATIO lives with the other thresholds in lib/calorieMetrics.ts,
+// which the History metrics read too — so the two surfaces cannot disagree
+// about which days count. Re-exported because this is where the rule applies.
+export { INCOMPLETE_RATIO }
+
+/**
+ * Every day is exactly one of these, which is what lets a row be read by its
+ * colour instead of by a symbol in a legend.
+ *
+ * `incomplete` is the honest answer for both "no goal to judge against" and
+ * "under INCOMPLETE_RATIO of the goal logged" — in neither case is there enough
+ * to say whether the day went well.
+ */
+export type DayStatus = 'onTarget' | 'offTarget' | 'incomplete'
 
 export type ReportDay = {
   date: string
@@ -20,30 +30,19 @@ export type ReportDay = {
   protein: number
   fat: number
   carbs: number
-  /**
-   * No goal at all, or so far under it that the log is probably incomplete.
-   * Excluded from every average and from the total.
-   */
-  suspect: boolean
-  /** Within the on-target band. False on a suspect day by construction — the
-   *  band starts at 0.9 and suspicion starts below 0.6. */
-  onTarget: boolean
+  status: DayStatus
 }
 
 export type CalorieReport = {
   from: string
   to: string
   days: ReportDay[]
-  /** Days with a goal and enough logged against it to be trusted. */
-  counted: number
-  /** The rest: no goal, or under SUSPECT_RATIO of it. */
-  suspect: number
   onTarget: number
-  /** Averages over the counted days; null when there are none. */
+  offTarget: number
+  incomplete: number
+  /** Averages over the complete days; null when there are none. */
   avgGoal: number | null
   avgEaten: number | null
-  avgBalance: number | null
-  totalBalance: number
   avgProtein: number | null
   avgFat: number | null
   avgCarbs: number | null
@@ -79,7 +78,6 @@ export function buildCalorieReport(
   const days: ReportDay[] = observed.map((d) => {
     const goal = d.goal?.calorieGoal ?? null
     const ratio = goal && goal > 0 ? d.eaten.calories / goal : null
-    const suspect = ratio === null || ratio < SUSPECT_RATIO
     return {
       date: d.date,
       goal,
@@ -87,22 +85,26 @@ export function buildCalorieReport(
       protein: d.eaten.protein,
       fat: d.eaten.fats,
       carbs: d.eaten.carbs,
-      suspect,
-      // The same band and the same suspicion threshold the History metrics use,
-      // from the same constants — so a day the report refuses to judge is a day
-      // History refuses too.
-      onTarget: !suspect && ratio !== null && ratio >= ON_TARGET_MIN && ratio <= ON_TARGET_MAX,
+      // The same band and the same threshold the History metrics use, from the
+      // same constants — so a day this refuses to judge is a day History
+      // refuses too.
+      status:
+        ratio === null || ratio < INCOMPLETE_RATIO
+          ? 'incomplete'
+          : ratio >= ON_TARGET_MIN && ratio <= ON_TARGET_MAX
+            ? 'onTarget'
+            : 'offTarget',
     }
   })
 
-  // Averages and the total run over the counted days only. Including a day
-  // whose log is unfinished does not make the figure more informed, it makes it
-  // wrong in a direction that looks like progress.
-  const counted = days.filter((d) => !d.suspect)
+  // Averages run over the complete days only. Including a day whose log is
+  // unfinished does not make the figure better informed, it makes it wrong in
+  // the direction that looks like progress.
+  const complete = days.filter((d) => d.status !== 'incomplete')
   const mean = (pick: (d: ReportDay) => number) =>
-    counted.length === 0 ? null : counted.reduce((s, d) => s + pick(d), 0) / counted.length
+    complete.length === 0 ? null : complete.reduce((s, d) => s + pick(d), 0) / complete.length
 
-  const totalBalance = counted.reduce((s, d) => s + (d.eaten - (d.goal ?? 0)), 0)
+  const count = (status: DayStatus) => days.filter((d) => d.status === status).length
 
   const dated = [...weights]
     .filter((w) => (observed.length === 0 ? true : w.date >= days[0]!.date))
@@ -114,13 +116,11 @@ export function buildCalorieReport(
     from: days[0]?.date ?? '',
     to: days[days.length - 1]?.date ?? '',
     days,
-    counted: counted.length,
-    suspect: days.filter((d) => d.suspect).length,
-    onTarget: days.filter((d) => d.onTarget).length,
+    onTarget: count('onTarget'),
+    offTarget: count('offTarget'),
+    incomplete: count('incomplete'),
     avgGoal: mean((d) => d.goal ?? 0),
     avgEaten: mean((d) => d.eaten),
-    avgBalance: mean((d) => d.eaten - (d.goal ?? 0)),
-    totalBalance,
     avgProtein: mean((d) => d.protein),
     avgFat: mean((d) => d.fat),
     avgCarbs: mean((d) => d.carbs),
@@ -140,12 +140,30 @@ export function buildCalorieReport(
 const MARGIN = 40
 const BODY_SIZE = 8
 const LINE = 10.4
+
+/**
+ * The row tints, light enough to keep black 8pt text legible on paper.
+ *
+ * A colour per row rather than a symbol per row: a symbol has to be looked up
+ * in a legend once per line, whereas a page of tinted bands is readable at a
+ * glance, which was the whole complaint about the first version.
+ */
+const TINT: Record<DayStatus, Rgb> = {
+  onTarget: [0.86, 0.95, 0.86],
+  offTarget: [0.99, 0.89, 0.89],
+  incomplete: [0.92, 0.92, 0.92],
+}
+
+/** The band spans the columns, not the whole page — empty tint reads as a bug. */
+const BAND_LEFT = MARGIN - 4
+const BAND_RIGHT = 440
 /** Right edges of the numeric columns. Left edge of the date is MARGIN. */
 const COL = { goal: 168, eaten: 226, diff: 288, protein: 340, fat: 386, carbs: 432 } as const
 
 const int = (n: number) => String(Math.round(n))
 const signed = (n: number) => (n > 0 ? `+${Math.round(n)}` : String(Math.round(n)))
 const one = (n: number) => n.toFixed(1)
+const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`
 
 function header(y: number): string {
   return (
@@ -162,13 +180,17 @@ function header(y: number): string {
 
 function row(day: ReportDay, y: number): string {
   const goal = day.goal === null ? '-' : int(day.goal)
-  const diff = day.goal === null ? '-' : signed(day.eaten - day.goal)
-  // One character rather than a word: it is a column of noise either way, and
-  // the legend at the foot says what each means. They cannot both apply.
-  const mark = day.onTarget ? ' *' : day.suspect ? ' ?' : ''
+  // Blank on an incomplete day. The arithmetic is well defined — a day with a
+  // 2400 goal and nothing logged differs by −2400 — but that is exactly the
+  // figure the report refuses to believe, and printing it invites reading it as
+  // a deficit. What was logged is still shown; only the verdict is withheld.
+  const diff = day.goal === null || day.status === 'incomplete' ? '-' : signed(day.eaten - day.goal)
 
   return (
-    text(MARGIN, y, BODY_SIZE, FONT.mono, `${day.date}${mark}`) +
+    // Drawn first, or it would cover the text. Height exactly LINE so
+    // consecutive bands tile with no seam between them.
+    fillRect(BAND_LEFT, y - 2.8, BAND_RIGHT - BAND_LEFT, LINE, TINT[day.status]) +
+    text(MARGIN, y, BODY_SIZE, FONT.mono, day.date) +
     monoRight(COL.goal, y, BODY_SIZE, FONT.mono, goal) +
     monoRight(COL.eaten, y, BODY_SIZE, FONT.mono, int(day.eaten)) +
     monoRight(COL.diff, y, BODY_SIZE, FONT.mono, diff) +
@@ -179,21 +201,23 @@ function row(day: ReportDay, y: number): string {
 }
 
 function summary(report: CalorieReport, y: number): { content: string; y: number } {
+  const complete = report.onTarget + report.offTarget
+  const share = (n: number) =>
+    report.days.length === 0 ? '' : `   ${Math.round((n / report.days.length) * 100)}%`
+
   const lines: Array<[string, string]> = [
-    ['Period', `${report.from} - ${report.to}   ${report.days.length} days`],
-    ['Counted', `${report.counted}`],
-    ['Suspect', `${report.suspect}`],
+    ['Period', `${report.from} - ${report.to}`],
+    ['Total days', `${report.days.length}`],
+    ['On target', `${report.onTarget}${share(report.onTarget)}`],
+    ['Off target', `${report.offTarget}${share(report.offTarget)}`],
+    ['Incomplete data', `${report.incomplete}${share(report.incomplete)}`],
     [
-      'On target',
-      report.counted === 0
-        ? '-'
-        : `${report.onTarget} of ${report.counted}   ${Math.round((report.onTarget / report.counted) * 100)}%`,
-    ],
-    [
-      'Average per day',
+      'Average calories',
       report.avgEaten === null
         ? '-'
-        : `${int(report.avgEaten)} eaten / ${int(report.avgGoal ?? 0)} goal   ${signed(report.avgBalance ?? 0)}`,
+        : // The basis is spelled out: an average that silently skipped a third
+          // of the period would be the most misleading number on the page.
+          `${int(report.avgEaten)} eaten / ${int(report.avgGoal ?? 0)} goal, over ${plural(complete, 'complete day')}`,
     ],
     [
       'Average macros',
@@ -201,7 +225,6 @@ function summary(report: CalorieReport, y: number): { content: string; y: number
         ? '-'
         : `P ${int(report.avgProtein)}   F ${int(report.avgFat ?? 0)}   C ${int(report.avgCarbs ?? 0)}`,
     ],
-    ['Total balance', `${signed(report.totalBalance)} kcal`],
   ]
 
   if (report.weight) {
@@ -260,17 +283,27 @@ export function renderCalorieReportPdf(report: CalorieReport): Uint8Array {
   return buildPdf(bodies.map((body, i) => body + footer(i + 1, bodies.length)))
 }
 
+const LEGEND: ReadonlyArray<[DayStatus, string]> = [
+  ['onTarget', 'on target'],
+  ['offTarget', 'off target'],
+  [
+    'incomplete',
+    `incomplete - no goal, or under ${Math.round(INCOMPLETE_RATIO * 100)}% of it logged; left out of the averages`,
+  ],
+]
+
 function footer(pageNumber: number, total: number): string {
   const y = MARGIN - 12
-  return (
-    line(MARGIN, MARGIN, PAGE.width - MARGIN, MARGIN) +
-    text(
-      MARGIN,
-      y,
-      7,
-      FONT.sans,
-      `* within the on-target band    ? no goal, or under ${Math.round(SUSPECT_RATIO * 100)}% of it - excluded from the averages and the total`,
-    ) +
-    text(PAGE.width - MARGIN - 70, y, 7, FONT.sans, `Page ${pageNumber} of ${total}`)
-  )
+  let out = line(MARGIN, MARGIN, PAGE.width - MARGIN, MARGIN)
+
+  // Swatches rather than words, so the legend is read in the same way the table
+  // is — by colour.
+  let x = MARGIN
+  for (const [status, caption] of LEGEND) {
+    out += fillRect(x, y - 1.5, 8, 7, TINT[status])
+    out += text(x + 11, y, 7, FONT.sans, caption)
+    x += 11 + caption.length * 3.4 + 10
+  }
+
+  return out + text(PAGE.width - MARGIN - 44, y, 7, FONT.sans, `Page ${pageNumber} of ${total}`)
 }

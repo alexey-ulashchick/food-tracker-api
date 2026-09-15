@@ -82,7 +82,7 @@ describe('effectiveGoal', () => {
 
 describe('rollup', () => {
   test('a day with no usable goal is not counted, and is reported', () => {
-    expect(rollup('2026-09-01', 3, totals([]))).toEqual({ ...EMPTY_ROLLUP, suspectDays: 3 })
+    expect(rollup('2026-09-01', 3, totals([]))).toEqual({ ...EMPTY_ROLLUP, incompleteDays: 3 })
   })
 
   test('a day with no meals is not a perfect match', () => {
@@ -92,7 +92,7 @@ describe('rollup', () => {
     expect(r).toEqual({
       onTargetDays: 0,
       totalDays: 0,
-      suspectDays: 1,
+      incompleteDays: 1,
       totalEaten: 0,
       totalGoal: 0,
     })
@@ -103,12 +103,12 @@ describe('rollup', () => {
   test('a half-logged day is not counted either', () => {
     // Under 60% of the goal is a forgotten dinner, not a light day.
     const r = rollup('2026-09-01', 1, totals([['2026-09-01', 2000]], [['2026-09-01', 1100]]))
-    expect([r.totalDays, r.suspectDays, r.totalEaten]).toEqual([0, 1, 0])
+    expect([r.totalDays, r.incompleteDays, r.totalEaten]).toEqual([0, 1, 0])
   })
 
   test('exactly at the threshold it counts', () => {
     const r = rollup('2026-09-01', 1, totals([['2026-09-01', 2000]], [['2026-09-01', 1200]]))
-    expect([r.totalDays, r.suspectDays]).toEqual([1, 0])
+    expect([r.totalDays, r.incompleteDays]).toEqual([1, 0])
     expect(r.onTargetDays).toBe(0)
   })
 
@@ -117,7 +117,7 @@ describe('rollup', () => {
     // suspicion threshold is 0.6 and the band opens at 0.9 — one does not stand
     // in for the other.
     const r = rollup('2026-09-01', 1, totals([['2026-09-01', 2000]], [['2026-09-01', 1500]]))
-    expect([r.totalDays, r.suspectDays, r.onTargetDays]).toEqual([1, 0, 0])
+    expect([r.totalDays, r.incompleteDays, r.onTargetDays]).toEqual([1, 0, 0])
   })
 
   test('on-target is inclusive at both 0.9 and 1.1', () => {
@@ -131,7 +131,7 @@ describe('rollup', () => {
   })
 
   test('a zero or negative goal is not usable', () => {
-    const suspect = { ...EMPTY_ROLLUP, suspectDays: 1 }
+    const suspect = { ...EMPTY_ROLLUP, incompleteDays: 1 }
     expect(rollup('2026-09-01', 1, totals([['2026-09-01', 0]]))).toEqual(suspect)
     expect(rollup('2026-09-01', 1, totals([['2026-09-01', -100]]))).toEqual(suspect)
   })
@@ -154,7 +154,7 @@ describe('rollup', () => {
       ),
     )
     expect(r.totalDays).toBe(2)
-    expect(r.suspectDays).toBe(1)
+    expect(r.incompleteDays).toBe(1)
     expect(r.totalEaten).toBe(2100 + 1500)
     expect(r.totalGoal).toBe(4000)
     // 2100/2000 = 1.05 on target; 1500/2000 = 0.75 counted but off.
@@ -167,7 +167,7 @@ describe('rollup', () => {
     const blank = rollup('2026-09-01', 1, totals([['2026-09-01', 2000]]))
     const zero = rollup('2026-09-01', 1, totals([['2026-09-01', 2000]], [['2026-09-01', 0]]))
     expect(zero).toEqual(blank)
-    expect(zero.suspectDays).toBe(1)
+    expect(zero.incompleteDays).toBe(1)
   })
 })
 
@@ -228,8 +228,8 @@ describe('calorieMetrics', () => {
 
   test('no data at all yields no counted days rather than throwing', () => {
     const m = calorieMetrics(totals([]), '2026-09-04')
-    expect(m.thisWeek).toEqual({ ...EMPTY_ROLLUP, suspectDays: 5 })
-    expect(m.lastSixWeeks).toEqual({ ...EMPTY_ROLLUP, suspectDays: 42 })
+    expect(m.thisWeek).toEqual({ ...EMPTY_ROLLUP, incompleteDays: 5 })
+    expect(m.lastSixWeeks).toEqual({ ...EMPTY_ROLLUP, incompleteDays: 42 })
     expect(compliance(m.thisWeek)).toBe(0)
   })
 })

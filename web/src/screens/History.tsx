@@ -367,11 +367,11 @@ function MetricsRow({
             {/* Without this, a week with two logged days reads "2 / 2 · 100%".
                 Dropping the old "a blank day is a perfect day" fiction only
                 helps if the days it dropped are visible. */}
-            {stat.suspectDays > 0 ? (
+            {stat.incompleteDays > 0 ? (
               <>
                 <span style={{ color: label.secondary }}>·</span>
                 <span className="tnum" style={{ color: label.tertiary }}>
-                  {stat.suspectDays} без данных
+                  {stat.incompleteDays} без данных
                 </span>
               </>
             ) : null}

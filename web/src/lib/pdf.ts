@@ -90,8 +90,18 @@ export function line(
   return `${round(gray)} G ${round(width)} w ${round(x1)} ${round(y1)} m ${round(x2)} ${round(y2)} l S\n`
 }
 
-export function grayText(gray: number): string {
-  return `${round(gray)} g\n`
+export type Rgb = readonly [number, number, number]
+
+/**
+ * A filled rectangle — the row tints behind the table.
+ *
+ * Wrapped in q/Q because `rg` sets the fill colour for everything after it, and
+ * text is filled too: without the save/restore, the first tinted row would turn
+ * every subsequent glyph on the page that colour.
+ */
+export function fillRect(x: number, y: number, w: number, h: number, [r, g, b]: Rgb): string {
+  const c = `${round(r)} ${round(g)} ${round(b)}`
+  return `q ${c} rg ${round(x)} ${round(y)} ${round(w)} ${round(h)} re f Q\n`
 }
 
 /**

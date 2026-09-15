@@ -1,7 +1,7 @@
 import type { ServerDaySummary, ServerWeight } from '@shared/types.ts'
 import { describe, expect, test } from 'vitest'
 import {
-  SUSPECT_RATIO,
+  INCOMPLETE_RATIO,
   buildCalorieReport,
   renderCalorieReportPdf,
   trimToObserved,
@@ -99,19 +99,26 @@ describe('buildCalorieReport', () => {
       [],
     )
     expect(report.days).toHaveLength(3)
-    expect(report.counted).toBe(2)
-    expect(report.suspect).toBe(1)
+    expect(report.onTarget + report.offTarget).toBe(2)
+    expect(report.incomplete).toBe(1)
     expect(report.avgGoal).toBe(2500)
     expect(report.avgEaten).toBe(2500)
-    expect(report.avgBalance).toBe(0)
   })
 
-  test('the balance is signed and totals across the period', () => {
+  test('every day falls into exactly one bucket', () => {
+    // The three counts are the summary, so they have to partition the period
+    // rather than merely describe parts of it.
     const report = buildCalorieReport(
-      [day('2026-09-01', { calories: 1800 }, 2000), day('2026-09-02', { calories: 2500 }, 2000)],
+      [
+        day('2026-09-01', { calories: 2000 }, 2000),
+        day('2026-09-02', { calories: 2600 }, 2000),
+        day('2026-09-03', { calories: 900 }, 2000),
+        day('2026-09-04', { calories: 2000 }, null),
+      ],
       [],
     )
-    expect(report.totalBalance).toBe(300)
+    expect([report.onTarget, report.offTarget, report.incomplete]).toEqual([1, 1, 2])
+    expect(report.onTarget + report.offTarget + report.incomplete).toBe(report.days.length)
   })
 
   test('on target uses the same band as the History metrics', () => {
@@ -127,15 +134,18 @@ describe('buildCalorieReport', () => {
       [],
     )
     expect(report.onTarget).toBe(2)
-    expect(report.days.map((d) => d.onTarget)).toEqual([true, true, false, false])
+    expect(report.days.map((d) => d.status)).toEqual([
+      'onTarget',
+      'onTarget',
+      'offTarget',
+      'offTarget',
+    ])
   })
 
-  test('a day with no goal is suspect, not merely off target', () => {
+  test('a day with no goal is incomplete, not merely off target', () => {
     const report = buildCalorieReport([day('2026-09-01', { calories: 2000 }, null)], [])
-    expect(report.days[0]?.suspect).toBe(true)
-    expect(report.days[0]?.onTarget).toBe(false)
-    expect(report.onTarget).toBe(0)
-    expect(report.counted).toBe(0)
+    expect(report.days[0]?.status).toBe('incomplete')
+    expect([report.onTarget, report.offTarget, report.incomplete]).toEqual([0, 0, 1])
   })
 
   test('carries the macros as they actually were', () => {
@@ -175,29 +185,28 @@ describe('buildCalorieReport', () => {
     const report = buildCalorieReport([day('2026-09-01', { calories: 2000 }, null)], [])
     expect(report.avgGoal).toBeNull()
     expect(report.avgEaten).toBeNull()
-    expect(report.totalBalance).toBe(0)
   })
 })
 
 describe('a day that was not finished being logged', () => {
-  test('under the threshold it is suspect', () => {
+  test('under the threshold it is incomplete', () => {
     // Nobody eats 55% of their target and stops; they forget dinner.
     const report = buildCalorieReport([day('2026-09-01', { calories: 1100 }, 2000)], [])
-    expect(report.days[0]?.suspect).toBe(true)
-    expect(report.suspect).toBe(1)
-    expect(report.counted).toBe(0)
+    expect(report.days[0]?.status).toBe('incomplete')
+    expect(report.incomplete).toBe(1)
   })
 
-  test('exactly at the threshold it counts', () => {
+  test('exactly at the threshold it is judged, and judged a miss', () => {
+    // 60% of the goal is believable as a light day, and nowhere near the band.
     const report = buildCalorieReport(
-      [day('2026-09-01', { calories: 2000 * SUSPECT_RATIO }, 2000)],
+      [day('2026-09-01', { calories: 2000 * INCOMPLETE_RATIO }, 2000)],
       [],
     )
-    expect(report.days[0]?.suspect).toBe(false)
-    expect(report.counted).toBe(1)
+    expect(report.days[0]?.status).toBe('offTarget')
+    expect(report.incomplete).toBe(0)
   })
 
-  test('it is kept out of the averages', () => {
+  test('is kept out of the averages', () => {
     // Two honest days at target, one unfinished. The average must read 2000,
     // not the 1633 that including the gap would produce.
     const report = buildCalorieReport(
@@ -208,47 +217,25 @@ describe('a day that was not finished being logged', () => {
       ],
       [],
     )
-    expect(report.counted).toBe(2)
+    expect(report.onTarget).toBe(2)
     expect(report.avgEaten).toBe(2000)
-    expect(report.avgBalance).toBe(0)
-  })
-
-  test('and out of the total, which is the figure it distorted most', () => {
-    // Left in, the unfinished day alone reports an 1100 kcal deficit that never
-    // happened — and a report of deficits is what this document is for.
-    const report = buildCalorieReport(
-      [day('2026-09-01', { calories: 2000 }, 2000), day('2026-09-02', { calories: 900 }, 2000)],
-      [],
-    )
-    expect(report.totalBalance).toBe(0)
   })
 
   test('a day logged as nothing at all is the common case', () => {
     const report = buildCalorieReport([day('2026-09-01', null, 2000)], [])
-    expect(report.days[0]?.suspect).toBe(true)
+    expect(report.days[0]?.status).toBe('incomplete')
   })
 
-  test('suspect and on target cannot both apply', () => {
-    // The band opens at 0.9 and suspicion closes at 0.6, so the two are
-    // disjoint by construction rather than by a check.
+  test('skipped by the averages, never by the counts', () => {
+    // Excluded from the arithmetic but not from the page: a period whose days
+    // quietly vanished would read better than it was.
     const report = buildCalorieReport(
-      [day('2026-09-01', { calories: 1100 }, 2000), day('2026-09-02', { calories: 1900 }, 2000)],
+      [day('2026-09-01', { calories: 2000 }, 2000), day('2026-09-02', { calories: 900 }, 2000)],
       [],
     )
-    expect(report.days.map((d) => [d.suspect, d.onTarget])).toEqual([
-      [true, false],
-      [false, true],
-    ])
-  })
-
-  test('on target is measured against the counted days', () => {
-    // A diluted denominator would let unfinished days lower a percentage they
-    // were explicitly excluded from judging.
-    const report = buildCalorieReport(
-      [day('2026-09-01', { calories: 1900 }, 2000), day('2026-09-02', { calories: 900 }, 2000)],
-      [],
-    )
-    expect([report.onTarget, report.counted]).toEqual([1, 1])
+    expect(report.avgEaten).toBe(2000)
+    expect(report.days).toHaveLength(2)
+    expect(report.incomplete).toBe(1)
   })
 })
 
@@ -271,24 +258,77 @@ describe('the rendered PDF', () => {
     )
     expect(pdf).toContain('Calorie report')
     expect(pdf).toContain('2026-09-01 - 2026-09-01')
-    expect(pdf).toContain('(1800 eaten / 2000 goal   -200)')
+    expect(pdf).toContain('1800 eaten / 2000 goal, over 1 complete day)')
     expect(pdf).toContain('(P 150   F 60   C 200)')
-    expect(pdf).toContain('(Counted)')
-    expect(pdf).toContain('(Suspect)')
+    for (const heading of ['(Total days)', '(On target)', '(Off target)', '(Incomplete data)']) {
+      expect(pdf, heading).toContain(heading)
+    }
   })
 
-  test('marks a suspect day and explains the mark', () => {
+  test('says how many complete days the averages are over', () => {
+    // An average that silently skipped a third of the period would be the most
+    // misleading figure on the page.
     const pdf = decode(
       renderCalorieReportPdf(
         buildCalorieReport(
-          [day('2026-09-01', { calories: 900 }, 2000), day('2026-09-02', { calories: 1900 }, 2000)],
+          [day('2026-09-01', { calories: 1900 }, 2000), day('2026-09-02', { calories: 900 }, 2000)],
           [],
         ),
       ),
     )
-    expect(pdf).toContain('(2026-09-01 ?)')
-    expect(pdf).toContain('(2026-09-02 *)')
-    expect(pdf).toContain('under 60% of it')
+    // Singular, not "1 complete days".
+    expect(pdf).toContain('over 1 complete day)')
+  })
+
+  test('drops the total balance, which measured an arbitrary span', () => {
+    const pdf = decode(
+      renderCalorieReportPdf(buildCalorieReport([day('2026-09-01', { calories: 1800 }, 2000)], [])),
+    )
+    expect(pdf).not.toContain('Total balance')
+  })
+
+  test('tints a row per status rather than marking it with a symbol', () => {
+    const pdf = decode(
+      renderCalorieReportPdf(
+        buildCalorieReport(
+          [
+            day('2026-09-01', { calories: 1900 }, 2000),
+            day('2026-09-02', { calories: 2600 }, 2000),
+            day('2026-09-03', { calories: 900 }, 2000),
+          ],
+          [],
+        ),
+      ),
+    )
+    // Three distinct fills, one per status, plus the three legend swatches.
+    const fills = [...pdf.matchAll(/q ([\d.]+ [\d.]+ [\d.]+) rg/g)].map((m) => m[1])
+    expect(new Set(fills).size).toBe(3)
+    // Each appears twice: once as a row, once in the legend.
+    for (const colour of new Set(fills)) {
+      expect(fills.filter((f) => f === colour)).toHaveLength(2)
+    }
+    // And no symbols are appended to the dates any more.
+    expect(pdf).toContain('(2026-09-01)')
+    expect(pdf).not.toMatch(/\(2026-09-0\d [*?]\)/)
+  })
+
+  test('withholds the difference on a day it does not believe', () => {
+    // -2400 is arithmetically right and editorially wrong: it is the deficit
+    // the report just declined to count.
+    const pdf = decode(
+      renderCalorieReportPdf(buildCalorieReport([day('2026-09-01', null, 2400)], [])),
+    )
+    expect(pdf).toContain('(2400)')
+    expect(pdf).not.toContain('(-2400)')
+  })
+
+  test('the legend names all three colours', () => {
+    const pdf = decode(
+      renderCalorieReportPdf(buildCalorieReport([day('2026-09-01', { calories: 1900 }, 2000)], [])),
+    )
+    expect(pdf).toContain('(on target)')
+    expect(pdf).toContain('(off target)')
+    expect(pdf).toContain('under 60% of it logged')
   })
 
   test('carries one row per day, with the target and the macros', () => {
@@ -300,8 +340,7 @@ describe('the rendered PDF', () => {
         ),
       ),
     )
-    // The date carries the on-target mark: 1900/2000 is 0.95.
-    expect(pdf).toContain('(2026-09-01 *)')
+    expect(pdf).toContain('(2026-09-01)')
     for (const value of ['(2000)', '(1900)', '(-100)', '(151)', '(61)', '(201)']) {
       expect(pdf, value).toContain(value)
     }
@@ -312,8 +351,7 @@ describe('the rendered PDF', () => {
       renderCalorieReportPdf(buildCalorieReport([day('2026-09-01', { calories: 1900 }, null)], [])),
     )
     expect(pdf).toContain('(-)')
-    // No goal is suspect, not on target.
-    expect(pdf).toContain('(2026-09-01 ?)')
+    expect(pdf).toContain('(2026-09-01)')
   })
 
   test('one short period is one page', () => {
